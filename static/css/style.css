@@ -1,0 +1,14 @@
+/* Placeholder CSS */
+body { font-family: Arial, sans-serif; background: #f8f9fa; color: #212529; }
+.navbar-brand { font-weight: 700; }
+.container { max-width: 1100px; }
+
+/* Centered alert styling */
+.alert-centered {
+	margin: 0 auto;
+	min-width: 280px;
+	max-width: 720px;
+	border-radius: 10px;
+	box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+	text-align: center;
+}

@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Create Role{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">➕ নতুন রোল তৈরি করুন</h4>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="{{ form.name.id_for_label }}" class="form-label">{{ form.name.label }}</label>
+                        {{ form.name }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">{{ form.url_permissions.label }}</label>
+                        <p class="text-muted small">📌 যেসব URL এ অনুমতি দিতে চান সেগুলো চেক করুন।</p>
+                        <div class="url-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:10px; max-height:400px; overflow-y:auto; border:1px solid #ddd; padding:15px; border-radius:8px;">
+                            {{ form.url_permissions }}
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-success">✅ রোল তৈরি করুন</button>
+                    <a href="{% url 'accounts:create_role' %}" class="btn btn-secondary">↩️ রিফ্রেশ</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
