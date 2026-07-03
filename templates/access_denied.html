@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+
+{% block title %}Access Denied{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm border-danger">
+    <div class="card-body text-center py-5">
+        <div class="mb-4">
+            <i class="bi bi-lock-fill text-danger" style="font-size: 4rem;"></i>
+        </div>
+        <h1 class="display-6 mb-3">Access Denied</h1>
+        <p class="lead mb-4">{{ message|default:'You do not have permission to view this page.' }}</p>
+        <a href="/" class="btn btn-primary btn-lg">
+            <i class="bi bi-house-door-fill me-2"></i> Go to Dashboard
+        </a>
+    </div>
+</div>
+{% endblock %}

@@ -17,7 +17,7 @@ class RoleForm(forms.Form):
         super().__init__(*args, **kwargs)
 
         all_urls = get_all_urls()
-        choices = [(item['url'], f"{item['name']}") for item in all_urls]
+        choices = [(item['route_name'], f"{item['route_name']}") for item in all_urls]
         self.fields['url_permissions'].choices = choices
 
         if self.role_id:
@@ -25,7 +25,8 @@ class RoleForm(forms.Form):
             try:
                 role = session.query(Role).filter(Role.id == self.role_id).first()
                 if role:
-                    allowed_urls = [p.url_pattern for p in role.permissions if p.is_allowed]
+                    self.fields['name'].initial = role.name
+                    allowed_urls = [p.route_name for p in role.permissions if p.is_allowed]
                     self.fields['url_permissions'].initial = allowed_urls
             finally:
                 session.close()
@@ -56,14 +57,16 @@ class RoleForm(forms.Form):
 
             session.query(RolePermission).filter(RolePermission.role_id == role.id).delete()
 
-            for url in selected_urls:
-                perm = session.query(Permission).filter(Permission.url_pattern == url).first()
+            for route_name in selected_urls:
+                perm = session.query(Permission).filter(Permission.route_name == route_name).first()
                 if not perm:
-                    perm = Permission(url_pattern=url, is_allowed=True)
+                    perm = Permission(route_name=route_name, url_pattern=route_name, is_allowed=True)
                     session.add(perm)
                     session.flush()
                 else:
                     perm.is_allowed = True
+                    if not perm.url_pattern:
+                        perm.url_pattern = route_name
 
                 role_perm = RolePermission(role_id=role.id, permission_id=perm.id)
                 session.add(role_perm)

@@ -4,10 +4,10 @@
 <div class="container">
     <div class="row mb-4">
         <div class="col">
-            <h2>📋 সকল রোল</h2>
+            <h2>All Roles</h2>
         </div>
         <div class="col-auto">
-            <a href="{% url 'accounts:create_role' %}" class="btn btn-primary">➕ নতুন রোল</a>
+            <a href="{% url 'accounts:Module_Auth_create_role' %}" class="btn btn-primary">Create New Role</a>
         </div>
     </div>
 
@@ -17,9 +17,9 @@
                 <thead class="table-dark">
                     <tr>
                         <th>ID</th>
-                        <th>রোল নাম</th>
-                        <th>অনুমতির সংখ্যা</th>
-                        <th>কর্ম</th>
+                        <th>Role Name</th>
+                        <th>Permission Count</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -29,7 +29,7 @@
                             <td><strong>{{ role.name }}</strong></td>
                             <td><span class="badge bg-info">{{ role.perm_count }}</span></td>
                             <td>
-                                <a href="{% url 'accounts:edit_role' role.id %}" class="btn btn-sm btn-warning">✏️ এডিট</a>
+                                <a href="{% url 'accounts:Module_Auth_edit_role' role.id %}" class="btn btn-sm btn-warning">✏️ Edit</a>
                             </td>
                         </tr>
                     {% endfor %}
@@ -37,7 +37,7 @@
             </table>
         </div>
     {% else %}
-        <div class="alert alert-info">কোন রোল পাওয়া যায়নি।</div>
+        <div class="alert alert-info">No roles found.</div>
     {% endif %}
 </div>
 {% endblock %}

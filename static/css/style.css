@@ -12,3 +12,90 @@ body { font-family: Arial, sans-serif; background: #f8f9fa; color: #212529; }
 	box-shadow: 0 6px 18px rgba(0,0,0,0.12);
 	text-align: center;
 }
+
+
+/* ===========================
+   Navbar
+=========================== */
+
+.navbar-custom{
+    background:#011c44;
+    padding:2px 0;
+}
+
+.navbar-brand{
+    color:#fff !important;
+    font-size:1rem;
+    font-weight:700;
+}
+
+.navbar-brand:hover{
+    color:#fff !important;
+}
+
+.navbar-custom .nav-link{
+    color:rgba(255,255,255,.82);
+    font-weight:500;
+    padding:2px 14px !important;
+    border-radius:8px;
+    transition:.3s;
+}
+
+.navbar-custom .nav-link:hover{
+    color:#fff;
+    background:#02316f;
+}
+
+.navbar-custom .nav-link.active{
+    background:#0d6efd;
+    color:#fff;
+}
+
+.navbar-toggler{
+    border:none;
+}
+
+.navbar-toggler:focus{
+    box-shadow:none;
+}
+
+.user-avatar{
+    width:36px;
+    height:36px;
+    border-radius:50%;
+    background:#fff;
+    color:#011c44;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    font-weight:bold;
+    margin-right:8px;
+}
+
+.dropdown-menu{
+    border:none;
+    border-radius:12px;
+    box-shadow:0 10px 25px rgba(0,0,0,.15);
+}
+
+.dropdown-item{
+    padding:10px 18px;
+}
+
+.dropdown-item:hover{
+    background:#eef4ff;
+}
+
+.btn-login{
+    background:#fff;
+    color:#011c44;
+    border-radius:25px;
+    padding:8px 20px;
+    font-weight:600;
+    transition:.3s;
+}
+
+.btn-login:hover{
+    background:#e9ecef;
+    color:#011c44;
+}

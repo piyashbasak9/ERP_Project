@@ -5,7 +5,7 @@
     <div class="col-lg-10">
         <div class="card shadow-sm">
             <div class="card-header bg-warning text-dark">
-                <h4 class="mb-0">✏️ "{{ role.name }}" এডিট করুন</h4>
+                <h4 class="mb-0">Edit Role: "{{ role.name }}"</h4>
             </div>
             <div class="card-body">
                 <form method="post">
@@ -20,8 +20,8 @@
                             {{ form.url_permissions }}
                         </div>
                     </div>
-                    <button type="submit" class="btn btn-primary">💾 আপডেট করুন</button>
-                    <a href="{% url 'accounts:create_role' %}" class="btn btn-outline-secondary">🔙 ফিরে যান</a>
+                    <button type="submit" class="btn btn-primary">💾 Update Role</button>
+                    <a href="{% url 'accounts:Module_Auth_list_roles' %}" class="btn btn-outline-secondary">🔙 Back to Roles</a>
                 </form>
             </div>
         </div>

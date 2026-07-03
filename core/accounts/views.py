@@ -1,5 +1,4 @@
 from django.shortcuts import render, redirect
-from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from django.contrib.auth import get_user_model, authenticate, login, logout
 from django.contrib.auth.views import LoginView, LogoutView
@@ -10,7 +9,6 @@ from .models_sa import Role, UserRole
 
 User = get_user_model()
 
-@staff_member_required
 def create_role(request):
     if request.method == 'POST':
         form = RoleForm(request.POST)
@@ -24,7 +22,7 @@ def create_role(request):
             else:
                 role_name = role.get('name') if isinstance(role, dict) else getattr(role, 'name', str(role))
                 messages.success(request, f"✅ '{role_name}' Successfully created!")
-                return redirect('accounts:create_role')
+                return redirect('accounts:Module_Auth_list_roles')
         else:
             messages.error(request, "Form is not valid.")
     else:
@@ -32,16 +30,13 @@ def create_role(request):
     return render(request, 'accounts/create_role.html', {'form': form})
 
 
-
-@staff_member_required
 def edit_role(request, pk):
     session = SessionLocal()
     try:
         role = session.query(Role).filter(Role.id == pk).first()
         if not role:
             messages.error(request, "Role not found.")
-            return redirect('accounts:create_role')
-        # capture minimal role data before closing session to avoid DetachedInstanceError
+            return redirect('accounts:Module_Auth_list_roles')
         role_data = {'id': role.id, 'name': role.name}
     finally:
         session.close()
@@ -55,15 +50,13 @@ def edit_role(request, pk):
                 messages.error(request, f"Could not update role: {e}")
             else:
                 messages.success(request, f"✅ '{role_data.get('name')}' updated successfully!")
-                return redirect('accounts:create_role')
+                return redirect('accounts:Module_Auth_list_roles')
     else:
         form = RoleForm(role_id=pk)
 
     return render(request, 'accounts/edit_role.html', {'form': form, 'role': role_data})
 
 
-
-@staff_member_required
 def create_user(request):
     if request.method == 'POST':
         form = UserCreationForm(request.POST)
@@ -92,7 +85,7 @@ def create_user(request):
             else:
                 messages.warning(request, "User created, but no role assigned.")
 
-            return redirect('accounts:create_user')
+            return redirect('accounts:Module_Auth_list_users')
         else:
             messages.error(request, "Form is not valid.")
     else:
@@ -101,7 +94,6 @@ def create_user(request):
     return render(request, 'accounts/create_user.html', {'form': form})
 
 
-@staff_member_required
 def list_roles(request):
     session = SessionLocal()
     try:
@@ -112,19 +104,25 @@ def list_roles(request):
     return render(request, 'accounts/list_roles.html', {'roles': roles_list})
 
 
-@staff_member_required
 def list_users(request):
-    users = User.objects.all().values('id', 'username', 'email', 'first_name', 'last_name', 'is_staff', 'is_superuser')
+    users = User.objects.all().values('id', 'username', 'email', 'first_name', 'last_name')
+    session = SessionLocal()
+    try:
+        user_roles = session.query(UserRole).all()
+        role_map = {ur.user_id: ur.role.name for ur in user_roles if ur.role}
+        for user in users:
+            user['role'] = role_map.get(user['id'], 'No Role')
+    finally:
+        session.close()
     return render(request, 'accounts/list_users.html', {'users': users})
 
 
-@staff_member_required
 def edit_user(request, pk):
     try:
         user = User.objects.get(pk=pk)
     except User.DoesNotExist:
         messages.error(request, "User not found.")
-        return redirect('accounts:list_users')
+        return redirect('accounts:Module_Auth_list_users')
 
     if request.method == 'POST':
         user.username = request.POST.get('username', user.username)
@@ -153,7 +151,7 @@ def edit_user(request, pk):
                     session.close()
             
             messages.success(request, f"✅ '{user.username}' updated successfully!")
-            return redirect('accounts:list_users')
+            return redirect('accounts:Module_Auth_list_users')
         except Exception as e:
             messages.error(request, f"Could not update user: {e}")
     
@@ -179,14 +177,14 @@ class CustomLoginView(LoginView):
     redirect_authenticated_user = True
     
     def get_success_url(self):
-        return reverse_lazy('home') or '/'
+        return reverse_lazy('Module_Home_home') or '/'
 
 
 class CustomLogoutView(LogoutView):
-    next_page = reverse_lazy('accounts:login')
+    next_page = reverse_lazy('accounts:Module_Auth_login')
 
 
 def logout_view(request):
     """Allow logout via GET and redirect to login page."""
     logout(request)
-    return redirect('accounts:login')
+    return redirect('accounts:Module_Auth_login')

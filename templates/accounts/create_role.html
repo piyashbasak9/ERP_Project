@@ -5,7 +5,7 @@
     <div class="col-lg-10">
         <div class="card shadow-sm">
             <div class="card-header bg-primary text-white">
-                <h4 class="mb-0">➕ নতুন রোল তৈরি করুন</h4>
+                <h4 class="mb-0">Create a new role</h4>
             </div>
             <div class="card-body">
                 <form method="post">
@@ -16,13 +16,13 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">{{ form.url_permissions.label }}</label>
-                        <p class="text-muted small">📌 যেসব URL এ অনুমতি দিতে চান সেগুলো চেক করুন।</p>
+                        <p class="text-muted small">Give access to the following URLs:</p>
                         <div class="url-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:10px; max-height:400px; overflow-y:auto; border:1px solid #ddd; padding:15px; border-radius:8px;">
                             {{ form.url_permissions }}
                         </div>
                     </div>
-                    <button type="submit" class="btn btn-success">✅ রোল তৈরি করুন</button>
-                    <a href="{% url 'accounts:create_role' %}" class="btn btn-secondary">↩️ রিফ্রেশ</a>
+                    <button type="submit" class="btn btn-success">Create Role</button>
+                    <a href="{% url 'accounts:Module_Auth_create_role' %}" class="btn btn-secondary">↩️ Refresh</a>
                 </form>
             </div>
         </div>
