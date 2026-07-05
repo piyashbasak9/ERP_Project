@@ -24,6 +24,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', home, name='Module_Home_home'),
     path("accounts/", include("core.accounts.urls")),
+    path("branch/", include("core.branch.urls")),
 ]
 
 if settings.DEBUG:

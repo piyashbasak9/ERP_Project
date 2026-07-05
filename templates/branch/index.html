@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block title %}Branches{% endblock %}
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>All Branches</h2>
+        </div>
+        <div class="col-auto">
+            <a href="{% url 'branch:Module_Branch_add_branch' %}" class="btn btn-primary">Create New Branch</a>
+        </div>
+    </div>
+
+    {% if branches %}
+        <div class="table-responsive">
+            <table class="table table-hover table-striped">
+                <thead class="table-dark">
+                    <tr>
+                        <th>ID</th>
+                        <th>Branch Name</th>
+                        <th>Manager</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for branch in branches %}
+                        <tr>
+                            <td>{{ branch.id }}</td>
+                            <td><strong>{{ branch.name }}</strong></td>
+                            <td><span class="badge bg-info">{{ branch.manager }}</span></td>
+                            <td>
+                                <a href="{% url 'branch:Module_Branch_edit_branch' branch.id %}" class="btn btn-sm btn-warning">✏️ Edit</a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="alert alert-info">No branches found.</div>
+    {% endif %}
+</div>
+{% endblock %}
