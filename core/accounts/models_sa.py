@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
-from .db import Base
+from ERP.db import Base
 
 class Permission(Base):
     __tablename__ = 'sa_permissions'

@@ -1,43 +1,136 @@
 {% extends 'base.html' %}
 {% block title %}Branches{% endblock %}
+
 {% block content %}
 <div class="container">
+
     <div class="row mb-4">
         <div class="col">
             <h2>All Branches</h2>
         </div>
+
         <div class="col-auto">
-            <a href="{% url 'branch:Module_Branch_add_branch' %}" class="btn btn-primary">Create New Branch</a>
+            <a href=""
+               class="btn btn-primary">
+                Create New Branch
+            </a>
         </div>
     </div>
 
-    {% if branches %}
-        <div class="table-responsive">
-            <table class="table table-hover table-striped">
-                <thead class="table-dark">
-                    <tr>
-                        <th>ID</th>
-                        <th>Branch Name</th>
-                        <th>Manager</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for branch in branches %}
-                        <tr>
-                            <td>{{ branch.id }}</td>
-                            <td><strong>{{ branch.name }}</strong></td>
-                            <td><span class="badge bg-info">{{ branch.manager }}</span></td>
-                            <td>
-                                <a href="{% url 'branch:Module_Branch_edit_branch' branch.id %}" class="btn btn-sm btn-warning">✏️ Edit</a>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+    <!-- Search Area -->
+    <div class="card mb-3">
+        <div class="card-header">
+            Search
         </div>
-    {% else %}
-        <div class="alert alert-info">No branches found.</div>
-    {% endif %}
+
+        <div class="card-body">
+
+            <div class="row">
+
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Branch Name</label>
+                    <input
+                        type="text"
+                        id="name"
+                        class="form-control"
+                        placeholder="Branch Name">
+                </div>
+
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Code</label>
+                    <input
+                        type="text"
+                        id="code"
+                        class="form-control"
+                        placeholder="Branch Code">
+                </div>
+
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Status</label>
+
+                    <select id="is_active" class="form-select">
+                        <option value="">All</option>
+                        <option value="1">Active</option>
+                        <option value="0">Inactive</option>
+                    </select>
+
+                </div>
+
+            </div>
+
+            <button type="button" class="btn btn-primary" id="btnSearch"> Search </button>
+
+        </div>
+
+    </div>
+
+
+
 </div>
+    <!-- jqGrid -->
+    <div class="table-responsive">
+        <table id="branchGrid"></table>
+        <div id="branchPager"></div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+
+$(function () {
+
+    function initBranchGrid() {
+        $("#branchGrid").jqGrid({
+            url: "{% url 'branch:Module_Branch_index_branch' %}?ajax=1",
+            datatype: "json",
+            mtype: "GET",
+            postData: function () {
+                return {
+                    name: $("#name").val(),
+                    code: $("#code").val(),
+                    is_active: $("#is_active").val()
+                };
+            },
+            colModel: [
+                { label: "ID", name: "id", width: 60, align: 'center', sortable: true },
+                { label: "Name", name: "name", width: 220, sortable: true },
+                { label: "Code", name: "code", width: 120, sortable: true },
+                { label: "Status", name: "is_active", width: 100, align: 'center', sortable: true }
+            ],
+            rowNum: 10,
+            rowList: [10,20,50],
+            pager: "#branchPager",
+            viewrecords: true,
+            autowidth: true,
+            shrinkToFit: true,
+            forceFit: true,
+            gridview: true,
+            height: "auto",
+            loadonce: false,
+            jsonReader: {
+                root: "rows",
+                page: "page",
+                total: "total",
+                records: "records",
+                repeatitems: false
+            }
+        });
+    }
+
+    initBranchGrid();
+    $("#btnSearch").click(function () {
+
+        $("#branchGrid")
+            .jqGrid("setGridParam", {
+                page: 1
+            })
+            .trigger("reloadGrid");
+
+    });
+
+
+
+});
+
+</script>
 {% endblock %}

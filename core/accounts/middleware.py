@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.urls import resolve
 from django.urls.exceptions import Resolver404
-from .db import SessionLocal
+from ERP.db import SessionLocal
 from .models_sa import UserRole
 
 class URLPermissionMiddleware:

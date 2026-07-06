@@ -1,6 +1,6 @@
 import re
 from django.urls import get_resolver, URLPattern, URLResolver
-from .db import SessionLocal
+from ERP.db import SessionLocal
 from .models_sa import Permission
 
 PREFIX_WHITELIST = ('Module', 'API')
