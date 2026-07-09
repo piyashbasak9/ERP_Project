@@ -1,77 +1,61 @@
 {% extends 'base.html' %}
 {% block title %}Branches{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+{% endblock %}
+
 {% block content %}
-<div class="container">
+<div class="page-wrapper" id="pageWrapper">
 
-    <div class="row mb-4">
-        <div class="col">
-            <h2>All Branches</h2>
-        </div>
-
-        <div class="col-auto">
-            <a href=""
-               class="btn btn-primary">
-                Create New Branch
-            </a>
-        </div>
+    <!-- Header -->
+    <div class="page-header">
+        <h2>
+            <span class="header-icon"><i class="bi bi-diagram-3-fill"></i></span>
+            All Branches
+        </h2>
+        <a href="" class="btn btn-primary btn-create">
+            <i class="bi bi-plus-circle me-1"></i>Create New Branch
+        </a>
     </div>
 
     <!-- Search Area -->
-    <div class="card mb-3">
-        <div class="card-header">
-            Search
-        </div>
-
+    <div class="card search-card">
         <div class="card-body">
 
-            <div class="row">
-
-                <div class="col-md-4 mb-3">
-                    <label class="form-label">Branch Name</label>
-                    <input
-                        type="text"
-                        id="name"
-                        class="form-control"
-                        placeholder="Branch Name">
+            <div class="search-field">
+                <label>Branch Name</label>
+                <div class="input-icon-wrap">
+                    <i class="bi bi-building"></i>
+                    <input type="text" id="search_name" class="form-control with-icon" placeholder="e.g. Dhaka Main Branch">
                 </div>
-
-                <div class="col-md-4 mb-3">
-                    <label class="form-label">Code</label>
-                    <input
-                        type="text"
-                        id="code"
-                        class="form-control"
-                        placeholder="Branch Code">
-                </div>
-
-                <div class="col-md-4 mb-3">
-                    <label class="form-label">Status</label>
-
-                    <select id="is_active" class="form-select">
-                        <option value="">All</option>
-                        <option value="1">Active</option>
-                        <option value="0">Inactive</option>
-                    </select>
-
-                </div>
-
             </div>
 
-            <button type="button" class="btn btn-primary" id="btnSearch"> Search </button>
+            <div class="search-field">
+                <label>Code</label>
+                <div class="input-icon-wrap">
+                    <i class="bi bi-upc-scan"></i>
+                    <input type="text" id="search_code" class="form-control with-icon" placeholder="e.g. DHK-01">
+                </div>
+            </div>
+            <div class="search-actions">
+                <button type="button" class="btn btn-primary" id="btnSearch">
+                    <i class="bi bi-search me-1"></i>Search
+                </button>
+            </div>
 
         </div>
-
     </div>
 
-
+    <!-- Grid -->
+    <div class="grid-card mt-2">
+        <div class="table-responsive">
+            <table id="branchGrid"></table>
+            <div id="branchPager"></div>
+        </div>
+    </div>
 
 </div>
-    <!-- jqGrid -->
-    <div class="table-responsive">
-        <table id="branchGrid"></table>
-        <div id="branchPager"></div>
-    </div>
 {% endblock %}
 
 {% block extra_js %}
@@ -79,33 +63,51 @@
 
 $(function () {
 
+    function fitPageWrapperHeight() {
+        const $wrapper = $("#pageWrapper");
+        const top = $wrapper.offset().top;
+        const footerHeight = $("footer.footer-custom").outerHeight() || 0;
+        const available = $(window).height() - top - footerHeight -1;
+        $wrapper.css("height", available + "px");
+    }
+
     function initBranchGrid() {
         $("#branchGrid").jqGrid({
             url: "{% url 'branch:Module_Branch_index_branch' %}?ajax=1",
             datatype: "json",
             mtype: "GET",
-            postData: function () {
-                return {
-                    name: $("#name").val(),
-                    code: $("#code").val(),
-                    is_active: $("#is_active").val()
-                };
-            },
             colModel: [
                 { label: "ID", name: "id", width: 60, align: 'center', sortable: true },
                 { label: "Name", name: "name", width: 220, sortable: true },
                 { label: "Code", name: "code", width: 120, sortable: true },
-                { label: "Status", name: "is_active", width: 100, align: 'center', sortable: true }
+                {
+                    label: "Status",
+                    name: "is_active",
+                    width: 100,
+                    align: 'center',
+                    sortable: true,
+                    formatter: function (cellvalue) {
+                        if (cellvalue == 1 || cellvalue === true) {
+                            return '<span class="badge badge-active">Active</span>';
+                        }
+                        return '<span class="badge badge-inactive">Inactive</span>';
+                    }
+                },
+                { label: "Created By", name: "created_by", width: 120, sortable: true },
+                { label: "Updated By", name: "updated_by", width: 120, sortable: true },
+                { label: "Created At", name: "created_at", width: 160, sortable: true },
+                { label: "Updated At", name: "updated_at", width: 160, sortable: true },
+                { label: "Actions", name: "actions", width: 160, sortable: false },
             ],
-            rowNum: 10,
-            rowList: [10,20,50],
+            rowNum: 20,
+            rowList: [20, 50, 100],
             pager: "#branchPager",
             viewrecords: true,
             autowidth: true,
             shrinkToFit: true,
             forceFit: true,
             gridview: true,
-            height: "auto",
+            height: "100%",
             loadonce: false,
             jsonReader: {
                 root: "rows",
@@ -115,19 +117,39 @@ $(function () {
                 repeatitems: false
             }
         });
+
+        resizeGridBody();
     }
 
-    initBranchGrid();
-    $("#btnSearch").click(function () {
+    function resizeGridBody() {
+        const $tableResponsive = $(".table-responsive");
+        const $hdiv = $(".ui-jqgrid-hdiv");
+        const $pager = $(".ui-jqgrid-pager");
 
-        $("#branchGrid")
-            .jqGrid("setGridParam", {
-                page: 1
-            })
-            .trigger("reloadGrid");
+        const totalHeight = $tableResponsive.height();
+        const hdivHeight = $hdiv.outerHeight() || 0;
+        const pagerHeight = $pager.outerHeight() || 0;
 
+        const bdivHeight = totalHeight - hdivHeight - pagerHeight;
+        $("#branchGrid").jqGrid("setGridHeight", bdivHeight > 0 ? bdivHeight : 200);
+    }
+
+    $(window).on("resize", function () {
+        $("#branchGrid").jqGrid("setGridWidth", $(".table-responsive").width());
+        fitPageWrapperHeight();
+        resizeGridBody();
     });
 
+    fitPageWrapperHeight();
+    initBranchGrid();
+    setTimeout(fitPageWrapperHeight, 300);
+
+    $("#btnSearch").click(function () {
+        var name = $("#search_name").val();
+        var code = $("#search_code").val();
+        ajaxUrl = "{% url 'branch:Module_Branch_index_branch' %}?ajax=1&name=" + encodeURIComponent(name) + "&code=" + encodeURIComponent(code);
+        $("#branchGrid").jqGrid("setGridParam", { url: ajaxUrl, page: 1 }).trigger("reloadGrid");
+    });
 
 
 });

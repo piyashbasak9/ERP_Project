@@ -8,7 +8,6 @@ class BranchReadService:
         self.db = SessionLocal()
 
     def search(self, query):
-
         if self.request.GET.get('name'):
             query = query.filter(Branch.name.ilike(f"%{self.request.GET.get('name')}%"))
 
@@ -19,7 +18,7 @@ class BranchReadService:
 
     def all(self):
         query = self.db.query(Branch).where(Branch.is_active == 1)
-        self.search(query)
+        query = self.search(query)
         return query.all()
     
     def get(self, id):

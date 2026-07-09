@@ -11,17 +11,18 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.13.2/themes/base/jquery-ui.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/free-jqgrid@4.15.5/dist/css/ui.jqgrid.min.css">
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
+
     {% block extra_css %}{% endblock %}
 </head>
 
-<body class="d-flex flex-column min-vh-100">
+<body>
     <!-- ===================== NAVBAR ===================== -->
 
     <nav class="navbar navbar-expand-lg navbar-dark navbar-custom sticky-top">
-        <div class="container">
+        <div class="container-fluid px-3 px-lg-4">
 
             <!-- Logo -->
-            <a class="navbar-brand fw-bold d-flex left" href="/">
+            <a class="navbar-brand fw-bold d-flex align-items-center" href="/">
                 <i class="bi bi-box-seam-fill me-2"></i>
                 ERP System
             </a>
@@ -45,7 +46,7 @@
                     </li>
 
                     <li class="nav-item">
-                        <a class="nav-link" href="#">
+                        <a class="nav-link" href="{% url 'branch:Module_Branch_index_branch' %}">
                             <i class="bi bi-building me-1"></i>
                             Branches
                         </a>
@@ -229,13 +230,13 @@
     </div>
 
     <!-- ===================== MAIN CONTENT ===================== -->
-    <main class="container my-4 flex-grow-1">
+    <main class="main-content">
         {% block content %}{% endblock %}
     </main>
 
     <!-- ===================== FOOTER ===================== -->
-    <footer class="bg-dark text-light py-1 border-top mt-auto">
-        <div class="container d-flex justify-content-between align-items-center">
+    <footer class="footer-custom text-light py-2 border-top mt-auto">
+        <div class="container-fluid px-3 px-lg-4 d-flex justify-content-between align-items-center">
             <small>© 2026 ERP System</small>
             <small>Developed by <strong>BSK ERP</strong></small>
         </div>

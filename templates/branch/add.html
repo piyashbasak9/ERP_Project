@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block title %}{% if pk %}Edit Branch{% else %}Add Branch{% endif %}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="mb-0">
+            <i class="bi bi-diagram-3-fill me-2"></i>
+            {% if pk %}Edit Branch{% else %}Add New Branch{% endif %}
+        </h2>
+        <a href="{% url 'branch:Module_Branch_index_branch' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>Back to List
+        </a>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <form method="post" action="{% if pk %}{% url 'branch:Module_Branch_edit_branch' pk=pk %}{% else %}{% url 'branch:Module_Branch_add_branch' %}{% endif %}">
+                {% csrf_token %}
+
+                <input type="hidden" name="is_active" value="{% if data.is_active is not None %}{{ data.is_active }}{% else %}1{% endif %}">
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="name" class="form-label">Branch Name <span class="text-danger">*</span></label>
+                        <input type="text" id="name" name="name" class="form-control"
+                               placeholder="e.g. Dhaka Main Branch"
+                               value="{{ data.name|default:'' }}" required>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="code" class="form-label">Branch Code <span class="text-danger">*</span></label>
+                        <input type="text" id="code" name="code" class="form-control"
+                               placeholder="e.g. DHK-01"
+                               value="{{ data.code|default:'' }}" required>
+                    </div>
+                </div>
+
+                <div class="mt-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle me-1"></i>
+                        {% if pk %}Update Branch{% else %}Save Branch{% endif %}
+                    </button>
+                    <a href="{% url 'branch:Module_Branch_index_branch' %}" class="btn btn-secondary">
+                        <i class="bi bi-x-circle me-1"></i>Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

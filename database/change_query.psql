@@ -8,3 +8,17 @@ CREATE TABLE branches (
     created_at VARCHAR(50) NOT NULL,
     updated_at VARCHAR(50) NOT NULL
 );
+
+ALTER TABLE branches
+ALTER COLUMN created_by DROP NOT NULL,
+ALTER COLUMN updated_by DROP NOT NULL,
+ALTER COLUMN created_at DROP NOT NULL,
+ALTER COLUMN updated_at DROP NOT NULL;
+
+
+
+ALTER TABLE branches
+ALTER COLUMN created_at TYPE TIMESTAMP
+USING created_at::TIMESTAMP,
+ALTER COLUMN updated_at TYPE TIMESTAMP
+USING updated_at::TIMESTAMP;
