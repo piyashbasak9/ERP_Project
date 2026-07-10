@@ -369,11 +369,11 @@ footer.footer-custom strong {
 }
 
 #branchGrid {
-    width: 100% !important;
+    width: auto !important;
 }
 
 .ui-jqgrid {
-    width: 100% !important;
+    width: auto !important;
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;

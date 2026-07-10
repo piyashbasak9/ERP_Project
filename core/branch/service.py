@@ -1,3 +1,5 @@
+from django.utils import timezone
+
 from ERP.db import SessionLocal
 from core.branch.models import Branch
 
@@ -53,6 +55,12 @@ class BranchWriteService:
         branch = self.db.query(Branch).where(Branch.is_active == 1).filter(Branch.id == id).first()
         if not branch:
             return None
-        self.db.delete(branch)
+
+        branch.is_active = 0
+        branch.updated_at = timezone.now()
+        if getattr(self.request, 'user', None) and getattr(self.request.user, 'is_authenticated', False):
+            branch.updated_by = self.request.user.id
+
         self.db.commit()
+        self.db.refresh(branch)
         return branch

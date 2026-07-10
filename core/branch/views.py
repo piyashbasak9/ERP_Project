@@ -1,6 +1,7 @@
 from django.core.paginator import Paginator
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.contrib import messages
 
@@ -10,6 +11,17 @@ from .service import BranchReadService, BranchWriteService
 
 
 def _serialize_branch(branch):
+    branch_id = branch.get('id') if isinstance(branch, dict) else branch.id
+    edit_url = reverse('branch:Module_Branch_edit_branch', args=[branch_id])
+    delete_url = reverse('branch:Module_Branch_delete_branch', args=[branch_id])
+    
+    action_html = (
+        f'<div class="d-flex gap-2 justify-content-center">'
+        f'<a href="{edit_url}" class="btn btn-sm btn-outline-primary" title="Edit">✏️</a>'
+        f'<a href="{delete_url}" class="btn btn-sm btn-outline-danger" title="Delete">🗑️</a>'
+        f'</div>'
+    )
+
     if isinstance(branch, dict):
         return {
             'id': branch.get('id'),
@@ -20,7 +32,7 @@ def _serialize_branch(branch):
             'created_at': branch.get('created_at'),
             'updated_by': branch.get('updated_by'),
             'updated_at': branch.get('updated_at'),
-            'actions': f'<a href="/branch/edit/{branch.get("id")}/" class="btn btn-sm btn-primary">Edit</a> <a href="/branch/delete/{branch.get("id")}/" class="btn btn-sm btn-danger">Delete</a>'
+            'actions': action_html
         }
 
     return {
@@ -32,7 +44,7 @@ def _serialize_branch(branch):
         'created_at': branch.created_at,
         'updated_by': branch.updated_by_name if branch.updated_by else None,
         'updated_at': branch.updated_at,
-        'actions': f'<a href="/branch/edit/{branch.id}/" class="btn btn-sm btn-primary">Edit</a> <a href="/branch/delete/{branch.id}/" class="btn btn-sm btn-danger">Delete</a>'
+        'actions': action_html
     }
 
 
@@ -96,7 +108,8 @@ def delete(request, pk):
     if request.method == 'POST':
         branch = BranchWriteService(request).delete(pk)
         if branch:
-            return JsonResponse({'success': True, 'message': 'Branch deleted successfully.'})
+            messages.success(request, f"✅ '{branch.name}' Successfully deleted!")
         else:
-            return JsonResponse({'success': False, 'message': 'Branch not found.'})
+            messages.error(request, f"❌ Failed to delete branch '{branch.name}'.")
+        return redirect('branch:Module_Branch_index_branch')
     return render(request, 'branch/delete.html', {'pk': pk})

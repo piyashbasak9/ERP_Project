@@ -2,7 +2,7 @@
 {% block title %}{% if pk %}Edit Branch{% else %}Add Branch{% endif %}{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
+<div class="container-fluid" style="max-width:1000px; margin-top: 30px;">
 
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="mb-0">
@@ -14,7 +14,7 @@
         </a>
     </div>
 
-    <div class="card">
+    <div class="card mb-4 shadow-sm mx-auto">
         <div class="card-body">
             <form method="post" action="{% if pk %}{% url 'branch:Module_Branch_edit_branch' pk=pk %}{% else %}{% url 'branch:Module_Branch_add_branch' %}{% endif %}">
                 {% csrf_token %}

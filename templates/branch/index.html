@@ -14,7 +14,7 @@
             <span class="header-icon"><i class="bi bi-diagram-3-fill"></i></span>
             All Branches
         </h2>
-        <a href="" class="btn btn-primary btn-create">
+        <a href="{% url 'branch:Module_Branch_add_branch' %}" class="btn btn-primary btn-create">
             <i class="bi bi-plus-circle me-1"></i>Create New Branch
         </a>
     </div>
@@ -80,27 +80,24 @@ $(function () {
                 { label: "ID", name: "id", width: 60, align: 'center', sortable: true },
                 { label: "Name", name: "name", width: 220, sortable: true },
                 { label: "Code", name: "code", width: 120, sortable: true },
-                {
-                    label: "Status",
-                    name: "is_active",
-                    width: 100,
-                    align: 'center',
-                    sortable: true,
-                    formatter: function (cellvalue) {
-                        if (cellvalue == 1 || cellvalue === true) {
-                            return '<span class="badge badge-active">Active</span>';
-                        }
-                        return '<span class="badge badge-inactive">Inactive</span>';
-                    }
-                },
                 { label: "Created By", name: "created_by", width: 120, sortable: true },
                 { label: "Updated By", name: "updated_by", width: 120, sortable: true },
                 { label: "Created At", name: "created_at", width: 160, sortable: true },
                 { label: "Updated At", name: "updated_at", width: 160, sortable: true },
-                { label: "Actions", name: "actions", width: 160, sortable: false },
+                {
+                    label: "Actions",
+                    name: "actions",
+                    width: 120,
+                    align: 'center',
+                    sortable: false,
+                    formatter: function (cellvalue) {
+                        return cellvalue || '';
+                    },
+                    formatoptions: { escape: false }
+                },
             ],
             rowNum: 20,
-            rowList: [20, 50, 100],
+            rowList: [20, 50, 100, 200, 500],
             pager: "#branchPager",
             viewrecords: true,
             autowidth: true,
