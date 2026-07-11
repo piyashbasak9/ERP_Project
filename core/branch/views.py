@@ -17,8 +17,8 @@ def _serialize_branch(branch):
     
     action_html = (
         f'<div class="d-flex gap-2 justify-content-center">'
-        f'<a href="{edit_url}" class="btn btn-sm btn-outline-primary" title="Edit">✏️</a>'
-        f'<a href="{delete_url}" class="btn btn-sm btn-outline-danger" title="Delete">🗑️</a>'
+        f'<a href="{edit_url}?popup=1" class="btn btn-sm btn-outline-primary" title="Edit">✏️</a>'
+        f'<a href="{delete_url}?popup=1" class="btn btn-sm btn-outline-danger" title="Delete">🗑️</a>'
         f'</div>'
     )
 
