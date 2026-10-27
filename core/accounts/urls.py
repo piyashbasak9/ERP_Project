@@ -12,4 +12,5 @@ urlpatterns = [
     path('create-user/', views.create_user, name='Module_Auth_create_user'),
     path('users/', views.list_users, name='Module_Auth_list_users'),
     path('users/edit/<int:pk>/', views.edit_user, name='Module_Auth_edit_user'),
+    path('users/delete/<int:pk>/', views.delete_user, name='Module_Auth_delete_user'),
 ]

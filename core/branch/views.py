@@ -4,6 +4,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.contrib import messages
+from django.views.decorators.http import require_POST
 
 from .service import BranchReadService, BranchWriteService
 
@@ -17,8 +18,8 @@ def _serialize_branch(branch):
     
     action_html = (
         f'<div class="d-flex gap-2 justify-content-center">'
-        f'<a href="{edit_url}?popup=1" class="btn btn-sm btn-outline-primary" title="Edit">✏️</a>'
-        f'<a href="{delete_url}?popup=1" class="btn btn-sm btn-outline-danger" title="Delete">🗑️</a>'
+        f'<a href="{edit_url}?popup=1" class="btn btn-sm btn-outline-primary" title="Edit" data-popup data-popup-title="Edit branch">✏️</a>'
+        f'<a href="{delete_url}" class="btn btn-sm btn-outline-danger" title="Delete" data-confirm data-confirm-title="Delete branch" data-confirm-message="Delete this branch? This action cannot be undone." data-confirm-button="Delete">🗑️</a>'
         f'</div>'
     )
 
@@ -80,6 +81,10 @@ def add(request):
         }
         branch = BranchWriteService(request).create(data)
         messages.success(request, f"✅ '{branch.name}' Successfully created!")
+        if request.GET.get('popup') == '1':
+            return render(request, 'popup_complete.html', {
+                'completion_message': f"'{branch.name}' created successfully.",
+            })
         return redirect('branch:Module_Branch_index_branch')
     return render(request, 'branch/add.html')
 
@@ -97,19 +102,35 @@ def edit(request, pk):
         branch = BranchWriteService(request).update(pk, data)
         if branch:
             messages.success(request, f"✅ '{branch.name}' Successfully updated!")
+            if request.GET.get('popup') == '1':
+                return render(request, 'popup_complete.html', {
+                    'completion_message': f"'{branch.name}' updated successfully.",
+                })
         else:
-            messages.error(request, f"❌ Failed to update branch '{branch.name}'.")
+            messages.error(request, f"❌ Failed to update branch '{pk}'.")
+            if request.GET.get('popup') == '1':
+                return render(request, 'branch/add.html', {
+                    'pk': pk,
+                    'data': data,
+                    'error_message': f"Failed to update branch '{pk}'.",
+                })
         return redirect('branch:Module_Branch_index_branch')
     return render(request, 'branch/add.html', {'pk': pk, 'data': data})
 
 
 
+@require_POST
 def delete(request, pk):
-    if request.method == 'POST':
-        branch = BranchWriteService(request).delete(pk)
-        if branch:
-            messages.success(request, f"✅ '{branch.name}' Successfully deleted!")
-        else:
-            messages.error(request, f"❌ Failed to delete branch '{branch.name}'.")
+    branch = BranchWriteService(request).delete(pk)
+    if not branch:
+        message = f"Failed to delete branch '{pk}'."
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'message': message}, status=400)
+        messages.error(request, message)
         return redirect('branch:Module_Branch_index_branch')
-    return render(request, 'branch/delete.html', {'pk': pk})
+
+    message = f"'{branch.name}' deleted successfully."
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        return JsonResponse({'success': True, 'message': message})
+    messages.success(request, f"✅ {message}")
+    return redirect('branch:Module_Branch_index_branch')

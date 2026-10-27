@@ -2,10 +2,15 @@
 {% block title %}Edit User{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-lg-10">
-        <div class="card shadow-sm">
-            <div class="card-header bg-warning text-dark">
-                <h4 class="mb-0">"{{ user.username }}" Edit</h4>
+    <div class="col-lg-8">
+        <div class="form-page-heading">
+            <span class="eyebrow">USER MANAGEMENT</span>
+            <h2>Edit user</h2>
+            <p>Update profile details and assigned access role.</p>
+        </div>
+        <div class="card form-card">
+            <div class="card-header">
+                <h4 class="mb-0">Account details · {{ user.username }}</h4>
             </div>
             <div class="card-body">
                 <form method="post">
@@ -44,8 +49,8 @@
 
 
                     <div class="mt-4">
-                        <button type="submit" class="btn btn-primary">Update User</button>
-                        <a href="{% url 'accounts:Module_Auth_list_users' %}" class="btn btn-outline-secondary">🔙 Go Back</a>
+                        <button type="submit" class="btn btn-primary"><i class="bi bi-check2 me-2"></i>Save changes</button>
+                        <a href="{% url 'accounts:Module_Auth_list_users' %}" class="btn btn-outline-secondary" data-popup-close>Cancel</a>
                     </div>
                 </form>
             </div>

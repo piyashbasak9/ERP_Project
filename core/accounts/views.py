@@ -2,6 +2,8 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.contrib.auth import get_user_model, authenticate, login, logout
 from django.contrib.auth.views import LoginView, LogoutView
+from django.views.decorators.http import require_POST
+from django.http import JsonResponse
 from django.urls import reverse_lazy
 from .forms import RoleForm, UserCreationForm
 from ERP.db import SessionLocal
@@ -22,6 +24,10 @@ def create_role(request):
             else:
                 role_name = role.get('name') if isinstance(role, dict) else getattr(role, 'name', str(role))
                 messages.success(request, f"✅ '{role_name}' Successfully created!")
+                if request.GET.get('popup') == '1':
+                    return render(request, 'popup_complete.html', {
+                        'completion_message': f"'{role_name}' created successfully.",
+                    })
                 return redirect('accounts:Module_Auth_list_roles')
         else:
             messages.error(request, "Form is not valid.")
@@ -50,6 +56,10 @@ def edit_role(request, pk):
                 messages.error(request, f"Could not update role: {e}")
             else:
                 messages.success(request, f"✅ '{role_data.get('name')}' updated successfully!")
+                if request.GET.get('popup') == '1':
+                    return render(request, 'popup_complete.html', {
+                        'completion_message': f"'{role_data.get('name')}' updated successfully.",
+                    })
                 return redirect('accounts:Module_Auth_list_roles')
     else:
         form = RoleForm(role_id=pk)
@@ -66,6 +76,7 @@ def create_user(request):
             user.save()
 
             role_id = form.cleaned_data['role_id']
+            completion_message = f"'{user.username}' created successfully."
             if role_id:
                 session = SessionLocal()
                 try:
@@ -80,11 +91,18 @@ def create_user(request):
                 except Exception as e:
                     session.rollback()
                     messages.error(request, f" Problem: {e}")
+                    completion_message = (
+                        f"'{user.username}' was created, but the role assignment failed: {e}"
+                    )
                 finally:
                     session.close()
             else:
                 messages.warning(request, "User created, but no role assigned.")
 
+            if request.GET.get('popup') == '1':
+                return render(request, 'popup_complete.html', {
+                    'completion_message': completion_message,
+                })
             return redirect('accounts:Module_Auth_list_users')
         else:
             messages.error(request, "Form is not valid.")
@@ -151,6 +169,10 @@ def edit_user(request, pk):
                     session.close()
             
             messages.success(request, f"✅ '{user.username}' updated successfully!")
+            if request.GET.get('popup') == '1':
+                return render(request, 'popup_complete.html', {
+                    'completion_message': f"'{user.username}' updated successfully.",
+                })
             return redirect('accounts:Module_Auth_list_users')
         except Exception as e:
             messages.error(request, f"Could not update user: {e}")
@@ -170,6 +192,46 @@ def edit_user(request, pk):
         'current_role_id': current_role_id,
         'roles': roles_list
     })
+
+
+@require_POST
+def delete_user(request, pk):
+    try:
+        user = User.objects.get(pk=pk)
+    except User.DoesNotExist:
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse(
+                {'success': False, 'message': "User not found."},
+                status=404,
+            )
+        messages.error(request, "User not found.")
+        return redirect('accounts:Module_Auth_list_users')
+
+    username = user.username
+    user.delete()
+
+    session = SessionLocal()
+    try:
+        session.query(UserRole).filter(UserRole.user_id == pk).delete()
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        completion_message = (
+            f"'{username}' was deleted, but the role assignment could not be removed: {e}"
+        )
+        messages.error(request, completion_message)
+    else:
+        completion_message = f"'{username}' deleted successfully."
+        messages.success(request, completion_message)
+    finally:
+        session.close()
+
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        return JsonResponse({
+            'success': True,
+            'message': completion_message,
+        })
+    return redirect('accounts:Module_Auth_list_users')
 
 
 class CustomLoginView(LoginView):

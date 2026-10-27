@@ -3,9 +3,14 @@
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-10">
-        <div class="card shadow-sm">
-            <div class="card-header bg-primary text-white">
-                <h4 class="mb-0">Create a new role</h4>
+        <div class="form-page-heading">
+            <span class="eyebrow">ACCESS CONTROL</span>
+            <h2>Create role</h2>
+            <p>Define a role and select the pages it can access.</p>
+        </div>
+        <div class="card form-card">
+            <div class="card-header">
+                <h4 class="mb-0">Role details and permissions</h4>
             </div>
             <div class="card-body">
                 <form method="post">
@@ -21,8 +26,11 @@
                             {{ form.url_permissions }}
                         </div>
                     </div>
-                    <button type="submit" class="btn btn-success">Create Role</button>
-                    <a href="{% url 'accounts:Module_Auth_create_role' %}" class="btn btn-secondary">↩️ Refresh</a>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary"><i class="bi bi-shield-plus me-2"></i>Create role</button>
+                        <a href="{% url 'accounts:Module_Auth_create_role' %}" class="btn btn-outline-secondary">Reset</a>
+                        <a href="{% url 'accounts:Module_Auth_list_roles' %}" class="btn btn-outline-secondary" data-popup-close>Cancel</a>
+                    </div>
                 </form>
             </div>
         </div>

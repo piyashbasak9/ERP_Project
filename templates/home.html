@@ -3,5 +3,56 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<h2>Dashboard</h2>
+<section class="dashboard-hero">
+    <div class="dashboard-hero-copy">
+        <span class="eyebrow">ERP MANAGEMENT</span>
+        <h1>Good to see you{% if user.is_authenticated %}, {{ user.first_name|default:user.username }}{% endif %}.</h1>
+        <p>Your business operations, organized in one place.</p>
+    </div>
+    <div class="dashboard-hero-mark" aria-hidden="true">
+        <i class="bi bi-grid-1x2"></i>
+    </div>
+</section>
+
+<div class="dashboard-section-heading">
+    <div>
+        <span class="eyebrow">WORKSPACE</span>
+        <h2>Quick access</h2>
+    </div>
+</div>
+
+<div class="row g-3 dashboard-modules">
+    <div class="col-md-6 col-xl-4">
+        <a class="module-card" href="{% url 'branch:Module_Branch_index_branch' %}">
+            <span class="module-icon"><i class="bi bi-building"></i></span>
+            <span class="module-copy">
+                <strong>Branches</strong>
+                <small>Manage locations and branch details</small>
+            </span>
+            <i class="bi bi-arrow-up-right module-arrow"></i>
+        </a>
+    </div>
+    {% if user.is_authenticated and user.is_staff %}
+    <div class="col-md-6 col-xl-4">
+        <a class="module-card" href="{% url 'accounts:Module_Auth_list_users' %}">
+            <span class="module-icon"><i class="bi bi-people"></i></span>
+            <span class="module-copy">
+                <strong>Users</strong>
+                <small>Manage user accounts and access</small>
+            </span>
+            <i class="bi bi-arrow-up-right module-arrow"></i>
+        </a>
+    </div>
+    <div class="col-md-6 col-xl-4">
+        <a class="module-card" href="{% url 'accounts:Module_Auth_list_roles' %}">
+            <span class="module-icon"><i class="bi bi-shield-check"></i></span>
+            <span class="module-copy">
+                <strong>Roles &amp; permissions</strong>
+                <small>Configure roles and URL permissions</small>
+            </span>
+            <i class="bi bi-arrow-up-right module-arrow"></i>
+        </a>
+    </div>
+    {% endif %}
+</div>
 {% endblock %}

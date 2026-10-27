@@ -3,9 +3,14 @@
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-10">
-        <div class="card shadow-sm">
-            <div class="card-header bg-warning text-dark">
-                <h4 class="mb-0">Edit Role: "{{ role.name }}"</h4>
+        <div class="form-page-heading">
+            <span class="eyebrow">ACCESS CONTROL</span>
+            <h2>Edit role</h2>
+            <p>Manage the role name and allowed pages.</p>
+        </div>
+        <div class="card form-card">
+            <div class="card-header">
+                <h4 class="mb-0">Role details · {{ role.name }}</h4>
             </div>
             <div class="card-body">
                 <form method="post">
@@ -20,8 +25,8 @@
                             {{ form.url_permissions }}
                         </div>
                     </div>
-                    <button type="submit" class="btn btn-primary">💾 Update Role</button>
-                    <a href="{% url 'accounts:Module_Auth_list_roles' %}" class="btn btn-outline-secondary">🔙 Back to Roles</a>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check2 me-2"></i>Save changes</button>
+                    <a href="{% url 'accounts:Module_Auth_list_roles' %}" class="btn btn-outline-secondary" data-popup-close>Cancel</a>
                 </form>
             </div>
         </div>

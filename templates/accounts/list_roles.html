@@ -4,10 +4,17 @@
 <div class="container">
     <div class="row mb-4">
         <div class="col">
-            <h2>All Roles</h2>
+            <div class="list-page-heading">
+                <span class="eyebrow">ACCESS CONTROL</span>
+                <h2>Roles &amp; permissions</h2>
+                <p>Control which parts of the system each role can access.</p>
+            </div>
         </div>
         <div class="col-auto">
-            <a href="{% url 'accounts:Module_Auth_create_role' %}" class="btn btn-primary">Create New Role</a>
+            <a href="{% url 'accounts:Module_Auth_create_role' %}?popup=1"
+               class="btn btn-primary"
+               data-popup
+               data-popup-title="Create role">Create New Role</a>
         </div>
     </div>
 
@@ -29,7 +36,10 @@
                             <td><strong>{{ role.name }}</strong></td>
                             <td><span class="badge bg-info">{{ role.perm_count }}</span></td>
                             <td>
-                                <a href="{% url 'accounts:Module_Auth_edit_role' role.id %}" class="btn btn-sm btn-warning">✏️ Edit</a>
+                                <a href="{% url 'accounts:Module_Auth_edit_role' role.id %}?popup=1"
+                                   class="btn btn-sm btn-warning"
+                                   data-popup
+                                   data-popup-title="Edit role">✏️ Edit</a>
                             </td>
                         </tr>
                     {% endfor %}

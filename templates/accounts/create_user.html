@@ -2,10 +2,15 @@
 {% block title %}Create User{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-6">
-        <div class="card shadow-sm">
-            <div class="card-header bg-success text-white">
-                <h4 class="mb-0">Create a New User</h4>
+    <div class="col-lg-8 col-xl-7">
+        <div class="form-page-heading">
+            <span class="eyebrow">USER MANAGEMENT</span>
+            <h2>Create user</h2>
+            <p>Add an account and assign its access role.</p>
+        </div>
+        <div class="card form-card">
+            <div class="card-header">
+                <h4 class="mb-0">Account details</h4>
             </div>
             <div class="card-body">
                 <form method="post">
@@ -18,7 +23,10 @@
                             {% if field.errors %}<div class="text-danger small">{{ field.errors }}</div>{% endif %}
                         </div>
                     {% endfor %}
-                    <button type="submit" class="btn btn-success w-100">✅ Create User</button>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary"><i class="bi bi-person-plus me-2"></i>Create user</button>
+                        <a href="{% url 'accounts:Module_Auth_list_users' %}" class="btn btn-outline-secondary" data-popup-close>Cancel</a>
+                    </div>
                 </form>
             </div>
         </div>

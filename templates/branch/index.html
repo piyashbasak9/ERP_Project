@@ -11,9 +11,12 @@
     <div class="page-header">
         <h2>
             <span class="header-icon"><i class="bi bi-diagram-3-fill"></i></span>
-            All Branches
+            Branches
         </h2>
-        <a href="{% url 'branch:Module_Branch_add_branch' %}" class="btn btn-primary btn-create">
+        <a href="{% url 'branch:Module_Branch_add_branch' %}?popup=1"
+           class="btn btn-primary btn-create"
+           data-popup
+           data-popup-title="Create branch">
             <i class="bi bi-plus-circle me-1"></i>Create New Branch
         </a>
     </div>
@@ -66,7 +69,8 @@ $(function () {
         const $wrapper = $("#pageWrapper");
         const top = $wrapper.offset().top;
         const footerHeight = $("footer.footer-custom").outerHeight() || 0;
-        const available = $(window).height() - top - footerHeight -1;
+        const bottomPadding = parseFloat($("main.main-content").css("padding-bottom")) || 0;
+        const available = $(window).height() - top - footerHeight - bottomPadding - 1;
         $wrapper.css("height", available + "px");
     }
 

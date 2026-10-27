@@ -4,10 +4,17 @@
 <div class="container">
     <div class="row mb-4">
         <div class="col">
-            <h2>All Users</h2>
+            <div class="list-page-heading">
+                <span class="eyebrow">USER MANAGEMENT</span>
+                <h2>Users</h2>
+                <p>Manage employee accounts and access roles.</p>
+            </div>
         </div>
         <div class="col-auto">
-            <a href="{% url 'accounts:Module_Auth_create_user' %}" class="btn btn-primary">Create New User</a>
+            <a href="{% url 'accounts:Module_Auth_create_user' %}?popup=1"
+               class="btn btn-primary"
+               data-popup
+               data-popup-title="Create user">Create New User</a>
         </div>
     </div>
 
@@ -32,23 +39,23 @@
                             <td>{{ user.role }}</td>
                             <td>{{ user.email }}</td>
                             <td>{{ user.first_name }} {{ user.last_name }}</td>
-                        
-                                <!-- <td>
-                                    {% if user.is_staff %}
-                                        <span class="badge bg-success">✅</span>
-                                    {% else %}
-                                        <span class="badge bg-secondary">❌</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if user.is_superuser %}
-                                        <span class="badge bg-danger">✅</span>
-                                    {% else %}
-                                        <span class="badge bg-secondary">❌</span>
-                                    {% endif %}
-                                </td> -->
                             <td>
-                                <a href="{% url 'accounts:Module_Auth_edit_user' user.id %}" class="btn btn-sm btn-warning">Edit</a>
+                                <a href="{% url 'accounts:Module_Auth_edit_user' user.id %}?popup=1"
+                                   class="btn btn-sm btn-warning"
+                                   data-popup
+                                   data-popup-title="Edit user"
+                                   data-popup-width="900"
+                                   data-popup-height="760">
+                                    Edit
+                                </a>
+                                <a href="{% url 'accounts:Module_Auth_delete_user' user.id %}"
+                                   class="btn btn-sm btn-danger"
+                                   data-confirm
+                                   data-confirm-title="Delete user"
+                                   data-confirm-message="Delete user '{{ user.username }}'? This action cannot be undone."
+                                   data-confirm-button="Delete">
+                                    Delete
+                                </a>
                             </td>
                         </tr>
                     {% endfor %}
