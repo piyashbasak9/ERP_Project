@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}Reverse {{ entry.voucher_number }}{% endblock %}
+{% block content %}
+<div class="container py-3">
+    <div class="form-page-heading"><span class="eyebrow">GENERAL LEDGER</span><h1 class="h3">Reverse {{ entry.voucher_number }}</h1><p>This creates a new, equal and opposite posted entry.</p></div>
+    <div class="card form-card"><div class="card-body"><form method="post">{% csrf_token %}{{ form.non_field_errors }}
+        {% for field in form %}<div class="mb-3"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.errors %}<div class="text-danger small">{{ field.errors }}</div>{% endif %}</div>{% endfor %}
+        <button class="btn btn-danger" type="submit">Create reversal</button>
+        <a class="btn btn-outline-secondary" href="{% url 'accounting:Module_Accounting_journal_detail' entry.pk %}" data-popup-close>Cancel</a>
+    </form></div></div>
+</div>
+{% endblock %}

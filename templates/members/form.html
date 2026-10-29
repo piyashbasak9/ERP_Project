@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div><span class="eyebrow">MEMBER SERVICES</span><h1 class="h3 mb-0">{{ title }}</h1></div>
+        <a class="btn btn-outline-secondary" href="{% url 'branch:Module_Members_list' %}" data-popup-close>Cancel</a>
+    </div>
+    <div class="card form-card mx-auto"><div class="card-body">
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            {% if version %}<input type="hidden" name="version" value="{{ version }}">{% endif %}
+            {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+            <div class="row g-3">
+                {% for field in form %}
+                <div class="{% if field.name == 'present_address' or field.name == 'permanent_address' %}col-12{% else %}col-md-6{% endif %}">
+                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="text-danger">*</span>{% endif %}</label>
+                    {{ field }}
+                    {% if field.name == 'photo' %}<div class="form-text">JPG or PNG, maximum {{ MAX_UPLOAD_MB|default:2 }} MB. The image is re-encoded before storage.</div>{% endif %}
+                    {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+            <div class="d-flex justify-content-end gap-2 mt-4">
+                <a class="btn btn-outline-secondary" href="{% url 'branch:Module_Members_list' %}" data-popup-close>Cancel</a>
+                <button class="btn btn-primary" type="submit">Save member</button>
+            </div>
+        </form>
+    </div></div>
+</div>
+{% endblock %}

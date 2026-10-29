@@ -1,28 +1,44 @@
-from django.shortcuts import redirect
-from django.urls import reverse
 from django.conf import settings
+from django.contrib.auth.views import redirect_to_login
+from django.http import JsonResponse
+from django.urls import Resolver404, resolve
+from django.utils.http import url_has_allowed_host_and_scheme
+
+PUBLIC_ROUTE_NAMES = {
+    'Module_Auth_login',
+    'health',
+}
+
 
 class GlobalLoginRequiredMiddleware:
-    """
-    Redirect anonymous users to login for all non-exempt paths.
-    Exempt paths are taken from `settings.EXEMPT_FROM_LOGIN`.
-    """
+    """Redirect anonymous users to login for all non-exempt paths."""
+
     def __init__(self, get_response):
         self.get_response = get_response
-        self.exempt_paths = getattr(settings, 'EXEMPT_FROM_LOGIN', [
-            '/accounts/login/',
-            '/accounts/logout/',
-            '/static/',
-            '/media/',
-        ])
+        self.exempt_paths = getattr(settings, 'EXEMPT_FROM_LOGIN', ['/static/'])
         self.login_url = getattr(settings, 'LOGIN_URL', '/accounts/login/')
 
     def __call__(self, request):
-        # allow admin login pages and built-in auth paths if present
-        path = request.path
-        is_exempt = any(path.startswith(p) for p in self.exempt_paths)
+        try:
+            route_name = resolve(request.path_info).url_name
+        except Resolver404:
+            route_name = None
 
-        if not request.user.is_authenticated and not is_exempt:
-            return redirect(f"{self.login_url}?next={path}")
+        is_public_route = route_name in PUBLIC_ROUTE_NAMES
+        is_static_path = any(request.path_info.startswith(prefix) for prefix in self.exempt_paths)
+
+        if not request.user.is_authenticated and not is_public_route and not is_static_path:
+            if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Your session has expired. Please sign in again.',
+                    'data': None,
+                    'errors': None,
+                }, status=401)
+
+            next_url = request.get_full_path()
+            if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+                next_url = '/'
+            return redirect_to_login(next_url, login_url=self.login_url)
 
         return self.get_response(request)

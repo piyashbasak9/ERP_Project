@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Savings products{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+        <div><span class="eyebrow">SAVINGS</span><h1 class="h3 mb-0">Savings products</h1></div>
+        <a class="btn btn-primary" href="{% url 'savings:Module_Savings_product_add' %}?popup=1" data-popup data-popup-title="Create savings product">Create product</a>
+    </div>
+    <div class="table-responsive card">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-dark"><tr><th>Code</th><th>Name</th><th>Type</th><th>Interest</th><th>Method / frequency</th><th>Opening minimum</th><th>Minimum balance</th><th>Fee</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+                {% for product in products %}
+                <tr>
+                    <td>{{ product.code }}</td>
+                    <td>{{ product.name }}</td>
+                    <td>{{ product.get_savings_type_display }}</td>
+                    <td>{{ product.annual_interest_rate|floatformat:4 }}</td>
+                    <td>{{ product.get_interest_method_display }} / {{ product.get_posting_frequency_display }}</td>
+                    <td>{{ product.minimum_opening_balance|floatformat:2 }}</td>
+                    <td>{{ product.minimum_balance|floatformat:2 }}</td>
+                    <td>{{ product.fee_amount|floatformat:2 }}</td>
+                    <td>{% if product.is_active %}Active{% else %}Inactive{% endif %}</td>
+                    <td><a class="btn btn-sm btn-outline-primary" href="{% url 'savings:Module_Savings_product_edit' product.pk %}?popup=1" data-popup data-popup-title="Edit savings product">Edit</a></td>
+                </tr>
+                {% empty %}<tr><td colspan="10" class="text-center text-muted py-4">No savings products configured.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

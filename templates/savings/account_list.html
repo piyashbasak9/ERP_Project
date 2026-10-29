@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}Savings accounts{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+        <div><span class="eyebrow">SAVINGS</span><h1 class="h3 mb-0">Savings accounts</h1></div>
+        <a class="btn btn-primary" href="{% url 'savings:Module_Savings_account_add' %}?popup=1" data-popup data-popup-title="Open savings account">Open account</a>
+    </div>
+    <form method="get" class="card card-body mb-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-6"><label class="form-label" for="account-search">Account / owner</label><input id="account-search" class="form-control" name="q" value="{{ search }}"></div>
+            <div class="col-md-3"><label class="form-label" for="account-status">Status</label><select id="account-status" class="form-select" name="status"><option value="">All statuses</option>{% for value,label in statuses %}<option value="{{ value }}"{% if selected_status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+            <div class="col-md-3"><button class="btn btn-outline-primary" type="submit">Search</button></div>
+        </div>
+    </form>
+    <div class="table-responsive card">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-dark"><tr><th>Account number</th><th>Product</th><th>Owner</th><th>Branch</th><th>Balance</th><th>Available</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+                {% for account in page_obj %}
+                <tr>
+                    <td>{{ account.account_number }}</td>
+                    <td>{{ account.product.name }}</td>
+                    <td>{% if account.member_id %}{{ account.member.full_name }}{% else %}{{ account.group.name }} (Group){% endif %}</td>
+                    <td>{{ account.branch.name }}</td>
+                    <td>{{ account.balance|floatformat:2 }}</td>
+                    <td>{{ account.available_balance|floatformat:2 }}</td>
+                    <td>{{ account.get_status_display }}</td>
+                    <td class="text-nowrap">
+                        <a class="btn btn-sm btn-outline-primary" href="{% url 'savings:Module_Savings_statement' account.pk %}">Statement</a>
+                        <a class="btn btn-sm btn-outline-secondary" href="{% url 'savings:Module_Savings_statement_export' account.pk %}">CSV</a>
+                        {% if account.status == 'dormant' %}
+                        <a class="btn btn-sm btn-outline-success" href="{% url 'savings:Module_Savings_reactivation_form' account.pk %}">Reactivate</a>
+                        {% endif %}
+                        {% if account.balance == 0 and account.reserved_balance == 0 and account.status != 'closed' %}
+                        <form class="d-inline" method="post" action="{% url 'savings:Module_Savings_close_account' account.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit">Close</button></form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}<tr><td colspan="8" class="text-center text-muted py-4">No savings accounts found.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% include 'partials/pagination.html' with page_obj=page_obj %}
+</div>
+{% endblock %}

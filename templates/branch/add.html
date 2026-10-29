@@ -6,8 +6,8 @@
 
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div class="form-page-heading mb-0">
-            <span class="eyebrow">BRANCH MANAGEMENT</span>
-            <h2>{% if pk %}Edit branch{% else %}Create branch{% endif %}</h2>
+            <span class="eyebrow">ORGANIZATION MANAGEMENT</span>
+            <h2>{% if pk %}Edit organization unit{% else %}Create organization unit{% endif %}</h2>
         </div>
         <a href="{% url 'branch:Module_Branch_index_branch' %}" class="btn btn-outline-secondary" data-popup-close>
             <i class="bi bi-arrow-left me-1"></i>Back to List
@@ -16,33 +16,24 @@
 
     <div class="card form-card mb-4 mx-auto">
         <div class="card-body">
-            <h4 class="form-section-title">{% if pk %}Branch details{% else %}New branch details{% endif %}</h4>
-            {% if error_message %}<div class="alert alert-danger">{{ error_message }}</div>{% endif %}
-            <form method="post" action="{% if pk %}{% url 'branch:Module_Branch_edit_branch' pk=pk %}{% else %}{% url 'branch:Module_Branch_add_branch' %}{% endif %}{% if request.GET.popup == '1' %}?popup=1{% endif %}">
+            <h4 class="form-section-title">{% if pk %}Organization unit details{% else %}New organization unit details{% endif %}</h4>
+            <form method="post" enctype="multipart/form-data" action="{% if pk %}{% url 'branch:Module_Branch_edit_branch' pk=pk %}{% else %}{% url 'branch:Module_Branch_add_branch' %}{% endif %}{% if request.GET.popup == '1' %}?popup=1{% endif %}">
                 {% csrf_token %}
-
-                <input type="hidden" name="is_active" value="{% if data.is_active is not None %}{{ data.is_active }}{% else %}1{% endif %}">
-
+                {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{{ form.non_field_errors }}</div>{% endif %}
                 <div class="row g-3">
+                    {% for field in form %}
                     <div class="col-md-6">
-                        <label for="name" class="form-label">Branch Name <span class="text-danger">*</span></label>
-                        <input type="text" id="name" name="name" class="form-control"
-                               placeholder="e.g. Dhaka Main Branch"
-                               value="{{ data.name|default:'' }}" required>
+                        <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}{% if field.field.required %} <span class="text-danger">*</span>{% endif %}</label>
+                        {{ field }}
+                        {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                        {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
                     </div>
-
-                    <div class="col-md-6">
-                        <label for="code" class="form-label">Branch Code <span class="text-danger">*</span></label>
-                        <input type="text" id="code" name="code" class="form-control"
-                               placeholder="e.g. DHK-01"
-                               value="{{ data.code|default:'' }}" required>
-                    </div>
+                    {% endfor %}
                 </div>
-
                 <div class="mt-4 d-flex gap-2">
                     <button type="submit" class="btn btn-primary">
                         <i class="bi bi-check2 me-1"></i>
-                        {% if pk %}Save changes{% else %}Create branch{% endif %}
+                        {% if pk %}Save changes{% else %}Create organization unit{% endif %}
                     </button>
                     <a href="{% url 'branch:Module_Branch_index_branch' %}" class="btn btn-secondary" data-popup-close>
                         <i class="bi bi-x-circle me-1"></i>Cancel

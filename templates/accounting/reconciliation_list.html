@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}Account Reconciliation{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+        <div><span class="eyebrow">FINANCIAL CONTROL</span><h1 class="h3 mb-0">Cash and bank reconciliation</h1></div>
+        <a class="btn btn-primary" href="{% url 'accounting:Module_Accounting_reconciliation_add' %}?popup=1" data-popup data-popup-title="Prepare reconciliation">Prepare reconciliation</a>
+    </div>
+    <div class="table-responsive card"><table class="table table-hover align-middle mb-0">
+        <thead class="table-dark"><tr><th>Date</th><th>Branch</th><th>Account</th><th class="text-end">Statement</th><th class="text-end">Book</th><th class="text-end">Variance</th><th>Status</th><th>Prepared by</th><th></th></tr></thead>
+        <tbody>{% for item in reconciliations %}
+            <tr><td>{{ item.as_of_date }}</td><td>{{ item.branch.code }}</td><td>{{ item.account.code }} — {{ item.account.name }}</td>
+                <td class="text-end">{{ item.statement_balance }}</td><td class="text-end">{{ item.book_balance }}</td><td class="text-end">{{ item.variance }}</td>
+                <td>{{ item.get_status_display }}</td><td>{{ item.prepared_by.username }}</td>
+                <td>{% if item.status == 'open' %}<form method="post" action="{% url 'accounting:Module_Accounting_reconciliation_confirm' item.pk %}" data-confirm data-confirm-message="Confirm this reconciliation? Variance: {{ item.variance }}">{% csrf_token %}<button class="btn btn-sm btn-success" type="submit">Confirm</button></form>{% endif %}</td></tr>
+            {% if item.notes %}<tr><td colspan="9" class="small text-muted">Notes: {{ item.notes }}</td></tr>{% endif %}
+        {% empty %}<tr><td colspan="9" class="text-center text-muted py-4">No reconciliations have been recorded.</td></tr>{% endfor %}</tbody>
+    </table></div>
+</div>
+{% endblock %}

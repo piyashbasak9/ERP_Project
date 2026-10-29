@@ -1,0 +1,70 @@
+name: Quality gates
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-scan:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: erp_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d erp_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DJANGO_SECRET_KEY: ci-only-not-for-production-6d10bbad3a9dcf1c0ae4f0e2b
+      DJANGO_DEBUG: "0"
+      DJANGO_ALLOWED_HOSTS: localhost
+      DB_NAME: erp_test
+      DB_USER: erp_test_runner
+      DB_PASSWORD: test-only-erp-db-password
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
+      TEST_DB_NAME: erp_test
+      TEST_DB_USER: erp_test_runner
+      TEST_DB_PASSWORD: test-only-erp-db-password
+      TEST_DB_HOST: 127.0.0.1
+      TEST_DB_PORT: "5432"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Create isolated PostgreSQL roles
+        env:
+          PGPASSWORD: postgres
+        run: >-
+          psql -h 127.0.0.1 -U postgres -d postgres
+          -v test_role=erp_test_runner
+          -v test_password="$TEST_DB_PASSWORD"
+          -v runtime_role=erp_runtime
+          -v runtime_password=test-only-runtime-password
+          -f database/ci_test_roles.sql
+      - name: Install dependencies and checks
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install pytest pytest-django ruff bandit pip-audit
+      - name: Run PostgreSQL test suite
+        run: pytest -vv --tb=long --color=no
+      - name: Run Ruff
+        run: ruff check .
+      - name: Run Bandit
+        run: bandit -r core ERP -x '*/tests.py'
+      - name: Audit dependencies
+        run: pip-audit
+      - name: Check deployment settings
+        run: python manage.py check --deploy

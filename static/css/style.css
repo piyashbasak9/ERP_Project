@@ -1371,38 +1371,47 @@ textarea:focus-visible {
     font-weight: 400;
 }
 
+.dashboard-page {
+    width: 100%;
+    max-width: 1340px;
+    margin: 0 auto;
+}
+
 .dashboard-hero {
     position: relative;
     display: flex;
-    min-height: 230px;
+    min-height: 300px;
     align-items: center;
     justify-content: space-between;
     overflow: hidden;
-    margin: 0 0 2.1rem;
-    padding: clamp(1.6rem, 4vw, 3.2rem);
+    gap: 2rem;
+    margin: 0 0 2.75rem;
+    padding: clamp(2rem, 5vw, 4rem);
     border: 1px solid #263a4e;
-    border-radius: 14px;
+    border-radius: 22px;
     background:
-        radial-gradient(circle at 80% 30%, rgba(178, 139, 77, 0.16), transparent 19rem),
-        linear-gradient(115deg, #1d2c3c, #2b4055);
-    box-shadow: 0 14px 32px rgba(28, 46, 64, 0.13);
+        radial-gradient(ellipse at 82% 18%, rgba(178, 139, 77, 0.2), transparent 23rem),
+        linear-gradient(115deg, #1b2a39 0%, #2b4055 100%);
+    box-shadow: 0 20px 44px rgba(28, 46, 64, 0.15);
     color: #fff;
 }
 
 .dashboard-hero::after {
     position: absolute;
-    right: 12%;
-    bottom: -135px;
-    width: 310px;
-    height: 310px;
+    right: 17%;
+    bottom: -190px;
+    width: 420px;
+    height: 420px;
     border: 1px solid rgba(230, 215, 188, 0.12);
     border-radius: 50%;
     content: "";
+    pointer-events: none;
 }
 
 .dashboard-hero-copy {
     position: relative;
     z-index: 1;
+    max-width: 680px;
 }
 
 .eyebrow {
@@ -1419,115 +1428,276 @@ textarea:focus-visible {
 }
 
 .dashboard-hero h1 {
-    margin: 0 0 0.65rem;
+    margin: 0 0 0.8rem;
     color: #fff;
-    font-size: clamp(1.8rem, 4vw, 2.65rem);
-    font-weight: 650;
-    letter-spacing: -0.035em;
+    font-size: clamp(2rem, 4.2vw, 3.25rem);
+    font-weight: 700;
+    letter-spacing: -0.045em;
 }
 
 .dashboard-hero p {
+    max-width: 520px;
     margin: 0;
     color: rgba(244, 247, 250, 0.72);
-    font-size: 1rem;
+    font-size: 1.02rem;
+    line-height: 1.7;
+}
+
+.dashboard-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem 1.35rem;
+    margin-top: 1.7rem;
+}
+
+.dashboard-primary-action {
+    padding: 0.78rem 1.05rem;
+    border: 1px solid #d5b77e;
+    border-radius: 9px;
+    background: #d5b77e;
+    color: #233346;
+    font-size: 0.9rem;
+    font-weight: 700;
+    transition: background-color 0.18s ease, transform 0.18s ease;
+}
+
+.dashboard-primary-action:hover {
+    transform: translateY(-2px);
+    border-color: #e2c995;
+    background: #e2c995;
+    color: #233346;
+}
+
+.dashboard-secondary-action {
+    color: rgba(255, 255, 255, 0.86);
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: color 0.18s ease;
+}
+
+.dashboard-secondary-action:hover {
+    color: #fff;
 }
 
 .dashboard-hero-mark {
     position: relative;
     z-index: 1;
-    display: grid;
-    width: 112px;
-    height: 112px;
-    flex: 0 0 112px;
-    place-items: center;
-    margin-right: 7%;
+    display: flex;
+    width: min(100%, 290px);
+    flex: 0 0 290px;
+    align-items: center;
+    gap: 1rem;
+    margin-right: 2%;
+    padding: 1.15rem;
     border: 1px solid rgba(231, 213, 180, 0.24);
-    border-radius: 23px;
-    background: rgba(255, 255, 255, 0.055);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(8px);
+}
+
+.dashboard-mark-icon {
+    display: grid;
+    width: 58px;
+    height: 58px;
+    flex: 0 0 58px;
+    place-items: center;
+    border: 1px solid rgba(231, 213, 180, 0.24);
+    border-radius: 13px;
+    background: rgba(255, 255, 255, 0.08);
     color: #d6bd91;
-    font-size: 3.2rem;
-    transform: rotate(5deg);
+    font-size: 1.75rem;
+}
+
+.dashboard-mark-caption {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.dashboard-mark-caption small {
+    color: #d4b780;
+    font-size: 0.65rem;
+    font-weight: 750;
+    letter-spacing: 0.12em;
+}
+
+.dashboard-mark-caption strong {
+    color: #fff;
+    font-size: 0.92rem;
+    font-weight: 650;
 }
 
 .dashboard-section-heading {
     display: flex;
-    align-items: end;
+    align-items: flex-end;
     justify-content: space-between;
-    margin-bottom: 1rem;
+    gap: 1rem;
+    margin-bottom: 1.35rem;
 }
 
 .dashboard-section-heading .eyebrow {
     margin-bottom: 0.2rem;
+    color: #8b7550;
 }
 
 .dashboard-section-heading h2 {
     margin: 0 !important;
-    font-size: 1.35rem !important;
+    font-size: 1.5rem !important;
+    letter-spacing: -0.03em;
+}
+
+.dashboard-section-heading p {
+    margin: 0.35rem 0 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.dashboard-access-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.48rem 0.72rem;
+    border: 1px solid #dce8df;
+    border-radius: 999px;
+    background: #f3f8f4;
+    color: #537662;
+    font-size: 0.75rem;
+    font-weight: 650;
+    white-space: nowrap;
 }
 
 .dashboard-modules {
-    margin-bottom: 2rem;
+    margin-bottom: 2.5rem;
 }
 
 .module-card {
     display: flex;
-    min-height: 112px;
-    align-items: center;
+    min-height: 245px;
+    height: 100%;
+    flex-direction: column;
+    align-items: stretch;
     gap: 1rem;
-    padding: 1.15rem;
+    padding: 1.4rem;
     border: 1px solid var(--border);
-    border-radius: 10px;
-    background: #fff;
-    box-shadow: 0 5px 16px rgba(29, 48, 67, 0.045);
+    border-radius: 15px;
+    background: linear-gradient(145deg, #fff, #fbfcfd);
+    box-shadow: 0 8px 22px rgba(29, 48, 67, 0.045);
     color: inherit;
     text-decoration: none;
-    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .module-card:hover {
-    transform: translateY(-3px);
-    border-color: #bac9d7;
-    box-shadow: 0 12px 24px rgba(29, 48, 67, 0.1);
+    transform: translateY(-5px);
+    border-color: #c1cfdb;
+    box-shadow: 0 16px 30px rgba(29, 48, 67, 0.1);
     color: inherit;
+}
+
+.module-card:focus-visible,
+.dashboard-primary-action:focus-visible,
+.dashboard-secondary-action:focus-visible {
+    outline: 3px solid rgba(65, 105, 161, 0.42);
+    outline-offset: 3px;
+}
+
+.module-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
 }
 
 .module-icon {
     display: grid;
-    width: 48px;
-    height: 48px;
-    flex: 0 0 48px;
+    width: 54px;
+    height: 54px;
+    flex: 0 0 54px;
     place-items: center;
     border: 1px solid #dbe4ed;
-    border-radius: 9px;
+    border-radius: 13px;
     background: #f0f4f8;
     color: var(--brand-primary);
-    font-size: 1.25rem;
+    font-size: 1.4rem;
+}
+
+.module-card--users .module-icon {
+    border-color: #e7dff0;
+    background: #f6f2fa;
+    color: #79589a;
+}
+
+.module-card--roles .module-icon {
+    border-color: #e8dfcd;
+    background: #f8f4eb;
+    color: #9a7a43;
+}
+
+.module-arrow {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border: 1px solid #e6ebef;
+    border-radius: 50%;
+    background: #fff;
+    color: #778694;
+    font-size: 0.9rem;
+    transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.module-card:hover .module-arrow {
+    transform: translate(2px, -2px);
+    color: var(--brand-primary);
 }
 
 .module-copy {
     display: flex;
     min-width: 0;
-    flex: 1;
     flex-direction: column;
-    gap: 0.28rem;
+    gap: 0.38rem;
+    flex: 1;
+}
+
+.module-category {
+    color: #8b7550 !important;
+    font-size: 0.65rem !important;
+    font-weight: 750;
+    letter-spacing: 0.12em;
 }
 
 .module-copy strong {
     color: #2d4154;
-    font-size: 0.98rem;
+    font-size: 1.08rem;
     font-weight: 700;
 }
 
 .module-copy small {
     color: #778694;
-    font-size: 0.8rem;
-    line-height: 1.4;
+    font-size: 0.84rem;
+    line-height: 1.55;
 }
 
-.module-arrow {
-    align-self: flex-start;
-    color: #9aa8b5;
+.module-card-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 0.85rem;
+    border-top: 1px solid #edf0f3;
+    color: #526a81;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.module-card-link i {
     font-size: 0.95rem;
+    transition: transform 0.2s ease;
+}
+
+.module-card:hover .module-card-link i {
+    transform: translateX(4px);
 }
 
 .form-page-heading {
@@ -1768,21 +1938,20 @@ textarea:focus-visible {
 
 @media (max-width: 767.98px) {
     .dashboard-hero {
-        min-height: 190px;
+        min-height: 0;
+        flex-direction: column;
+        align-items: stretch;
         margin-bottom: 1.5rem;
     }
 
     .dashboard-hero-mark {
-        width: 76px;
-        height: 76px;
-        flex-basis: 76px;
+        width: min(100%, 340px);
+        flex-basis: auto;
         margin-right: 0;
-        border-radius: 16px;
-        font-size: 2.2rem;
     }
 
     .module-card {
-        min-height: 96px;
+        min-height: 220px;
     }
 
     .branch-form-page > .d-flex {
@@ -1791,12 +1960,59 @@ textarea:focus-visible {
     }
 }
 
-@media (max-width: 480px) {
-    .dashboard-hero-mark {
+@media (max-width: 575.98px) {
+    .dashboard-section-heading {
+        align-items: flex-start;
+    }
+
+    .dashboard-access-note {
         display: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .dashboard-hero {
+        gap: 1.5rem;
+        padding: 1.5rem;
+        border-radius: 16px;
+    }
+
+    .dashboard-hero h1 {
+        font-size: 2rem;
+    }
+
+    .dashboard-hero-actions {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 0.9rem;
+    }
+
+    .dashboard-hero-mark {
+        width: 100%;
+        padding: 0.9rem;
+    }
+
+    .module-card {
+        min-height: 205px;
+        padding: 1.2rem;
     }
 
     .form-actions > .btn {
         flex: 1 1 auto;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dashboard-primary-action,
+    .dashboard-secondary-action,
+    .module-card,
+    .module-arrow,
+    .module-card-link i {
+        transition: none;
+    }
+
+    .dashboard-primary-action:hover,
+    .module-card:hover {
+        transform: none;
     }
 }

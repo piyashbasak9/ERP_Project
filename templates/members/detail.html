@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block title %}Member {{ member.member_code }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div><span class="eyebrow">MEMBER PROFILE</span><h1 class="h3 mb-0">{{ member.full_name }} <small class="text-muted">{{ member.member_code }}</small></h1></div>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-primary" href="{% url 'branch:Module_Members_edit' member.pk %}?popup=1" data-popup data-popup-title="Edit member">Edit</a>
+            <a class="btn btn-primary" href="{% url 'branch:Module_Members_kyc' member.pk %}?popup=1" data-popup data-popup-title="Upload KYC document">Upload KYC</a>
+            <a class="btn btn-outline-secondary" href="{% url 'branch:Module_Members_list' %}">Back</a>
+        </div>
+    </div>
+    <div class="row g-3">
+        <div class="col-lg-4">
+            <section class="card card-body h-100">
+                {% if member.photo %}<img class="img-thumbnail align-self-start mb-3" src="{% url 'branch:Module_Members_photo' member.pk %}" alt="Member photo" width="180">{% endif %}
+                <h2 class="h5">Identity and contact</h2>
+                <dl class="row mb-0">
+                    <dt class="col-5">Status</dt><dd class="col-7">{{ member.get_status_display }}</dd>
+                    <dt class="col-5">Branch</dt><dd class="col-7">{{ member.branch.name }}</dd>
+                    <dt class="col-5">Center</dt><dd class="col-7">{{ member.center.name|default:"—" }}</dd>
+                    <dt class="col-5">Group</dt><dd class="col-7">{{ member.group.name|default:"—" }}</dd>
+                    <dt class="col-5">Phone</dt><dd class="col-7">{% if member.phone %}••••{{ member.phone|slice:"-4:" }}{% else %}—{% endif %}</dd>
+                    <dt class="col-5">Email</dt><dd class="col-7">{{ member.email|default:"—" }}</dd>
+                    <dt class="col-5">Admission</dt><dd class="col-7">{{ member.admission_date|date:"d-M-Y" }}</dd>
+                    <dt class="col-5">National ID</dt><dd class="col-7">{% if member.national_id %}••••{{ member.national_id|slice:"-4:" }}{% else %}—{% endif %}</dd>
+                </dl>
+                <form method="post" action="{% url 'branch:Module_Members_status' member.pk %}" class="border-top mt-3 pt-3">
+                    {% csrf_token %}
+                    <label class="form-label" for="status">Change status</label>
+                    <select class="form-select mb-2" id="status" name="status">{% for value,label in statuses %}<option value="{{ value }}" {% if member.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+                    <input class="form-control mb-2" name="reason" maxlength="255" required placeholder="Reason for status change">
+                    <button class="btn btn-sm btn-outline-warning" type="submit">Update status</button>
+                </form>
+            </section>
+        </div>
+        <div class="col-lg-8">
+            <section class="card card-body mb-3">
+                <h2 class="h5">KYC documents</h2>
+                <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+                    <thead><tr><th>Type</th><th>Number</th><th>Status</th><th>Document</th><th>Review</th></tr></thead>
+                    <tbody>
+                        {% for doc in member.kyc_documents.all %}
+                        <tr>
+                            <td>{{ doc.get_document_type_display }}</td>
+                            <td>••••{{ doc.document_number|slice:"-4:" }}</td>
+                            <td>{{ doc.get_status_display }}</td>
+                            <td>{% if doc.file %}<a href="{% url 'branch:Module_Members_kyc_file' doc.pk %}">Download</a>{% else %}—{% endif %}</td>
+                            <td>
+                                {% if doc.status == 'pending' %}
+                                <form method="post" action="{% url 'branch:Module_Members_kyc_verify' doc.pk %}" class="d-flex gap-1">
+                                    {% csrf_token %}<input class="form-control form-control-sm" name="reason" placeholder="Rejection reason">
+                                    <button class="btn btn-sm btn-success" name="status" value="verified" type="submit">Verify</button>
+                                    <button class="btn btn-sm btn-danger" name="status" value="rejected" type="submit">Reject</button>
+                                </form>
+                                {% else %}{{ doc.verified_at|date:"d-M-Y H:i" }}{% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}<tr><td colspan="5" class="text-muted">No KYC documents have been uploaded.</td></tr>{% endfor %}
+                    </tbody>
+                </table></div>
+            </section>
+            <section class="card card-body">
+                <h2 class="h5">Status history</h2>
+                <ul class="list-group list-group-flush">
+                    {% for item in member.status_history.all %}
+                    <li class="list-group-item px-0">{{ item.created_at|date:"d-M-Y H:i" }} — {{ item.get_old_status_display }} → {{ item.get_new_status_display }} by {{ item.changed_by.get_username }} — {{ item.reason }}</li>
+                    {% empty %}<li class="list-group-item px-0 text-muted">No status changes recorded.</li>{% endfor %}
+                </ul>
+            </section>
+        </div>
+    </div>
+</div>
+{% endblock %}

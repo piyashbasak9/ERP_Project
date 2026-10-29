@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}Voucher {{ entry.voucher_number }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+        <div><span class="eyebrow">GENERAL LEDGER · {{ entry.get_status_display|upper }}</span><h1 class="h3 mb-0">{{ entry.voucher_number }}</h1></div>
+        <div class="d-flex gap-2">
+            {% if entry.status == 'draft' or entry.status == 'pending_approval' and request.user.pk != entry.created_by_id %}<form method="post" action="{% url 'accounting:Module_Accounting_journal_post' entry.pk %}">{% csrf_token %}<button class="btn btn-success" type="submit">{% if entry.status == 'pending_approval' %}Approve and post{% else %}Post entry{% endif %}</button></form>{% endif %}
+            {% if entry.status == 'posted' and not entry.reversal_entry %}<a class="btn btn-outline-danger" href="{% url 'accounting:Module_Accounting_journal_reverse' entry.pk %}?popup=1" data-popup data-popup-title="Reverse journal entry">Reverse</a>{% endif %}
+            <a class="btn btn-outline-secondary" href="{% url 'accounting:Module_Accounting_journal_list' %}">Back</a>
+        </div>
+    </div>
+    <section class="card card-body mb-3">
+        <div class="row g-2"><div class="col-md-3"><strong>Date:</strong> {{ entry.journal_date }}</div><div class="col-md-3"><strong>Branch:</strong> {{ entry.branch }}</div>
+            <div class="col-md-3"><strong>Fiscal year:</strong> {{ entry.fiscal_year }}</div><div class="col-md-3"><strong>Period:</strong> {{ entry.period }}</div>
+            <div class="col-12"><strong>Narration:</strong> {{ entry.narration }}</div>
+            <div class="col-md-6"><strong>Created by:</strong> {{ entry.created_by }}</div><div class="col-md-6"><strong>Posted by:</strong> {{ entry.posted_by|default:"—" }}</div>
+            {% if entry.reversal_of %}<div class="col-12"><strong>Reversal of:</strong> {{ entry.reversal_of.voucher_number }}</div>{% endif %}
+        </div>
+    </section>
+    <div class="table-responsive card"><table class="table align-middle mb-0">
+        <thead class="table-dark"><tr><th>Account</th><th>Narration</th><th class="text-end">Debit</th><th class="text-end">Credit</th></tr></thead>
+        <tbody>{% for line in entry.lines.all %}<tr><td>{{ line.account }}</td><td>{{ line.narration }}</td><td class="text-end">{{ line.debit }}</td><td class="text-end">{{ line.credit }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+</div>
+{% endblock %}

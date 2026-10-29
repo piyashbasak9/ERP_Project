@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Journal Entries{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+        <div><span class="eyebrow">GENERAL LEDGER</span><h1 class="h3 mb-0">Journal entries</h1></div>
+        <a class="btn btn-primary" href="{% url 'accounting:Module_Accounting_journal_add' %}?popup=1" data-popup data-popup-title="Create journal entry">Create journal entry</a>
+    </div>
+    <form method="get" class="row g-2 mb-3">
+        <div class="col-sm-4 col-md-3"><select class="form-select" name="status"><option value="">All statuses</option>{% for value,label in statuses %}<option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+        <div class="col-auto"><button class="btn btn-outline-primary" type="submit">Filter</button></div>
+    </form>
+    <div class="table-responsive card"><table class="table table-hover align-middle mb-0">
+        <thead class="table-dark"><tr><th>Date</th><th>Voucher</th><th>Branch</th><th>Narration</th><th>Status</th><th>Debit</th><th>Credit</th><th></th></tr></thead>
+        <tbody>{% for entry in page_obj %}
+            <tr><td>{{ entry.journal_date }}</td><td>{{ entry.voucher_number }}</td><td>{{ entry.branch.code }}</td><td>{{ entry.narration }}</td><td>{{ entry.get_status_display }}</td>
+                <td>{% for line in entry.lines.all %}{% if line.debit %}{{ line.debit }}{% endif %}{% endfor %}</td>
+                <td>{% for line in entry.lines.all %}{% if line.credit %}{{ line.credit }}{% endif %}{% endfor %}</td>
+                <td><a class="btn btn-sm btn-outline-primary" href="{% url 'accounting:Module_Accounting_journal_detail' entry.pk %}">View</a></td></tr>
+        {% empty %}<tr><td colspan="8" class="text-center text-muted py-4">No journal entries found.</td></tr>{% endfor %}</tbody>
+    </table></div>
+</div>
+{% endblock %}

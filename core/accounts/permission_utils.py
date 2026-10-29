@@ -1,9 +1,8 @@
-import re
-from django.urls import get_resolver, URLPattern, URLResolver
-from ERP.db import SessionLocal
-from .models_sa import Permission
+from django.db import transaction
+from django.urls import URLPattern, URLResolver, get_resolver
 
-PREFIX_WHITELIST = ('Module', 'API')
+from .middleware import AUTHENTICATED_ONLY_ROUTE_NAMES, PUBLIC_ROUTE_NAMES
+from .models import Permission
 
 
 def get_all_urls():
@@ -11,54 +10,63 @@ def get_all_urls():
     resolver = get_resolver()
 
     def rec_search(pattern, prefix=''):
-        if hasattr(pattern, 'url_patterns'):
-            for sub_pattern in pattern.url_patterns:
-                if isinstance(sub_pattern, URLPattern):
-                    route_name = sub_pattern.name
-                    if route_name and route_name.startswith(PREFIX_WHITELIST):
-                        full_url = prefix + str(sub_pattern.pattern)
-                        url_list.append({
-                            'url': full_url,
-                            'route_name': route_name,
-                        })
-                elif isinstance(sub_pattern, URLResolver):
-                    rec_search(sub_pattern, prefix + str(sub_pattern.pattern))
+        for sub_pattern in getattr(pattern, 'url_patterns', []):
+            if isinstance(sub_pattern, URLPattern):
+                route_name = sub_pattern.name
+                if (
+                    route_name
+                    and route_name.startswith(('Module', 'API'))
+                    and route_name not in PUBLIC_ROUTE_NAMES
+                    and route_name not in AUTHENTICATED_ONLY_ROUTE_NAMES
+                ):
+                    route = prefix + str(sub_pattern.pattern)
+                    route_parts = route_name.removeprefix('Module_').split('_')
+                    module = route_parts[0] if route_parts else ''
+                    action = route_parts[-1] if route_parts else ''
+                    url_list.append({
+                        'url': route,
+                        'route_name': route_name,
+                        'module': module,
+                        'action': action,
+                        'description': f'{module} {action}'.strip(),
+                    })
+            elif isinstance(sub_pattern, URLResolver):
+                rec_search(sub_pattern, prefix + str(sub_pattern.pattern))
 
     rec_search(resolver)
     return url_list
 
 
+@transaction.atomic
+def sync_permissions():
+    routes = get_all_urls()
+    route_names = [route['route_name'] for route in routes]
+
+    for route in routes:
+        permission = Permission.objects.filter(route_name=route['route_name']).first()
+        if permission is None:
+            permission = Permission.objects.filter(url_pattern=route['url']).first()
+        if permission is None:
+            Permission.objects.create(
+                route_name=route['route_name'],
+                url_pattern=route['url'],
+                is_active=True,
+                module=route['module'],
+                action=route['action'],
+                description=route['description'],
+            )
+        else:
+            permission.route_name = route['route_name']
+            permission.url_pattern = route['url']
+            permission.is_active = True
+            permission.module = route['module']
+            permission.action = route['action']
+            permission.description = route['description']
+            permission.save()
+
+    Permission.objects.exclude(route_name__in=route_names).update(is_active=False)
+    return len(routes)
+
+
 def sync_permission_route_names():
-    all_routes = get_all_urls()
-    if not all_routes:
-        return 0
-
-    url_to_name = {item['url']: item['route_name'] for item in all_routes}
-    name_to_url = {item['route_name']: item['url'] for item in all_routes}
-
-    session = SessionLocal()
-    updated = 0
-    try:
-        permissions = session.query(Permission).filter(Permission.route_name == None).all()
-        for perm in permissions:
-            if perm.url_pattern in url_to_name:
-                perm.route_name = url_to_name[perm.url_pattern]
-                updated += 1
-            elif perm.url_pattern in name_to_url:
-                perm.route_name = perm.url_pattern
-                updated += 1
-            else:
-                # fallback: exact match on route pattern if stored path uses Django parameter syntax
-                for url, route_name in url_to_name.items():
-                    if perm.url_pattern == url:
-                        perm.route_name = route_name
-                        updated += 1
-                        break
-        if updated:
-            session.commit()
-        return updated
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
+    return sync_permissions()

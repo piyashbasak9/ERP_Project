@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Loan schedule{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <span class="eyebrow">LOANS</span><h1 class="h3">Loan {{ loan.pk }} schedule — version {{ loan.schedule_version }}</h1>
+    <p>Nominal annual rate: {{ loan.product.annual_interest_rate|floatformat:4 }}%; effective annual rate: {{ loan.effective_annual_rate|floatformat:2 }}%.</p>
+    <div class="table-responsive card"><table class="table table-hover align-middle mb-0">
+        <thead class="table-dark"><tr><th>#</th><th>Due date</th><th>Principal</th><th>Interest</th><th>Fees</th><th>Paid principal</th><th>Paid interest</th><th>Paid fees</th><th>Remaining</th></tr></thead>
+        <tbody>
+            {% for row in installments %}
+            <tr><td>{{ row.number }}</td><td>{{ row.due_date }}</td><td>{{ row.principal_due|floatformat:2 }}</td><td>{{ row.interest_due|floatformat:2 }}</td><td>{{ row.fee_due|floatformat:2 }}</td><td>{{ row.principal_paid|floatformat:2 }}</td><td>{{ row.interest_paid|floatformat:2 }}</td><td>{{ row.fee_paid|floatformat:2 }}</td><td>{{ row.total_due|floatformat:2 }}</td></tr>
+            {% empty %}<tr><td colspan="9" class="text-center text-muted py-4">No schedule found.</td></tr>{% endfor %}
+        </tbody>
+    </table></div>
+</div>
+{% endblock %}

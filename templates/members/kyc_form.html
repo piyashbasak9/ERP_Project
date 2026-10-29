@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}Upload KYC document{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3"><div><span class="eyebrow">IDENTITY VERIFICATION</span><h1 class="h3 mb-0">Upload KYC for {{ member.full_name }}</h1></div><a class="btn btn-outline-secondary" href="{% url 'branch:Module_Members_detail' member.pk %}" data-popup-close>Cancel</a></div>
+    <div class="card form-card mx-auto"><div class="card-body">
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+            {% for field in form %}
+            <div class="mb-3"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>
+            {% endfor %}
+            <div class="form-text mb-3">JPG, PNG or PDF only; the file signature and maximum size are validated.</div>
+            <div class="text-end"><button class="btn btn-primary" type="submit">Upload document</button></div>
+        </form>
+    </div></div>
+</div>
+{% endblock %}

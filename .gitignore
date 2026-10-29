@@ -24,6 +24,7 @@ db.sqlite3-journal
 
 # Media files
 media/
+private_media/
 
 # Static files (if collected)
 staticfiles/

@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block title %}Savings transactions{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div><span class="eyebrow">SAVINGS</span><h1 class="h3 mb-0">Transaction register</h1></div>
+        <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-primary" href="{% url 'savings:Module_Savings_deposit' %}?popup=1" data-popup data-popup-title="Savings deposit">Deposit</a>
+            <a class="btn btn-outline-primary" href="{% url 'savings:Module_Savings_withdraw' %}?popup=1" data-popup data-popup-title="Savings withdrawal">Withdraw</a>
+            <a class="btn btn-outline-primary" href="{% url 'savings:Module_Savings_fee' %}?popup=1" data-popup data-popup-title="Charge product fee">Charge fee</a>
+            <a class="btn btn-outline-primary" href="{% url 'savings:Module_Savings_interest' %}?popup=1" data-popup data-popup-title="Post savings interest">Post interest</a>
+        </div>
+    </div>
+    <form method="get" class="card card-body mb-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4"><label class="form-label" for="transaction-account">Account number</label><input id="transaction-account" class="form-control" name="account" value="{{ account_number }}"></div>
+            <div class="col-md-4"><label class="form-label" for="transaction-status">Status</label><select id="transaction-status" class="form-select" name="status"><option value="">All statuses</option>{% for value,label in statuses %}<option value="{{ value }}"{% if selected_status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+            <div class="col-md-4"><button class="btn btn-outline-primary" type="submit">Filter</button></div>
+        </div>
+    </form>
+    <div class="table-responsive card">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-dark"><tr><th>Date</th><th>Account</th><th>Type</th><th>Amount</th><th>Balance</th><th>Status</th><th>Voucher</th><th>Maker / checker</th><th>Actions</th></tr></thead>
+            <tbody>
+                {% for item in page_obj %}
+                <tr>
+                    <td>{{ item.transaction_date }}</td>
+                    <td><a href="{% url 'savings:Module_Savings_statement' item.account_id %}">{{ item.account.account_number }}</a></td>
+                    <td>{{ item.get_transaction_type_display }}</td>
+                    <td>{{ item.amount|floatformat:2 }}</td>
+                    <td>{{ item.balance_after|floatformat:2 }}</td>
+                    <td>{{ item.get_status_display }}</td>
+                    <td>{% if item.journal_entry_id %}{{ item.journal_entry.voucher_number }}{% else %}—{% endif %}</td>
+                    <td>{{ item.created_by.get_username }}{% if item.approved_by %} / {{ item.approved_by.get_username }}{% endif %}</td>
+                    <td class="text-nowrap">
+                        {% if item.status == 'pending' %}
+                        <form class="d-inline" method="post" action="{% url 'savings:Module_Savings_approve_withdrawal' item.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-success" type="submit">Approve</button></form>
+                        <a class="btn btn-sm btn-outline-danger" href="{% url 'savings:Module_Savings_rejection_form' item.pk %}?popup=1" data-popup data-popup-title="Reject withdrawal">Reject</a>
+                        {% elif item.status == 'posted' %}
+                        <a class="btn btn-sm btn-outline-danger" href="{% url 'savings:Module_Savings_reversal_form' item.pk %}?popup=1" data-popup data-popup-title="Reverse savings transaction">Reverse</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}<tr><td colspan="9" class="text-center text-muted py-4">No savings transactions found.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% include 'partials/pagination.html' with page_obj=page_obj %}
+</div>
+{% endblock %}

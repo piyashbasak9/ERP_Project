@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}Fiscal Years{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+        <div><span class="eyebrow">ACCOUNTING CONTROL</span><h1 class="h3 mb-0">Fiscal years and periods</h1></div>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-primary" href="{% url 'accounting:Module_Accounting_period_add' %}?popup=1" data-popup data-popup-title="Create period">Create period</a>
+            <a class="btn btn-primary" href="{% url 'accounting:Module_Accounting_fiscal_year_add' %}?popup=1" data-popup data-popup-title="Create fiscal year">Create fiscal year</a>
+        </div>
+    </div>
+    {% for year in years %}
+    <section class="card card-body mb-3">
+        <h2 class="h5">{{ year.name }} <small class="text-muted">{{ year.start_date }} — {{ year.end_date }}</small>
+            {% if year.is_closed %}<span class="badge text-bg-secondary">Closed</span>{% else %}<span class="badge text-bg-success">Open</span>{% endif %}
+        </h2>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+            <thead><tr><th>#</th><th>Period</th><th>Dates</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody>{% for period in year.periods.all %}
+                <tr><td>{{ period.number }}</td><td>{{ period.name }}</td><td>{{ period.start_date }} — {{ period.end_date }}</td>
+                    <td>{% if period.is_closed %}Closed{% else %}Open{% endif %}</td>
+                    <td>{% if not period.is_closed %}<form method="post" action="{% url 'accounting:Module_Accounting_period_close' period.pk %}" data-confirm data-confirm-message="Close {{ period.name }}? New journal postings will be blocked.">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit">Close period</button></form>{% endif %}</td>
+                </tr>
+            {% empty %}<tr><td colspan="5" class="text-muted">No periods defined.</td></tr>{% endfor %}</tbody>
+        </table></div>
+    </section>
+    {% empty %}<div class="alert alert-info">No fiscal years have been configured.</div>{% endfor %}
+</div>
+{% endblock %}

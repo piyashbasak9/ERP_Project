@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}Create Journal Entry{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="form-page-heading"><span class="eyebrow">GENERAL LEDGER</span><h1 class="h3">Create journal entry</h1></div>
+    <form method="post" class="card form-card"><div class="card-body">
+        {% csrf_token %}{{ form.non_field_errors }}
+        <div class="row g-3">
+            {% for field in form %}
+            <div class="col-md-6"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {% if field.name == 'requires_approval' %}<div class="form-check">{{ field }}<label class="form-check-label" for="{{ field.id_for_label }}">Require a different user to approve</label></div>{% else %}{{ field }}{% endif %}
+                {% if field.errors %}<div class="text-danger small">{{ field.errors }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <h2 class="h5 mt-4">Journal lines</h2>
+        {{ line_formset.management_form }}{{ line_formset.non_form_errors }}
+        <div class="table-responsive"><table class="table table-sm align-middle">
+            <thead><tr><th>Account</th><th>Debit</th><th>Credit</th><th>Narration</th></tr></thead>
+            <tbody>{% for line_form in line_formset %}
+                <tr>{% for field in line_form %}<td>{{ field }}{% if field.errors %}<div class="text-danger small">{{ field.errors }}</div>{% endif %}</td>{% endfor %}</tr>
+                {% if line_form.non_field_errors %}<tr><td colspan="4" class="text-danger">{{ line_form.non_field_errors }}</td></tr>{% endif %}
+            {% endfor %}</tbody>
+        </table></div>
+        <button class="btn btn-primary" type="submit">Save balanced entry</button>
+        <a class="btn btn-outline-secondary" href="{% url 'accounting:Module_Accounting_journal_list' %}" data-popup-close>Cancel</a>
+    </div></form>
+</div>
+{% endblock %}

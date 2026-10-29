@@ -1,58 +1,121 @@
 {% extends "base.html" %}
+{% load rbac %}
 
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<section class="dashboard-hero">
-    <div class="dashboard-hero-copy">
-        <span class="eyebrow">ERP MANAGEMENT</span>
-        <h1>Good to see you{% if user.is_authenticated %}, {{ user.first_name|default:user.username }}{% endif %}.</h1>
-        <p>Your business operations, organized in one place.</p>
-    </div>
-    <div class="dashboard-hero-mark" aria-hidden="true">
-        <i class="bi bi-grid-1x2"></i>
-    </div>
-</section>
+<div class="dashboard-page">
+    <section class="dashboard-hero">
+        <div class="dashboard-hero-copy">
+            <span class="eyebrow">YOUR OPERATIONS WORKSPACE</span>
+            <h1>Good to see you{% if user.is_authenticated %}, {{ user.first_name|default:user.username }}{% endif %}.</h1>
+            <p>Everything you need to keep your business moving, all in one place.</p>
+            <div class="dashboard-hero-actions">
+                {% can 'Module_Branch_index_branch' as can_view_branches %}
+                {% if can_view_branches %}<a class="btn dashboard-primary-action" href="{% url 'branch:Module_Branch_index_branch' %}">
+                    <i class="bi bi-building me-2" aria-hidden="true"></i>Explore branches
+                    <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i>
+                </a>{% endif %}
+                {% can 'Module_Auth_list_users' as can_list_users %}
+                {% if can_list_users %}
+                <a class="dashboard-secondary-action" href="{% url 'accounts:Module_Auth_list_users' %}">
+                    <i class="bi bi-people me-2" aria-hidden="true"></i>Manage your team
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        <div class="dashboard-hero-mark" aria-hidden="true">
+            <span class="dashboard-mark-icon"><i class="bi bi-grid-1x2"></i></span>
+            <span class="dashboard-mark-caption">
+                <small>ERP MANAGEMENT</small>
+                <strong>One connected workspace</strong>
+            </span>
+        </div>
+    </section>
 
-<div class="dashboard-section-heading">
-    <div>
-        <span class="eyebrow">WORKSPACE</span>
-        <h2>Quick access</h2>
-    </div>
-</div>
+    <section class="dashboard-workspace" aria-labelledby="workspace-title">
+        <div class="dashboard-section-heading">
+            <div>
+                <span class="eyebrow">QUICK ACCESS</span>
+                <h2 id="workspace-title">Your workspace</h2>
+                <p>Choose a module to get started.</p>
+            </div>
+            <span class="dashboard-access-note">
+                <i class="bi bi-check2-circle" aria-hidden="true"></i>
+                Tools available to you
+            </span>
+        </div>
 
-<div class="row g-3 dashboard-modules">
-    <div class="col-md-6 col-xl-4">
-        <a class="module-card" href="{% url 'branch:Module_Branch_index_branch' %}">
-            <span class="module-icon"><i class="bi bi-building"></i></span>
-            <span class="module-copy">
-                <strong>Branches</strong>
-                <small>Manage locations and branch details</small>
-            </span>
-            <i class="bi bi-arrow-up-right module-arrow"></i>
-        </a>
-    </div>
-    {% if user.is_authenticated and user.is_staff %}
-    <div class="col-md-6 col-xl-4">
-        <a class="module-card" href="{% url 'accounts:Module_Auth_list_users' %}">
-            <span class="module-icon"><i class="bi bi-people"></i></span>
-            <span class="module-copy">
-                <strong>Users</strong>
-                <small>Manage user accounts and access</small>
-            </span>
-            <i class="bi bi-arrow-up-right module-arrow"></i>
-        </a>
-    </div>
-    <div class="col-md-6 col-xl-4">
-        <a class="module-card" href="{% url 'accounts:Module_Auth_list_roles' %}">
-            <span class="module-icon"><i class="bi bi-shield-check"></i></span>
-            <span class="module-copy">
-                <strong>Roles &amp; permissions</strong>
-                <small>Configure roles and URL permissions</small>
-            </span>
-            <i class="bi bi-arrow-up-right module-arrow"></i>
-        </a>
-    </div>
-    {% endif %}
+        <div class="row g-3 dashboard-modules">
+            {% if can_view_branches %}<div class="col-md-6 col-xl-4">
+                <a class="module-card module-card--branches" href="{% url 'branch:Module_Branch_index_branch' %}">
+                    <span class="module-card-top">
+                        <span class="module-icon"><i class="bi bi-building" aria-hidden="true"></i></span>
+                        <span class="module-arrow" aria-hidden="true"><i class="bi bi-arrow-up-right"></i></span>
+                    </span>
+                    <span class="module-copy">
+                        <small class="module-category">LOCATIONS</small>
+                        <strong>Branches</strong>
+                        <small>Manage your locations and keep branch details up to date.</small>
+                    </span>
+                    <span class="module-card-link">Open branches <i class="bi bi-arrow-right" aria-hidden="true"></i></span>
+                </a>
+            </div>
+            {% endif %}
+            {% if can_list_users %}
+            <div class="col-md-6 col-xl-4">
+                <a class="module-card module-card--users" href="{% url 'accounts:Module_Auth_list_users' %}">
+                    <span class="module-card-top">
+                        <span class="module-icon"><i class="bi bi-people" aria-hidden="true"></i></span>
+                        <span class="module-arrow" aria-hidden="true"><i class="bi bi-arrow-up-right"></i></span>
+                    </span>
+                    <span class="module-copy">
+                        <small class="module-category">PEOPLE</small>
+                        <strong>Users</strong>
+                        <small>Manage team accounts and review their access.</small>
+                    </span>
+                    <span class="module-card-link">Manage users <i class="bi bi-arrow-right" aria-hidden="true"></i></span>
+                </a>
+            </div>
+            {% endif %}
+            {% can 'Module_Auth_list_roles' as can_list_roles %}
+            {% if can_list_roles %}
+            <div class="col-md-6 col-xl-4">
+                <a class="module-card module-card--roles" href="{% url 'accounts:Module_Auth_list_roles' %}">
+                    <span class="module-card-top">
+                        <span class="module-icon"><i class="bi bi-shield-check" aria-hidden="true"></i></span>
+                        <span class="module-arrow" aria-hidden="true"><i class="bi bi-arrow-up-right"></i></span>
+                    </span>
+                    <span class="module-copy">
+                        <small class="module-category">ACCESS</small>
+                        <strong>Roles &amp; permissions</strong>
+                        <small>Set up roles and control access to your workspace.</small>
+                    </span>
+                    <span class="module-card-link">Review access <i class="bi bi-arrow-right" aria-hidden="true"></i></span>
+                </a>
+            </div>
+            {% endif %}
+            {% can 'Module_Members_list' as can_members %}
+            {% if can_members %}
+            <div class="col-md-6 col-xl-4">
+                <a class="module-card module-card--users" href="{% url 'branch:Module_Members_list' %}">
+                    <span class="module-card-top"><span class="module-icon"><i class="bi bi-person-vcard" aria-hidden="true"></i></span></span>
+                    <span class="module-copy"><small class="module-category">MEMBER SERVICES</small><strong>Members</strong><small>Register members and maintain their profiles and KYC status.</small></span>
+                    <span class="module-card-link">Open members <i class="bi bi-arrow-right" aria-hidden="true"></i></span>
+                </a>
+            </div>
+            {% endif %}
+            {% can 'Module_Accounting_account_list' as can_accounting %}
+            {% if can_accounting %}
+            <div class="col-md-6 col-xl-4">
+                <a class="module-card module-card--branches" href="{% url 'accounting:Module_Accounting_account_list' %}">
+                    <span class="module-card-top"><span class="module-icon"><i class="bi bi-calculator" aria-hidden="true"></i></span></span>
+                    <span class="module-copy"><small class="module-category">FINANCIAL CONTROL</small><strong>Accounting</strong><small>Manage the chart of accounts, journal entries and trial balance.</small></span>
+                    <span class="module-card-link">Open accounting <i class="bi bi-arrow-right" aria-hidden="true"></i></span>
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </section>
 </div>
 {% endblock %}

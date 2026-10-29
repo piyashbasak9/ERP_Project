@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Organization hierarchy{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div><span class="eyebrow">ORGANIZATION</span><h1 class="h3 mb-0">Branch hierarchy</h1></div>
+        <a class="btn btn-primary" href="{% url 'branch:Module_Branch_add_branch' %}?popup=1" data-popup data-popup-title="Create organization unit">Add unit</a>
+    </div>
+    <div class="card card-body">
+        {% for branch in branches %}
+        <div class="py-2 border-bottom" style="padding-left: {{ branch.ancestor_ids|length|add:"-1" }}rem">
+            <span class="badge text-bg-primary">{{ branch.get_branch_type_display }}</span>
+            <strong class="ms-2">{{ branch.name }}</strong>
+            <span class="text-muted ms-2">{{ branch.code }}</span>
+            <a class="btn btn-sm btn-outline-secondary ms-2" href="{% url 'branch:Module_Branch_edit_branch' branch.pk %}?popup=1" data-popup data-popup-title="Edit {{ branch.name }}">Edit</a>
+        </div>
+        {% empty %}
+        <p class="text-muted mb-0">No accessible active organization units.</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
