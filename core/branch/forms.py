@@ -12,7 +12,7 @@ from core.common.upload_validation import (
     validate_upload_size,
 )
 
-from .models import Branch, Center, Group, Member, MemberKYC, Staff
+from .models import Branch, BranchHoliday, Center, Group, Member, MemberKYC, Staff
 
 
 class BranchForm(forms.ModelForm):
@@ -152,6 +152,87 @@ class StaffForm(forms.ModelForm):
         if user and user.branch_id and branch and user.branch_id != branch.id:
             self.add_error('user', 'The user account must be assigned to the same branch.')
         return cleaned
+
+
+class BranchHolidayForm(forms.ModelForm):
+    class Meta:
+        model = BranchHoliday
+        fields = ["branch", "date", "name", "is_active"]
+        widgets = {
+            "branch": forms.Select(attrs={"class": "form-select"}),
+            "date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "name": forms.TextInput(attrs={"class": "form-control"}),
+            "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+        }
+
+    def __init__(self, *args, request, **kwargs):
+        super().__init__(*args, **kwargs)
+        allowed = request.user.accessible_branch_ids(request.active_branch_id)
+        self.fields["branch"].queryset = Branch.unscoped.filter(
+            pk__in=allowed, is_active=True
+        )
+
+    def clean(self):
+        cleaned = super().clean()
+        branch = cleaned.get("branch")
+        if branch and branch.pk not in self.fields["branch"].queryset.values_list(
+            "pk", flat=True
+        ):
+            self.add_error("branch", "Select an accessible branch.")
+        return cleaned
+
+
+class DayEndCloseForm(forms.Form):
+    branch = forms.ModelChoiceField(
+        queryset=Branch.unscoped.none(),
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    cash_count = forms.DecimalField(
+        min_value=0,
+        max_digits=18,
+        decimal_places=2,
+        widget=forms.NumberInput(
+            attrs={"class": "form-control", "min": "0", "step": "0.01"}
+        ),
+    )
+    cash_difference_reason = forms.CharField(
+        required=False,
+        max_length=500,
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 2}),
+    )
+    carryover_note = forms.CharField(
+        required=False,
+        max_length=500,
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 2}),
+    )
+
+    def __init__(self, *args, request, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["branch"].queryset = Branch.unscoped.filter(
+            pk__in=request.user.accessible_branch_ids(request.active_branch_id),
+            is_active=True,
+        )
+
+
+class DayEndReopenForm(forms.Form):
+    branch = forms.ModelChoiceField(
+        queryset=Branch.unscoped.none(),
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    business_date = forms.DateField(
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"})
+    )
+    reason = forms.CharField(
+        max_length=500,
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 2}),
+    )
+
+    def __init__(self, *args, request, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["branch"].queryset = Branch.unscoped.filter(
+            pk__in=request.user.accessible_branch_ids(request.active_branch_id),
+            is_active=True,
+        )
 
 
 class MemberForm(forms.ModelForm):

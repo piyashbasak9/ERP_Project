@@ -20,9 +20,10 @@ from core.accounting.models import (
     FiscalYear,
     SystemAccountMapping,
 )
+from core.accounting.services import JournalService
 from core.accounts.models import Role, RolePermission, UserRole
 from core.accounts.permission_utils import get_all_urls, sync_permissions
-from core.branch.models import Branch, Center, Member, Staff
+from core.branch.models import Branch, BranchClosedDay, Center, Member, Staff
 from core.common.context import current_branch_id_var, current_user_var
 from core.loans.models import LoanApplication, LoanInstallment, LoanPayment
 from core.loans.services import LoanService
@@ -31,8 +32,10 @@ from core.savings.services import SavingsService
 
 from .models import (
     CollectionPosting,
+    CollectionPostingReversal,
     CollectionSheet,
     CollectionSheetItem,
+    CollectionSheetReversal,
 )
 from .services import CollectionService
 
@@ -554,15 +557,215 @@ class CollectionWorkflowTests(CollectionFixture, TransactionTestCase):
             CollectionSheet.unscoped.filter(pk=sheet.pk, status="posted").count(), 1
         )
 
-    def test_runtime_role_cannot_mutate_posted_sheets_or_rows(self):
-        sheet, item = self.prepare_sheet(
-            amount=ZERO,
-            collection_date=date(2026, 1, 15),
-            cash_received=ZERO,
+    def test_collection_sheet_reversal_restores_loan_and_nets_journal_once(self):
+        original_outstanding = self.loan.outstanding_principal
+        savings_account = self.open_savings(self.member)
+        sheet, _ = self.prepare_sheet(
+            amount=self.installment.total_due,
+            savings_amount=Decimal("25.00"),
         )
         self.service_as(self.poster).post(
             sheet_id=sheet.pk, idempotency_key=uuid.uuid4()
         )
+        payment = LoanPayment.objects.get(loan=self.loan)
+        self.loan.refresh_from_db()
+        savings_account.refresh_from_db()
+        outstanding_after_post = self.loan.outstanding_principal
+        savings_after_post = savings_account.balance
+        reversal_date = payment.payment_date + timedelta(days=1)
+        reversal = self.service_as(self.manager).request_reversal(
+            sheet_id=sheet.pk,
+            reversal_date=reversal_date,
+            reason="Correct duplicated collection sheet",
+            idempotency_key=uuid.uuid4(),
+        )
+        with self.assertRaises(ValidationError):
+            self.service_as(self.manager).approve_reversal(reversal_id=reversal.pk)
+
+        approved = self.service_as(self.checker).approve_reversal(
+            reversal_id=reversal.pk
+        )
+        self.loan.refresh_from_db()
+        savings_account.refresh_from_db()
+        sheet.refresh_from_db()
+        payment.refresh_from_db()
+        original_transactions = list(
+            CollectionPosting.objects.filter(item__sheet=sheet)
+        )
+        original_lines = [
+            line
+            for posting in original_transactions
+            for line in (
+                posting.loan_payment.journal_entry.lines.all()
+                if posting.loan_payment_id
+                else posting.savings_transaction.journal_entry.lines.all()
+            )
+        ]
+        reversed_lines = [
+            line
+            for posting_reversal in approved.posting_reversals.all()
+            for line in (
+                posting_reversal.loan_payment_reversal.journal_entry.lines.all()
+                if posting_reversal.loan_payment_reversal_id
+                else posting_reversal.savings_transaction_reversal.journal_entry.lines.all()
+            )
+        ]
+        balances = {}
+        for line in original_lines + reversed_lines:
+            account_id, debit, credit = line.account_id, line.debit, line.credit
+            balances[account_id] = balances.get(account_id, ZERO) + debit - credit
+
+        self.assertEqual(approved.status, CollectionSheetReversal.STATUS_COMPLETED)
+        self.assertEqual(sheet.status, CollectionSheet.STATUS_REVERSED)
+        self.assertEqual(self.loan.outstanding_principal, original_outstanding)
+        self.assertEqual(savings_account.balance, ZERO)
+        self.assertEqual(approved.approved_by_id, self.checker.pk)
+        self.assertTrue(all(balance == ZERO for balance in balances.values()))
+        replay = self.service_as(self.other_poster).approve_reversal(
+            reversal_id=reversal.pk
+        )
+        self.assertEqual(replay.pk, approved.pk)
+        self.assertEqual(
+            CollectionPostingReversal.objects.filter(
+                sheet_reversal=approved
+            ).count(),
+            2,
+        )
+        self.assertLess(outstanding_after_post, original_outstanding)
+        self.assertGreater(savings_after_post, ZERO)
+
+    def test_collection_sheet_reversal_rejects_closed_accounting_period(self):
+        sheet, _ = self.prepare_sheet(amount=self.installment.total_due)
+        self.service_as(self.poster).post(
+            sheet_id=sheet.pk, idempotency_key=uuid.uuid4()
+        )
+        payment = LoanPayment.objects.get(loan=self.loan)
+        reversal = self.service_as(self.manager).request_reversal(
+            sheet_id=sheet.pk,
+            reversal_date=payment.payment_date + timedelta(days=1),
+            reason="Closed-period reversal test",
+            idempotency_key=uuid.uuid4(),
+        )
+        AccountingPeriod.objects.update(is_closed=True)
+        with self.assertRaisesRegex(ValidationError, "open accounting period"):
+            self.service_as(self.checker).approve_reversal(reversal_id=reversal.pk)
+        sheet.refresh_from_db()
+        self.assertEqual(sheet.status, CollectionSheet.STATUS_POSTED)
+        self.assertFalse(
+            CollectionPostingReversal.objects.filter(
+                sheet_reversal=reversal
+            ).exists()
+        )
+
+    def test_collection_sheet_reversal_is_safe_under_concurrent_approval(self):
+        sheet, _ = self.prepare_sheet(amount=self.installment.total_due)
+        self.service_as(self.poster).post(
+            sheet_id=sheet.pk, idempotency_key=uuid.uuid4()
+        )
+        payment = LoanPayment.objects.get(loan=self.loan)
+        reversal = self.service_as(self.manager).request_reversal(
+            sheet_id=sheet.pk,
+            reversal_date=payment.payment_date + timedelta(days=1),
+            reason="Concurrent reversal test",
+            idempotency_key=uuid.uuid4(),
+        )
+        barrier = Barrier(2)
+
+        def approve_as(user):
+            close_old_connections()
+            user_token = current_user_var.set(
+                get_user_model().objects.get(pk=user.pk)
+            )
+            branch_token = current_branch_id_var.set(None)
+            request = RequestFactory().post("/collections/reversals/")
+            request.user = current_user_var.get()
+            request.active_branch_id = None
+            barrier.wait(timeout=10)
+            result = CollectionService(request).approve_reversal(
+                reversal_id=reversal.pk
+            )
+            current_branch_id_var.reset(branch_token)
+            current_user_var.reset(user_token)
+            close_old_connections()
+            return result.status
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(
+                executor.map(approve_as, [self.checker, self.other_poster])
+            )
+
+        self.assertEqual(
+            results,
+            [CollectionSheetReversal.STATUS_COMPLETED] * 2,
+        )
+        self.assertEqual(
+            CollectionPostingReversal.objects.filter(
+                sheet_reversal=reversal
+            ).count(),
+            1,
+        )
+
+    def test_closed_business_date_rejects_all_financial_posting_services(self):
+        savings_account = self.open_savings(self.member)
+        sheet, _ = self.prepare_sheet(
+            amount=self.installment.total_due,
+            collection_date=self.installment.due_date,
+        )
+        BranchClosedDay.objects.create(
+            branch=self.branch,
+            business_date=self.installment.due_date,
+            cash_count=ZERO,
+            closed_by=self.manager,
+        )
+        closed_message = r"Business date .* is closed"
+
+        with self.assertRaisesRegex(ValidationError, closed_message):
+            self.service_as(self.poster).post(
+                sheet_id=sheet.pk, idempotency_key=uuid.uuid4()
+            )
+        with self.assertRaisesRegex(ValidationError, closed_message):
+            self.loan_service_as(self.poster).repay(
+                loan_id=self.loan.pk,
+                amount=Decimal("1.00"),
+                payment_date=self.installment.due_date,
+                idempotency_key=uuid.uuid4(),
+            )
+        with self.assertRaisesRegex(ValidationError, closed_message):
+            self.savings_service_as(self.manager).deposit(
+                account_id=savings_account.pk,
+                amount=Decimal("1.00"),
+                transaction_date=self.installment.due_date,
+                payment_channel="cash",
+                idempotency_key=uuid.uuid4(),
+            )
+        with self.assertRaisesRegex(ValidationError, closed_message):
+            JournalService(self.request).create_entry(
+                branch_id=self.branch.pk,
+                journal_date=self.installment.due_date,
+                narration="Closed-date test",
+            )
+
+    def test_runtime_role_cannot_mutate_posted_sheets_or_rows(self):
+        sheet, item = self.prepare_sheet(
+            amount=self.installment.total_due,
+            collection_date=date(2026, 1, 15),
+        )
+        self.service_as(self.poster).post(
+            sheet_id=sheet.pk, idempotency_key=uuid.uuid4()
+        )
+        payment = LoanPayment.objects.get(loan=self.loan)
+        reversal = self.service_as(self.manager).request_reversal(
+            sheet_id=sheet.pk,
+            reversal_date=payment.payment_date + timedelta(days=1),
+            reason="Runtime immutability test",
+            idempotency_key=uuid.uuid4(),
+        )
+        self.service_as(self.checker).approve_reversal(reversal_id=reversal.pk)
+        posting_reversal = CollectionPostingReversal.objects.get(
+            sheet_reversal=reversal
+        )
+        payment_reversal = payment.reversal
+        approval = reversal.approval_record
         database_dir = Path(__file__).resolve().parents[2] / "database"
 
         with connection.cursor() as cursor:
@@ -590,6 +793,38 @@ class CollectionWorkflowTests(CollectionFixture, TransactionTestCase):
                         [item.pk],
                     ),
                     ("DELETE FROM collection_sheet_items WHERE id = %s", [item.pk]),
+                    (
+                        "UPDATE collection_sheet_reversals SET reason = 'tampered' WHERE id = %s",
+                        [reversal.pk],
+                    ),
+                    (
+                        "DELETE FROM collection_sheet_reversals WHERE id = %s",
+                        [reversal.pk],
+                    ),
+                    (
+                        "UPDATE collection_sheet_reversal_approvals SET completed_at = now() WHERE id = %s",
+                        [approval.pk],
+                    ),
+                    (
+                        "DELETE FROM collection_sheet_reversal_approvals WHERE id = %s",
+                        [approval.pk],
+                    ),
+                    (
+                        "UPDATE collection_posting_reversals SET created_at = now() WHERE id = %s",
+                        [posting_reversal.pk],
+                    ),
+                    (
+                        "DELETE FROM collection_posting_reversals WHERE id = %s",
+                        [posting_reversal.pk],
+                    ),
+                    (
+                        "UPDATE loan_payment_reversals SET reason = 'tampered' WHERE id = %s",
+                        [payment_reversal.pk],
+                    ),
+                    (
+                        "DELETE FROM loan_payment_reversals WHERE id = %s",
+                        [payment_reversal.pk],
+                    ),
                 ):
                     with (
                         self.subTest(statement=statement),
@@ -611,6 +846,8 @@ class CollectionRouteTests(CollectionFixture, TestCase):
         "Module_Collections_sheet_print": [1],
         "Module_Collections_sheet_reconcile": [1],
         "Module_Collections_sheet_post": [1],
+        "Module_Collections_sheet_reversal_request": [1],
+        "Module_Collections_sheet_reversal_approve": [1],
     }
 
     def setUp(self):
@@ -648,6 +885,8 @@ class CollectionRouteTests(CollectionFixture, TestCase):
             "Module_Collections_sheet_cancel",
             "Module_Collections_sheet_reconcile",
             "Module_Collections_sheet_post",
+            "Module_Collections_sheet_reversal_request",
+            "Module_Collections_sheet_reversal_approve",
         ]
         from core.accounts.models import Permission
 
@@ -733,6 +972,24 @@ class CollectionRouteTests(CollectionFixture, TestCase):
             sheet=sheet_b,
             member=member_b,
         )
+        with connection.cursor() as cursor:
+            for status in (
+                CollectionSheet.STATUS_IN_PROGRESS,
+                CollectionSheet.STATUS_SUBMITTED,
+                CollectionSheet.STATUS_RECONCILED,
+                CollectionSheet.STATUS_POSTED,
+            ):
+                cursor.execute(
+                    "UPDATE collection_sheets SET status = %s WHERE id = %s",
+                    [status, sheet_b.pk],
+                )
+        reversal_b = CollectionSheetReversal.objects.create(
+            sheet=sheet_b,
+            reversal_date=date(2026, 1, 16),
+            idempotency_key=uuid.uuid4(),
+            reason="Forged branch reversal",
+            requested_by=user_b,
+        )
         del manager_b
         from core.accounts.models import Permission
 
@@ -766,6 +1023,16 @@ class CollectionRouteTests(CollectionFixture, TestCase):
             ("Module_Collections_sheet_submit", [sheet_b.pk], {}),
             ("Module_Collections_sheet_reconcile", [sheet_b.pk], {"cash_received": "0.00"}),
             ("Module_Collections_sheet_post", [sheet_b.pk], {"idempotency_key": str(uuid.uuid4())}),
+            (
+                "Module_Collections_sheet_reversal_request",
+                [sheet_b.pk],
+                {
+                    "reversal_date": "2026-01-16",
+                    "reason": "Forged branch reversal",
+                    "idempotency_key": str(uuid.uuid4()),
+                },
+            ),
+            ("Module_Collections_sheet_reversal_approve", [reversal_b.pk], {}),
         ]
         for route_name, args, data in post_routes:
             with self.subTest(route_name=route_name):

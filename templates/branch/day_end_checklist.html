@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}Day-end closing{% endblock %}
+{% block content %}
+<div class="container py-4">
+    <h1 class="h3">Day-end closing</h1>
+    <p class="text-muted">{{ summary.branch.name }} · Business date {{ summary.business_date }}</p>
+    <div class="card card-body mb-4">
+        <h2 class="h5">Checklist</h2>
+        <dl class="row mb-0">
+            <dt class="col-sm-8">Collection sheets not posted, reversed or cancelled</dt>
+            <dd class="col-sm-4">{{ summary.incomplete_sheets }}</dd>
+            <dt class="col-sm-8">Pending approvals (cleared or carried with a note)</dt>
+            <dd class="col-sm-4">{{ summary.pending_approvals }}</dd>
+            <dt class="col-sm-8">Cash book balance</dt>
+            <dd class="col-sm-4">{{ summary.cash_book|floatformat:2 }}</dd>
+        </dl>
+    </div>
+    <div class="card card-body mb-4">
+        <h2 class="h5">Close business date</h2>
+        <form method="post" action="{% url 'branch:Module_Branch_day_end_close' %}">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button class="btn btn-primary" type="submit" {% if not summary.can_close %}disabled{% endif %}>Close day and advance business date</button>
+        </form>
+    </div>
+    <div class="card card-body">
+        <h2 class="h5">Reopen a closed date</h2>
+        <form method="post" action="{% url 'branch:Module_Branch_day_end_reopen' %}">
+            {% csrf_token %}
+            {{ reopen_form.as_p }}
+            <button class="btn btn-outline-danger" type="submit">Reopen date</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

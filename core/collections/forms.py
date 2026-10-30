@@ -96,3 +96,16 @@ class CancellationForm(forms.Form):
             attrs={"class": "form-control", "maxlength": "255"}
         ),
     )
+
+
+class ReversalRequestForm(forms.Form):
+    reversal_date = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date", "class": "form-control"})
+    )
+    reason = forms.CharField(
+        max_length=500,
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+    )
+    idempotency_key = forms.UUIDField(
+        initial=uuid.uuid4, widget=forms.HiddenInput()
+    )

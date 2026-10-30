@@ -1,5 +1,5 @@
 from django.contrib import messages
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import models, transaction
 from django.http import FileResponse, JsonResponse
@@ -13,9 +13,13 @@ from django.views.decorators.http import require_GET, require_POST
 from core.audit.services import log_action
 from core.common.popup import popup_json_response, render_popup_form
 
+from .day_end_service import BranchDayService
 from .forms import (
     BranchForm,
+    BranchHolidayForm,
     CenterForm,
+    DayEndCloseForm,
+    DayEndReopenForm,
     GroupForm,
     MemberForm,
     MemberKYCForm,
@@ -23,7 +27,7 @@ from .forms import (
     StaffForm,
 )
 from .member_service import MemberService
-from .models import Branch, Center, Group, Member, MemberKYC, Staff
+from .models import Branch, BranchHoliday, Center, Group, Member, MemberKYC, Staff
 from .service import BranchReadService, BranchWriteService
 
 # Create your views here.
@@ -552,3 +556,144 @@ def organization_form(request, resource, pk=None):
         'form': form,
         'pk': pk,
     }, status=400 if request.method == 'POST' else 200)
+
+
+@require_GET
+def day_end_checklist(request):
+    raw_branch_id = request.GET.get("branch") or request.active_branch_id or request.user.branch_id
+    try:
+        branch_id = int(raw_branch_id)
+        summary = BranchDayService(request).checklist(branch_id=branch_id)
+    except (TypeError, ValueError):
+        return JsonResponse({"success": False, "message": "Select a valid branch."}, status=400)
+    except Branch.DoesNotExist:
+        from django.http import Http404
+
+        raise Http404
+    except PermissionDenied as error:
+        return JsonResponse({"success": False, "message": str(error)}, status=403)
+    form = DayEndCloseForm(
+        request=request,
+        initial={"branch": summary["branch"], "cash_count": summary["cash_book"]},
+    )
+    reopen_form = DayEndReopenForm(
+        request=request, initial={"branch": summary["branch"]}
+    )
+    return render(
+        request,
+        "branch/day_end_checklist.html",
+        {"summary": summary, "form": form, "reopen_form": reopen_form},
+    )
+
+
+@require_POST
+def day_end_close(request):
+    form = DayEndCloseForm(request.POST, request=request)
+    if not form.is_valid():
+        return JsonResponse(
+            {"success": False, "message": "Correct the day-end details.", "errors": form.errors},
+            status=400,
+        )
+    try:
+        BranchDayService(request).close(
+            branch_id=form.cleaned_data["branch"].pk,
+            cash_count=form.cleaned_data["cash_count"],
+            cash_difference_reason=form.cleaned_data["cash_difference_reason"],
+            carryover_note=form.cleaned_data["carryover_note"],
+        )
+    except (ValidationError, PermissionDenied) as error:
+        if isinstance(error, ValidationError):
+            return JsonResponse(
+                {"success": False, "message": "; ".join(error.messages)}, status=400
+            )
+        return JsonResponse({"success": False, "message": str(error)}, status=403)
+    messages.success(request, "Business day closed.")
+    return redirect("branch:Module_Branch_day_end_checklist")
+
+
+@require_POST
+def day_end_reopen(request):
+    form = DayEndReopenForm(request.POST, request=request)
+    if not form.is_valid():
+        return JsonResponse(
+            {"success": False, "message": "Correct the reopening details.", "errors": form.errors},
+            status=400,
+        )
+    try:
+        BranchDayService(request).reopen(
+            branch_id=form.cleaned_data["branch"].pk,
+            business_date=form.cleaned_data["business_date"],
+            reason=form.cleaned_data["reason"],
+        )
+    except (ValidationError, PermissionDenied) as error:
+        if isinstance(error, ValidationError):
+            return JsonResponse(
+                {"success": False, "message": "; ".join(error.messages)}, status=400
+            )
+        return JsonResponse({"success": False, "message": str(error)}, status=403)
+    messages.success(request, "Business day reopened.")
+    return redirect("branch:Module_Branch_day_end_checklist")
+
+
+@require_GET
+def holiday_list(request):
+    allowed = request.user.accessible_branch_ids(request.active_branch_id)
+    holidays = BranchHoliday.objects.filter(branch_id__in=allowed).select_related(
+        "branch"
+    )
+    return render(request, "branch/holiday_list.html", {"holidays": holidays})
+
+
+def holiday_form(request, pk=None):
+    allowed = request.user.accessible_branch_ids(request.active_branch_id)
+    holiday = None
+    if pk is not None:
+        holiday = get_object_or_404(
+            BranchHoliday.objects.filter(branch_id__in=allowed), pk=pk
+        )
+    form = BranchHolidayForm(request.POST or None, request=request, instance=holiday)
+    if request.method == "POST" and form.is_valid():
+        old_values = (
+            {
+                "branch_id": holiday.branch_id,
+                "date": holiday.date.isoformat(),
+                "name": holiday.name,
+                "is_active": holiday.is_active,
+            }
+            if holiday
+            else {}
+        )
+        instance = form.save(commit=False)
+        instance.branch_id = form.cleaned_data["branch"].pk
+        try:
+            instance.full_clean()
+            instance.save()
+        except ValidationError as error:
+            form.add_error(None, error)
+        else:
+            log_action(
+                "Update" if holiday else "Create",
+                "BranchHoliday",
+                instance.pk,
+                old_values=old_values,
+                new_values={
+                    "branch_id": instance.branch_id,
+                    "date": instance.date.isoformat(),
+                    "name": instance.name,
+                    "is_active": instance.is_active,
+                },
+                branch_id=instance.branch_id,
+            )
+            response = popup_json_response(
+                request, message="Holiday saved.", data={"id": instance.pk}
+            )
+            if response is not None:
+                return response
+            messages.success(request, "Holiday saved.")
+            return redirect("branch:Module_BranchHoliday_list")
+    return render_popup_form(
+        request,
+        "branch/holiday_form.html",
+        {"form": form, "title": "Edit holiday" if holiday else "Add holiday"},
+        status=400 if request.method == "POST" else 200,
+    )

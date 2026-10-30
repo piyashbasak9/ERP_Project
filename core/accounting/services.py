@@ -7,7 +7,7 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from core.audit.services import log_action
-from core.branch.models import Branch
+from core.branch.models import Branch, BranchClosedDay
 
 from .models import (
     Account,
@@ -65,6 +65,7 @@ class JournalService:
         branch = Branch.unscoped.select_for_update().filter(pk=branch_id, is_active=True).first()
         if branch is None:
             raise ValidationError({'branch': 'The selected branch is not active.'})
+        self._ensure_business_date_open(branch_id, journal_date)
         fiscal_year = FiscalYear.objects.select_for_update().filter(
             start_date__lte=journal_date,
             end_date__gte=journal_date,
@@ -182,6 +183,12 @@ class JournalService:
             if entry.created_by_id == self.request.user.pk:
                 raise ValidationError('The maker cannot approve their own journal entry.')
 
+        branch = Branch.unscoped.select_for_update().filter(
+            pk=entry.branch_id, is_active=True
+        ).first()
+        if branch is None:
+            raise ValidationError({'branch': 'The journal branch is not active.'})
+        self._ensure_business_date_open(entry.branch_id, entry.journal_date)
         period = AccountingPeriod.objects.select_for_update().get(pk=entry.period_id)
         fiscal_year = FiscalYear.objects.select_for_update().get(pk=entry.fiscal_year_id)
         if period.is_closed or fiscal_year.is_closed:
@@ -284,6 +291,17 @@ class JournalService:
             )
         ):
             raise ValidationError({'branch': 'You cannot access this branch.'})
+
+    @staticmethod
+    def _ensure_business_date_open(branch_id, journal_date):
+        if BranchClosedDay.objects.filter(
+            branch_id=branch_id,
+            business_date=journal_date,
+            is_closed=True,
+        ).exists():
+            raise ValidationError(
+                f'Business date {journal_date} is closed for branch {branch_id}; reopen it before posting.'
+            )
 
     @staticmethod
     def _validate_balanced_entry(entry):

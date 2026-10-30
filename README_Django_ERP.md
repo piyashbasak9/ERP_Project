@@ -68,7 +68,7 @@ The goal is to grow this platform into a **complete microfinance ERP**. An MFI r
 
 | Area | Status | Notes |
 |---|---|---|
-| Dashboard / home with quick-access cards | Implemented | Permission-aware shortcuts for branches, users, roles and members |
+| Dashboard / home | Partial | Permission-aware, branch-scoped operational metric cards and quick-access shortcuts; metrics still need broader seeded-data coverage |
 | Login and logout | Implemented | Custom login view, redirect to dashboard |
 | Global login-required redirect | Implemented | Anonymous users are sent to the login page |
 | Route-based role permission check | Implemented | Uses the current Django route name; 403 page when denied |
@@ -82,9 +82,9 @@ The goal is to grow this platform into a **complete microfinance ERP**. An MFI r
 | Members | Partial | Member profiles, branch-prefixed codes, status history, photo/KYC handling, verification and scoped downloads |
 | Savings | Partial | Product management, status controls and account term snapshots are PostgreSQL-verified; broader savings scope remains in progress; see [section 7.4](#74-savings) |
 | Loans | Done | Requested Phase 5 workflows and reports pass the full PostgreSQL suite; see [section 7.5](#75-loans) |
-| Collections | Partial | Collection sheets, posting, reconciliation, reports and permissions pass PostgreSQL tests; a sheet-level reversal workflow remains |
+| Collections | Done | Collection workflows, reports, exports, permissions, branch isolation, runtime immutability and maker-checker sheet reversal pass PostgreSQL tests |
 | Accounting | Partial | Chart of accounts, fiscal periods, typed system mappings, balanced journals, approval, posting/reversal, account reconciliation and trial balance |
-| Reports | Planned | [Section 7](#7-functional-modules) |
+| Reports | Partial | Collections and loan classification reports exist; the complete catalog and common filtered/exported report framework remain |
 | Audit log | Partial | Append-only application audit foundation and log screen exist; database-level immutability and full event coverage remain |
 | Settings module | Planned | [Section 7.10](#710-settings) |
 
@@ -570,7 +570,7 @@ python manage.py post_savings_interest \
 
 ### 7.6 Collections
 
-**Status:** Partial. Generation, field entry, lifecycle, reconciliation, atomic posting, reports, exports, permissions, branch isolation and runtime-role immutability pass the PostgreSQL suite. A sheet-level reversal workflow for correcting posted collections remains.
+**Status:** Done for the requested Phase 6 scope, including maker-checker reversal of posted sheets. PostgreSQL evidence: `test_collection_sheet_reversal_restores_loan_and_nets_journal_once`, `test_collection_sheet_reversal_is_safe_under_concurrent_approval`, `test_collection_sheet_reversal_rejects_closed_accounting_period`, `test_runtime_role_cannot_mutate_posted_sheets_or_rows`, and the collection route, branch-isolation, posting, reconciliation and export tests.
 
 **Features**
 
@@ -644,7 +644,7 @@ python manage.py post_savings_interest \
 
 ### 7.8 Reports
 
-**Status:** Planned.
+**Status:** Partial. Collection daily, performance, efficiency and variance reports and loan classification reports have on-screen and Excel/PDF exports. The complete member, savings, loan and financial report catalog, shared filters, server-side jqGrid, export auditing and export caps are not implemented.
 
 All reports support filters (branch, center, field officer, date range, status), on-screen view, and **export to Excel and PDF**. Large exports run as background jobs and are downloaded when ready.
 
@@ -691,7 +691,7 @@ Changes to settings are audited with old and new values.
 
 ### 7.11 Additional recommended modules
 
-**Status:** The dashboard is implemented in basic form. Centers, groups, staff and field-officer foundations are partial; other additions remain planned.
+**Status:** Dashboard cards are permission-aware and branch-scoped; the metric test verifies the active-member count and branch isolation. Day-end closing, reopening, branch holidays and closed-business-date posting guards are implemented. The explicit concurrent day-close/posting race test remains outstanding. Centers, groups, staff and field-officer foundations are partial; other additions remain planned.
 
 These were not in the original list but a working MFI needs them.
 
@@ -700,8 +700,8 @@ These were not in the original list but a working MFI needs them.
 | **Centers and Groups** | Partial: branch-scoped center and group records with meeting details |
 | **Staff and Field Officers** | Partial: branch-scoped staff records, user links and center assignments |
 | **Product management** | Savings products, loan products, fee and penalty definitions |
-| **Dashboard** | Role-specific summary: active members, savings balance, loans outstanding, today's collection, overdue amount, PAR, pending approvals |
-| **Day-end closing** | Locks a branch's transactions for a business date after all collection sheets are posted and cash is balanced; reopening needs a special permission and is audited |
+| **Dashboard** | Permission-aware, branch-scoped cards: active members, savings balance, loans outstanding, today's collection, overdue amount, PAR 1/30/90 and pending approvals |
+| **Day-end closing** | Branch business date, checklist, holiday skipping, audited reopen and closed-date posting guards; direct close/post concurrency test remains outstanding |
 | **Maker-checker approvals** | A generic approval queue for sensitive actions (large withdrawals, manual journals, write-offs, reversals) |
 | **Holiday calendar** | Skips non-working days when generating repayment schedules and collection sheets |
 | **Notifications** | Email and SMS reminders for upcoming installments, overdue loans, and approvals waiting |
@@ -2161,8 +2161,8 @@ Targets are **suggested starting points**; confirm them with load tests and with
 | **3. Accounting core** | Chart of accounts, fiscal years and periods, journal engine with double entry, voucher numbering, trial balance, system account mappings | Partial |
 | **4. Savings** | Products, individual and group accounts, transactions, reversals, interest, statements, automatic postings | Partial |
 | **5. Loans** | Products, applications, eligibility, approvals, disbursement, schedules, repayments, penalties, rescheduling, settlement, write-off, recovery, PAR, statements, classification | Done — requested Phase 5 scope verified on PostgreSQL; see [section 7.5](#75-loans) |
-| **6. Collections** | Sheet generation, collection entry, cash reconciliation, atomic posting, collector performance and reports | Partial — sheet-level reversal and correction workflow remains |
-| **7. Reporting and control** | All report groups with Excel and PDF export, dashboards, day-end closing, notifications, bulk import, compliance reports | Planned |
+| **6. Collections** | Sheet generation, collection entry, cash reconciliation, atomic posting, collector performance, reports and maker-checker sheet reversal | Done — reversal and collection workflow tests pass on PostgreSQL |
+| **7. Reporting and control** | All report groups with Excel and PDF export, dashboards, day-end closing, notifications, bulk import, compliance reports | Partial — dashboard and day-end foundation implemented; full report catalog and close/post race test remain |
 | **8. Hardening and go-live** | Independent security review and penetration test, load testing, user acceptance testing, data migration from the old system, training, production rollout | Planned |
 
 **Future ideas**: Django REST Framework API, mobile app for field officers with offline collection, mobile wallet and payment gateway integration, SMS gateway automation, credit bureau checks, fixed deposit and DPS products, micro-insurance, HR and payroll, fixed assets, multi-currency, member self-service portal, MFA for all staff.

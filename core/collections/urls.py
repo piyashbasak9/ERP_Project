@@ -37,6 +37,16 @@ urlpatterns = [
         name="Module_Collections_sheet_cancel",
     ),
     path(
+        "sheets/<int:pk>/reversal/request/",
+        views.sheet_reversal_request,
+        name="Module_Collections_sheet_reversal_request",
+    ),
+    path(
+        "reversals/<int:pk>/approve/",
+        views.sheet_reversal_approve,
+        name="Module_Collections_sheet_reversal_approve",
+    ),
+    path(
         "sheets/<int:pk>/print/",
         views.sheet_print,
         name="Module_Collections_sheet_print",

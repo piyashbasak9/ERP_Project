@@ -15,7 +15,14 @@ from core.loans.services import LoanService
 from core.savings.models import SavingsAccount, SavingsTransaction
 from core.savings.services import SavingsService
 
-from .models import CollectionPosting, CollectionSheet, CollectionSheetItem
+from .models import (
+    CollectionPosting,
+    CollectionPostingReversal,
+    CollectionSheet,
+    CollectionSheetItem,
+    CollectionSheetReversal,
+    CollectionSheetReversalApproval,
+)
 
 ZERO = Decimal("0.00")
 
@@ -355,6 +362,113 @@ class CollectionService:
             branch_id=sheet.branch_id,
         )
         return sheet
+
+    @transaction.atomic
+    def request_reversal(self, *, sheet_id, reversal_date, reason, idempotency_key):
+        key = self._uuid(idempotency_key)
+        sheet = self._locked_sheet(sheet_id)
+        if sheet.status != CollectionSheet.STATUS_POSTED:
+            raise ValidationError("Only posted collection sheets can be reversed.")
+        if hasattr(sheet, "reversal_record"):
+            reversal = sheet.reversal_record
+            if (
+                reversal.idempotency_key == key
+                and reversal.reversal_date == reversal_date
+                and reversal.reason == reason.strip()
+            ):
+                return reversal
+            raise ValidationError("This collection sheet already has a reversal request.")
+        if not reason.strip():
+            raise ValidationError({"reason": "A reversal reason is required."})
+        reversal = CollectionSheetReversal(
+            sheet=sheet,
+            reversal_date=reversal_date,
+            idempotency_key=key,
+            reason=reason.strip(),
+            requested_by=self.request.user,
+        )
+        reversal.full_clean()
+        reversal.save()
+        log_action(
+            "RequestReversal",
+            "CollectionSheet",
+            sheet.pk,
+            new_values={"reversal_id": reversal.pk},
+            remarks=reason.strip(),
+            branch_id=sheet.branch_id,
+        )
+        return reversal
+
+    @transaction.atomic
+    def approve_reversal(self, *, reversal_id):
+        reversal = CollectionSheetReversal.objects.select_for_update().filter(
+            pk=reversal_id
+        ).first()
+        if reversal is None:
+            raise CollectionSheetReversal.DoesNotExist
+        sheet = self._locked_sheet(reversal.sheet_id)
+        if reversal.status == CollectionSheetReversal.STATUS_COMPLETED:
+            return reversal
+        if reversal.requested_by_id == self.request.user.pk:
+            raise ValidationError("The reversal requester cannot approve the reversal.")
+        if sheet.status != CollectionSheet.STATUS_POSTED:
+            raise ValidationError("Only a posted sheet can be reversed.")
+
+        loan_service = LoanService(self.request)
+        savings_service = SavingsService(self.request)
+        postings = CollectionPosting.objects.filter(
+            item__sheet=sheet
+        ).order_by("-created_at", "-pk")
+        for posting in postings:
+            row = {
+                "original_posting": posting,
+                "sheet_reversal": reversal,
+            }
+            if posting.loan_payment_id:
+                row["loan_payment_reversal"] = loan_service.reverse_payment(
+                    payment_id=posting.loan_payment_id,
+                    reversal_date=reversal.reversal_date,
+                    reason=reversal.reason,
+                )
+            elif posting.savings_transaction_id:
+                row["savings_transaction_reversal"] = savings_service.reverse(
+                    transaction_id=posting.savings_transaction_id,
+                    reversal_date=reversal.reversal_date,
+                    reason=reversal.reason,
+                )
+            CollectionPostingReversal.objects.create(**row)
+
+        variance_reversal = None
+        if sheet.variance_journal_id:
+            variance_reversal = JournalService(self.request).reverse(
+                entry_id=sheet.variance_journal_id,
+                reversal_date=reversal.reversal_date,
+                reason=reversal.reason,
+            )
+        sheet.status = CollectionSheet.STATUS_REVERSED
+        sheet._reversal_authorized = True
+        try:
+            sheet.save(update_fields=["status"])
+        finally:
+            del sheet._reversal_authorized
+        CollectionSheetReversalApproval.objects.create(
+            reversal=reversal,
+            approved_by=self.request.user,
+            variance_journal_reversal=variance_reversal,
+        )
+        log_action(
+            "Reverse",
+            "CollectionSheet",
+            sheet.pk,
+            old_values={"status": CollectionSheet.STATUS_POSTED},
+            new_values={
+                "status": CollectionSheet.STATUS_REVERSED,
+                "reversal_id": reversal.pk,
+            },
+            remarks=reversal.reason,
+            branch_id=sheet.branch_id,
+        )
+        return reversal
 
     @transaction.atomic
     def cancel(self, *, sheet_id, reason):

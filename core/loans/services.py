@@ -29,6 +29,7 @@ from .models import (
     LoanInstallment,
     LoanPARBucket,
     LoanPayment,
+    LoanPaymentReversal,
     LoanPenalty,
     LoanProduct,
     LoanRecovery,
@@ -604,6 +605,20 @@ class LoanService:
             .order_by("due_date", "number")
         )
         penalty_due = self._assess_penalties(loan, installments, payment_date)
+        allocation_before = {
+            row.pk: {
+                "principal_paid": row.principal_paid,
+                "interest_paid": row.interest_paid,
+                "fee_paid": row.fee_paid,
+            }
+            for row in installments
+        }
+        penalty_before = {
+            penalty.pk: penalty.paid
+            for penalty in LoanPenalty.objects.filter(
+                installment__in=installments
+            )
+        }
         outstanding_fees = sum((row.fee_remaining for row in installments), ZERO)
         outstanding_interest = sum((row.interest_remaining for row in installments), ZERO)
         total_due = (
@@ -677,6 +692,33 @@ class LoanService:
         for row in installments:
             row.save(update_fields=["principal_paid", "interest_paid", "fee_paid"])
         self._apply_penalty_payment(installments, penalty_paid)
+        allocation_snapshot = {
+            "installments": [
+                {
+                    "id": row.pk,
+                    **{
+                        field: str(getattr(row, field) - allocation_before[row.pk][field])
+                        for field in ("principal_paid", "interest_paid", "fee_paid")
+                        if getattr(row, field) != allocation_before[row.pk][field]
+                    },
+                }
+                for row in installments
+                if any(
+                    getattr(row, field) != allocation_before[row.pk][field]
+                    for field in ("principal_paid", "interest_paid", "fee_paid")
+                )
+            ],
+            "penalties": [
+                {
+                    "id": penalty.pk,
+                    "paid": str(penalty.paid - penalty_before.get(penalty.pk, ZERO)),
+                }
+                for penalty in LoanPenalty.objects.filter(
+                    installment__in=installments
+                )
+                if penalty.paid > penalty_before.get(penalty.pk, ZERO)
+            ],
+        }
         loan.accrued_penalty = (
             LoanPenalty.objects.filter(installment__loan=loan).aggregate(
                 total=Sum(F("amount") - F("paid"))
@@ -789,10 +831,117 @@ class LoanService:
             journal_entry=journal,
             refund_journal_entry=refund_journal,
             savings_transaction=savings_transaction,
+            allocation_snapshot=allocation_snapshot,
             created_by=self.request.user,
         )
         log_action("Repay", "LoanPayment", payment.pk, new_values={"amount": str(amount), "principal": str(principal_paid), "interest": str(interest_paid), "penalty": str(penalty_paid)}, branch_id=loan.branch_id)
         return payment
+
+    @transaction.atomic
+    def reverse_payment(self, *, payment_id, reversal_date, reason):
+        payment = LoanPayment.unscoped.select_for_update().filter(pk=payment_id).first()
+        if payment is None:
+            raise LoanPayment.DoesNotExist
+        loan = Loan.objects.select_for_update().get(pk=payment.loan_id)
+        self._ensure_access(loan.branch_id)
+        if hasattr(payment, "reversal"):
+            raise ValidationError("This loan repayment has already been reversed.")
+        if not reason.strip():
+            raise ValidationError({"reason": "A reversal reason is required."})
+        if reversal_date < payment.payment_date:
+            raise ValidationError("A repayment cannot be reversed before its payment date.")
+        if loan.status != Loan.STATUS_ACTIVE:
+            raise ValidationError(
+                f"Loan {loan.pk} is {loan.get_status_display().lower()}; reverse dependent actions first."
+            )
+        if loan.reschedules.filter(created_at__gt=payment.created_at).exists():
+            raise ValidationError(
+                f"Loan {loan.pk} was rescheduled after this repayment."
+            )
+        if LoanPayment.unscoped.filter(
+            loan=loan, created_at__gt=payment.created_at
+        ).exists():
+            raise ValidationError(
+                f"Loan {loan.pk} has a later repayment that depends on this balance."
+            )
+        snapshot = payment.allocation_snapshot
+        if not snapshot or "installments" not in snapshot:
+            raise ValidationError(
+                "This repayment predates allocation snapshots and cannot be safely reversed."
+            )
+        for allocation in snapshot["installments"]:
+            installment = LoanInstallment.objects.select_for_update().get(
+                pk=allocation["id"], loan=loan
+            )
+            for field in ("principal_paid", "interest_paid", "fee_paid"):
+                amount = Decimal(allocation.get(field, "0"))
+                if getattr(installment, field) < amount:
+                    raise ValidationError(
+                        "A later loan action consumed this repayment allocation."
+                    )
+                setattr(installment, field, getattr(installment, field) - amount)
+            installment.save(
+                update_fields=["principal_paid", "interest_paid", "fee_paid"]
+            )
+        for allocation in snapshot["penalties"]:
+            penalty = LoanPenalty.objects.select_for_update().get(
+                pk=allocation["id"], installment__loan=loan
+            )
+            amount = Decimal(allocation["paid"])
+            if penalty.paid < amount:
+                raise ValidationError(
+                    "A later penalty payment consumed this repayment allocation."
+                )
+            penalty.paid -= amount
+            penalty.save(update_fields=["paid"])
+
+        savings_reversal = None
+        if payment.savings_transaction_id:
+            savings_reversal = SavingsService(self.request).reverse(
+                transaction_id=payment.savings_transaction_id,
+                reversal_date=reversal_date,
+                reason=reason,
+            )
+        journal_reversal = JournalService(self.request).reverse(
+            entry_id=payment.journal_entry_id,
+            reversal_date=reversal_date,
+            reason=reason,
+        )
+        refund_reversal = None
+        if payment.refund_journal_entry_id:
+            refund_reversal = JournalService(self.request).reverse(
+                entry_id=payment.refund_journal_entry_id,
+                reversal_date=reversal_date,
+                reason=reason,
+            )
+        loan.outstanding_principal += payment.principal_paid
+        if loan.outstanding_principal > loan.principal:
+            raise ValidationError("Reversing this payment would exceed the original principal.")
+        loan.accrued_penalty = (
+            LoanPenalty.objects.filter(installment__loan=loan).aggregate(
+                total=Sum(F("amount") - F("paid"))
+            )["total"]
+            or ZERO
+        )
+        loan.save(update_fields=["outstanding_principal", "accrued_penalty"])
+        reversal = LoanPaymentReversal.objects.create(
+            payment=payment,
+            reversal_date=reversal_date,
+            reason=reason.strip(),
+            journal_entry=journal_reversal,
+            refund_journal_entry=refund_reversal,
+            savings_reversal=savings_reversal,
+            reversed_by=self.request.user,
+        )
+        log_action(
+            "Reverse",
+            "LoanPayment",
+            payment.pk,
+            new_values={"reversal_id": reversal.pk},
+            remarks=reason.strip(),
+            branch_id=loan.branch_id,
+        )
+        return reversal
 
     @transaction.atomic
     def reschedule(

@@ -18,8 +18,13 @@ from .forms import (
     CollectionEntryForm,
     CollectionSheetForm,
     ReconciliationForm,
+    ReversalRequestForm,
 )
-from .models import CollectionSheet, CollectionSheetItem
+from .models import (
+    CollectionSheet,
+    CollectionSheetItem,
+    CollectionSheetReversal,
+)
 from .services import CollectionService
 
 ZERO = Decimal("0.00")
@@ -140,6 +145,15 @@ def sheet_detail(request, pk):
             "items": sheet.items.select_related("member").order_by("member__member_code"),
             "can_enter": can_enter,
             "total_collected": _sheet_total(sheet),
+            "reversal_record": CollectionSheetReversal.objects.filter(
+                sheet=sheet
+            ).select_related("requested_by", "approval_record__approved_by").first(),
+            "reversal_form": ReversalRequestForm(
+                initial={
+                    "reversal_date": sheet.branch.business_date,
+                    "idempotency_key": uuid.uuid4(),
+                }
+            ),
         },
     )
 
@@ -290,6 +304,58 @@ def sheet_cancel(request, pk):
         "Collection sheet cancelled.",
         data={"id": sheet.pk, "status": sheet.status},
     ) or redirect("collections:Module_Collections_sheet_detail", pk=sheet.pk)
+
+
+@require_POST
+def sheet_reversal_request(request, pk):
+    form = ReversalRequestForm(request.POST)
+    if not form.is_valid():
+        return _json_error(
+            "Provide a reversal date and reason.",
+            _form_errors(form),
+            400,
+        )
+    try:
+        reversal = CollectionService(request).request_reversal(
+            sheet_id=pk,
+            reversal_date=form.cleaned_data["reversal_date"],
+            reason=form.cleaned_data["reason"],
+            idempotency_key=form.cleaned_data["idempotency_key"],
+        )
+    except CollectionSheet.DoesNotExist:
+        from django.http import Http404
+
+        raise Http404
+    except ValidationError as error:
+        return _json_error("Collection reversal could not be requested.", _error_detail(error), 400)
+    except PermissionDenied as error:
+        return _json_error(str(error), {}, 403)
+    return _json_response(
+        request,
+        "Collection reversal requested for checker approval.",
+        data={"id": reversal.pk, "status": reversal.status},
+    ) or redirect("collections:Module_Collections_sheet_detail", pk=pk)
+
+
+@require_POST
+def sheet_reversal_approve(request, pk):
+    try:
+        reversal = CollectionService(request).approve_reversal(reversal_id=pk)
+    except CollectionSheet.DoesNotExist:
+        from django.http import Http404
+
+        raise Http404
+    except PermissionDenied as error:
+        return _json_error(str(error), {}, 403)
+    except ValidationError as error:
+        return _json_error("Collection reversal could not be approved.", _error_detail(error), 400)
+    return _json_response(
+        request,
+        "Collection sheet and its postings were reversed.",
+        data={"id": reversal.sheet_id, "status": reversal.sheet.status},
+    ) or redirect(
+        "collections:Module_Collections_sheet_detail", pk=reversal.sheet_id
+    )
 
 
 @require_GET

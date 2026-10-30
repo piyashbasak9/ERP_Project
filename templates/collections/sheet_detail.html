@@ -59,6 +59,26 @@
         <button class="btn btn-success" type="submit">Post collections</button>
     </form>
     {% endif %}
+    {% if sheet.status == 'posted' and not reversal_record %}
+    <div class="card card-body mt-3">
+        <h2 class="h5">Request sheet reversal</h2>
+        <form method="post" action="{% url 'collections:Module_Collections_sheet_reversal_request' sheet.pk %}">
+            {% csrf_token %}
+            {{ reversal_form.as_p }}
+            <button class="btn btn-outline-danger" type="submit">Request reversal</button>
+        </form>
+    </div>
+    {% elif reversal_record %}
+    <div class="alert alert-warning mt-3">
+        Reversal {{ reversal_record.get_status_display }}. Reason: {{ reversal_record.reason }}
+        {% if reversal_record.status == 'pending' and reversal_record.requested_by_id != request.user.pk %}
+        <form method="post" action="{% url 'collections:Module_Collections_sheet_reversal_approve' reversal_record.pk %}" class="mt-2">
+            {% csrf_token %}
+            <button class="btn btn-danger" type="submit">Approve and reverse sheet</button>
+        </form>
+        {% endif %}
+    </div>
+    {% endif %}
 </div>
 {% endblock %}
 {% block extra_js %}

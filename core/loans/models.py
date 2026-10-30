@@ -606,6 +606,7 @@ class LoanPayment(BranchScopedModel):
         on_delete=models.PROTECT,
         related_name="loan_overpayment_payments",
     )
+    allocation_snapshot = models.JSONField(default=dict, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="loan_payments_created")
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -616,6 +617,48 @@ class LoanPayment(BranchScopedModel):
 
     def delete(self, *args, **kwargs):
         raise TypeError("Loan payments are immutable; post a correcting transaction.")
+
+
+class LoanPaymentReversal(models.Model):
+    class Meta:
+        db_table = "loan_payment_reversals"
+
+    payment = models.OneToOneField(
+        LoanPayment, on_delete=models.PROTECT, related_name="reversal"
+    )
+    reversal_date = models.DateField()
+    reason = models.CharField(max_length=500)
+    journal_entry = models.ForeignKey(
+        "accounting.JournalEntry",
+        on_delete=models.PROTECT,
+        related_name="loan_payment_reversals",
+    )
+    refund_journal_entry = models.ForeignKey(
+        "accounting.JournalEntry",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="loan_refund_reversals",
+    )
+    savings_reversal = models.ForeignKey(
+        "savings.SavingsTransaction",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="loan_payment_reversals",
+    )
+    reversed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise TypeError("Loan payment reversals are immutable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise TypeError("Loan payment reversals are immutable.")
 
 
 class LoanHoliday(models.Model):

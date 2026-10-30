@@ -29,4 +29,10 @@ urlpatterns = [
     path('members/kyc/verify/<int:document_id>/', views.member_kyc_verify, name='Module_Members_kyc_verify'),
     path('members/photo/<int:file_id>/', views.private_member_file, {'kind': 'photo'}, name='Module_Members_photo'),
     path('members/kyc/file/<int:file_id>/', views.private_member_file, {'kind': 'kyc'}, name='Module_Members_kyc_file'),
+    path('day-end/', views.day_end_checklist, name='Module_Branch_day_end_checklist'),
+    path('day-end/close/', views.day_end_close, name='Module_Branch_day_end_close'),
+    path('day-end/reopen/', views.day_end_reopen, name='Module_Branch_day_end_reopen'),
+    path('holidays/', views.holiday_list, name='Module_BranchHoliday_list'),
+    path('holidays/add/', views.holiday_form, name='Module_BranchHoliday_create'),
+    path('holidays/edit/<int:pk>/', views.holiday_form, name='Module_BranchHoliday_edit'),
 ]

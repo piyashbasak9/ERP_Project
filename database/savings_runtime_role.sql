@@ -89,4 +89,13 @@ GRANT UPDATE (
 GRANT SELECT, INSERT ON TABLE collection_postings TO erp_runtime;
 REVOKE UPDATE, DELETE ON TABLE collection_postings FROM erp_runtime;
 
+GRANT SELECT, INSERT ON TABLE
+    loan_payment_reversals, collection_sheet_reversals,
+    collection_sheet_reversal_approvals, collection_posting_reversals
+    TO erp_runtime;
+REVOKE UPDATE, DELETE ON TABLE
+    loan_payment_reversals, collection_sheet_reversals,
+    collection_sheet_reversal_approvals, collection_posting_reversals
+    FROM erp_runtime;
+
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO erp_runtime;

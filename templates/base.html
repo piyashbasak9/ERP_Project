@@ -49,6 +49,10 @@
                             {% if can_groups %}<li><a class="dropdown-item" href="{% url 'branch:Module_Group_list' %}">Groups</a></li>{% endif %}
                             {% can 'Module_Staff_list' as can_staff %}
                             {% if can_staff %}<li><a class="dropdown-item" href="{% url 'branch:Module_Staff_list' %}">Staff</a></li>{% endif %}
+                            {% can 'Module_BranchHoliday_list' as can_holidays %}
+                            {% if can_holidays %}<li><a class="dropdown-item" href="{% url 'branch:Module_BranchHoliday_list' %}">Branch holidays</a></li>{% endif %}
+                            {% can 'Module_Branch_day_end_checklist' as can_day_end %}
+                            {% if can_day_end %}<li><a class="dropdown-item" href="{% url 'branch:Module_Branch_day_end_checklist' %}">Day-end closing</a></li>{% endif %}
                         </ul>
                     </li>
                     {% endif %}

@@ -16,24 +16,40 @@ class CollectionSheetQuerySet(BranchScopedQuerySet):
     def update(self, **kwargs):
         if kwargs.get("status") == CollectionSheet.STATUS_POSTED:
             raise TypeError("Use CollectionService to post collection sheets.")
+        if kwargs.get("status") == CollectionSheet.STATUS_REVERSED:
+            raise TypeError("Use CollectionService to reverse collection sheets.")
         if self.filter(status=CollectionSheet.STATUS_POSTED).exists():
             raise TypeError("Posted collection sheets are immutable.")
+        if self.filter(status=CollectionSheet.STATUS_REVERSED).exists():
+            raise TypeError("Reversed collection sheets are immutable.")
         return super().update(**kwargs)
 
     def delete(self):
         if self.filter(status=CollectionSheet.STATUS_POSTED).exists():
             raise TypeError("Posted collection sheets cannot be deleted; reverse the posting.")
+        if self.filter(status=CollectionSheet.STATUS_REVERSED).exists():
+            raise TypeError("Reversed collection sheets cannot be deleted.")
         return super().delete()
 
 
 class CollectionItemQuerySet(BranchScopedQuerySet):
     def update(self, **kwargs):
-        if self.filter(sheet__status=CollectionSheet.STATUS_POSTED).exists():
+        if self.filter(
+            sheet__status__in=[
+                CollectionSheet.STATUS_POSTED,
+                CollectionSheet.STATUS_REVERSED,
+            ]
+        ).exists():
             raise TypeError("Rows on posted collection sheets are immutable.")
         return super().update(**kwargs)
 
     def delete(self):
-        if self.filter(sheet__status=CollectionSheet.STATUS_POSTED).exists():
+        if self.filter(
+            sheet__status__in=[
+                CollectionSheet.STATUS_POSTED,
+                CollectionSheet.STATUS_REVERSED,
+            ]
+        ).exists():
             raise TypeError("Rows on posted collection sheets cannot be deleted.")
         return super().delete()
 
@@ -52,6 +68,7 @@ class CollectionSheet(BranchScopedModel):
     STATUS_SUBMITTED = "submitted"
     STATUS_RECONCILED = "reconciled"
     STATUS_POSTED = "posted"
+    STATUS_REVERSED = "reversed"
     STATUS_CANCELLED = "cancelled"
     STATUS_CHOICES = [
         (STATUS_GENERATED, "Generated"),
@@ -59,6 +76,7 @@ class CollectionSheet(BranchScopedModel):
         (STATUS_SUBMITTED, "Submitted"),
         (STATUS_RECONCILED, "Reconciled"),
         (STATUS_POSTED, "Posted"),
+        (STATUS_REVERSED, "Reversed"),
         (STATUS_CANCELLED, "Cancelled"),
     ]
 
@@ -177,7 +195,11 @@ class CollectionSheet(BranchScopedModel):
             old_status = type(self).unscoped.filter(pk=self.pk).values_list(
                 "status", flat=True
             ).first()
-            if old_status == self.STATUS_POSTED:
+            if old_status == self.STATUS_REVERSED:
+                raise TypeError("Reversed collection sheets are immutable.")
+            if old_status == self.STATUS_POSTED and not getattr(
+                self, "_reversal_authorized", False
+            ):
                 raise TypeError("Posted collection sheets are immutable.")
             if old_status and self.status != old_status:
                 allowed = {
@@ -185,6 +207,7 @@ class CollectionSheet(BranchScopedModel):
                     self.STATUS_IN_PROGRESS: {self.STATUS_SUBMITTED, self.STATUS_CANCELLED},
                     self.STATUS_SUBMITTED: {self.STATUS_RECONCILED},
                     self.STATUS_RECONCILED: {self.STATUS_POSTED},
+                    self.STATUS_POSTED: {self.STATUS_REVERSED},
                 }
                 if self.status not in allowed.get(old_status, set()):
                     raise ValidationError("Invalid collection sheet status transition.")
@@ -265,7 +288,10 @@ class CollectionSheetItem(BranchScopedModel):
             )
         ):
             raise ValidationError({"member": "The member must belong to the selected center or group."})
-        if self.sheet_id and self.sheet.status == CollectionSheet.STATUS_POSTED:
+        if self.sheet_id and self.sheet.status in {
+            CollectionSheet.STATUS_POSTED,
+            CollectionSheet.STATUS_REVERSED,
+        }:
             raise ValidationError("Posted collection rows are immutable.")
         if (
             self.collected_amount
@@ -278,7 +304,11 @@ class CollectionSheetItem(BranchScopedModel):
 
     def save(self, *args, **kwargs):
         if self.sheet_id and CollectionSheet.unscoped.filter(
-            pk=self.sheet_id, status=CollectionSheet.STATUS_POSTED
+            pk=self.sheet_id,
+            status__in=[
+                CollectionSheet.STATUS_POSTED,
+                CollectionSheet.STATUS_REVERSED,
+            ],
         ).exists():
             raise TypeError("Rows on posted collection sheets are immutable.")
         return super().save(*args, **kwargs)
@@ -330,7 +360,10 @@ class CollectionPosting(models.Model):
     def clean(self):
         if self.item_id and self.item.branch_id != self.branch_id:
             raise ValidationError({"branch": "The posting must match its item branch."})
-        if self.item_id and self.item.sheet.status == CollectionSheet.STATUS_POSTED:
+        if self.item_id and self.item.sheet.status in {
+            CollectionSheet.STATUS_POSTED,
+            CollectionSheet.STATUS_REVERSED,
+        }:
             raise ValidationError("Postings on a posted collection sheet are immutable.")
         if self.loan_payment_id and self.loan_payment.branch_id != self.branch_id:
             raise ValidationError({"loan_payment": "The payment must belong to this posting branch."})
@@ -343,8 +376,129 @@ class CollectionPosting(models.Model):
         if self.pk:
             raise TypeError("Collection postings are immutable.")
         if self.item_id and CollectionSheet.unscoped.filter(
-            pk=self.item.sheet_id, status=CollectionSheet.STATUS_POSTED
+            pk=self.item.sheet_id,
+            status__in=[
+                CollectionSheet.STATUS_POSTED,
+                CollectionSheet.STATUS_REVERSED,
+            ],
         ).exists():
             raise TypeError("Postings on a posted collection sheet are immutable.")
         return super().save(*args, **kwargs)
     objects = models.Manager.from_queryset(CollectionPostingQuerySet)()
+
+
+class CollectionSheetReversal(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_COMPLETED = "completed"
+    class Meta:
+        db_table = "collection_sheet_reversals"
+
+    sheet = models.OneToOneField(
+        CollectionSheet, on_delete=models.PROTECT, related_name="reversal_record"
+    )
+    reversal_date = models.DateField()
+    idempotency_key = models.UUIDField(unique=True)
+    reason = models.CharField(max_length=500)
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="collection_reversals_requested",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise TypeError("Collection sheet reversal records are immutable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise TypeError("Collection sheet reversal records are immutable.")
+
+    @property
+    def status(self):
+        return (
+            self.STATUS_COMPLETED
+            if CollectionSheetReversalApproval.objects.filter(reversal_id=self.pk).exists()
+            else self.STATUS_PENDING
+        )
+
+    @property
+    def approved_by_id(self):
+        approval = CollectionSheetReversalApproval.objects.filter(
+            reversal_id=self.pk
+        ).values_list("approved_by_id", flat=True).first()
+        return approval
+
+    def get_status_display(self):
+        return {
+            self.STATUS_PENDING: "Pending approval",
+            self.STATUS_COMPLETED: "Completed",
+        }[self.status]
+
+
+class CollectionSheetReversalApproval(models.Model):
+    class Meta:
+        db_table = "collection_sheet_reversal_approvals"
+
+    reversal = models.OneToOneField(
+        CollectionSheetReversal,
+        on_delete=models.PROTECT,
+        related_name="approval_record",
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="collection_reversals_approved",
+    )
+    variance_journal_reversal = models.ForeignKey(
+        "accounting.JournalEntry",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="collection_sheet_reversals",
+    )
+    completed_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise TypeError("Collection reversal approvals are immutable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise TypeError("Collection reversal approvals are immutable.")
+
+class CollectionPostingReversal(models.Model):
+    class Meta:
+        db_table = "collection_posting_reversals"
+
+    original_posting = models.OneToOneField(
+        CollectionPosting, on_delete=models.PROTECT, related_name="reversal_record"
+    )
+    sheet_reversal = models.ForeignKey(
+        CollectionSheetReversal,
+        on_delete=models.PROTECT,
+        related_name="posting_reversals",
+    )
+    loan_payment_reversal = models.ForeignKey(
+        "loans.LoanPaymentReversal",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="collection_posting_reversals",
+    )
+    savings_transaction_reversal = models.ForeignKey(
+        "savings.SavingsTransaction",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="collection_posting_reversals",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise TypeError("Collection posting reversals are immutable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise TypeError("Collection posting reversals are immutable.")

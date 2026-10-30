@@ -61,6 +61,37 @@ class RoutePermissionTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_dashboard_cards_match_branch_data_and_require_metric_permission(self):
+        Member.unscoped.create(
+            branch=self.branch,
+            member_code='DASH-001',
+            first_name='Active',
+            last_name='Member',
+            status=Member.STATUS_ACTIVE,
+        )
+        Member.unscoped.create(
+            branch=self.other_branch,
+            member_code='DASH-002',
+            first_name='Other',
+            last_name='Branch',
+            status=Member.STATUS_ACTIVE,
+        )
+        UserBranchAccess.objects.filter(
+            user=self.user, branch=self.other_branch
+        ).delete()
+        self.grant_routes('Module_Members_list')
+
+        response = self.client.get('/')
+
+        self.assertEqual(response.status_code, 200)
+        cards = response.context['dashboard_cards']
+        self.assertEqual(
+            cards,
+            [{'key': 'active_members', 'title': 'Active members', 'value': '1'}],
+        )
+        self.assertContains(response, 'Active members')
+        self.assertNotContains(response, 'Savings balance')
+
     def test_assigned_role_grants_only_its_active_route(self):
         self.grant_routes('Module_Auth_list_users')
 

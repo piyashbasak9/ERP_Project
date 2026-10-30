@@ -181,6 +181,58 @@ class Branch(models.Model):
         return f"{self.name} ({self.code})"
 
 
+class BranchHoliday(BranchScopedModel):
+    class Meta:
+        db_table = "branch_holidays"
+        ordering = ["date", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["branch", "date"], name="uniq_branch_holiday_date"
+            )
+        ]
+
+    date = models.DateField(db_index=True)
+    name = models.CharField(max_length=120)
+    is_active = models.BooleanField(default=True, db_index=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.date})"
+
+
+class BranchClosedDay(models.Model):
+    class Meta:
+        db_table = "branch_closed_days"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["branch", "business_date"], name="uniq_branch_closed_date"
+            )
+        ]
+
+    branch = models.ForeignKey(
+        Branch, on_delete=models.PROTECT, related_name="closed_business_days"
+    )
+    business_date = models.DateField(db_index=True)
+    is_closed = models.BooleanField(default=True, db_index=True)
+    cash_count = models.DecimalField(max_digits=18, decimal_places=2)
+    cash_difference_reason = models.CharField(max_length=500, blank=True, default="")
+    carryover_note = models.CharField(max_length=500, blank=True, default="")
+    closed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="business_days_closed",
+    )
+    closed_at = models.DateTimeField(auto_now_add=True)
+    reopened_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="business_days_reopened",
+    )
+    reopened_at = models.DateTimeField(null=True, blank=True)
+    reopen_reason = models.CharField(max_length=500, blank=True, default="")
+
+
 class Center(BranchScopedModel):
     class Meta:
         db_table = "centers"

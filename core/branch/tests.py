@@ -1,4 +1,7 @@
+import uuid
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
+from decimal import Decimal
 from threading import Barrier
 from unittest.mock import patch
 
@@ -13,14 +16,26 @@ from django.test import (
     TransactionTestCase,
     override_settings,
 )
+from django.urls import reverse
 
+from core.accounting.models import Account, SystemAccountMapping
 from core.accounts.models import Permission, Role, RolePermission, UserRole
 from core.accounts.permission_utils import sync_permissions
 from core.common.context import current_branch_id_var, current_user_var
 from core.common.upload_validation import detect_upload_mime, validate_kyc_file
 
+from .day_end_service import BranchDayService
 from .member_service import MemberService
-from .models import Branch, Center, Member, MemberKYC, UserBranchAccess
+from .models import (
+    Branch,
+    BranchClosedDay,
+    BranchHoliday,
+    Center,
+    Member,
+    MemberKYC,
+    Staff,
+    UserBranchAccess,
+)
 
 
 class BranchIsolationTests(TestCase):
@@ -44,6 +59,141 @@ class BranchIsolationTests(TestCase):
         )
         sync_permissions()
 
+
+class BranchDayEndTests(TestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(
+            name="Day-End Branch",
+            code="DAY-END",
+            business_date=date(2026, 1, 16),
+        )
+        self.user = get_user_model().objects.create_user(
+            username="day-end-manager",
+            password="day-end-test-password",
+            branch=self.branch,
+        )
+        manager_staff = Staff.unscoped.create(
+            branch=self.branch,
+            user=self.user,
+            full_name="Day-End Manager",
+            designation="Branch Manager",
+        )
+        self.branch.branch_manager = manager_staff
+        self.branch.save(update_fields=["branch_manager"])
+        self.request = RequestFactory().post("/branch/day-end/")
+        self.request.user = self.user
+        self.request.active_branch_id = None
+        self.user_token = current_user_var.set(self.user)
+        self.branch_token = current_branch_id_var.set(None)
+        self.addCleanup(current_user_var.reset, self.user_token)
+        self.addCleanup(current_branch_id_var.reset, self.branch_token)
+        cash = Account.objects.create(
+            code="DAY-CASH",
+            name="Day-end cash",
+            account_type=Account.ASSET,
+            normal_balance=Account.DEBIT,
+        )
+        SystemAccountMapping.objects.create(key="cash_in_hand", account=cash)
+
+    def test_day_end_checklist_blocks_unfinished_collection_sheets(self):
+        from core.collections.models import CollectionSheet
+
+        officer = Staff.unscoped.create(
+            branch=self.branch, full_name="Field Officer"
+        )
+        center = Center.unscoped.create(
+            branch=self.branch,
+            field_officer=officer,
+            name="Day-End Center",
+            code="DAY-END-CENTER",
+        )
+        CollectionSheet.unscoped.create(
+            branch=self.branch,
+            center=center,
+            field_officer=officer,
+            collection_date=self.branch.business_date,
+            idempotency_key=uuid.uuid4(),
+            generated_by=self.user,
+        )
+
+        with self.assertRaisesRegex(ValidationError, "not Posted"):
+            BranchDayService(self.request).close(
+                branch_id=self.branch.pk,
+                cash_count=Decimal("0.00"),
+            )
+
+    def test_close_skips_weekend_and_holiday_and_reopen_is_audited(self):
+        from core.audit.models import AuditLog
+
+        BranchHoliday.objects.create(
+            branch=self.branch, date=date(2026, 1, 19), name="Branch holiday"
+        )
+        closed_day = BranchDayService(self.request).close(
+            branch_id=self.branch.pk,
+            cash_count=Decimal("0.00"),
+        )
+        self.branch.refresh_from_db()
+        self.assertEqual(self.branch.business_date, date(2026, 1, 20))
+        self.assertTrue(closed_day.is_closed)
+
+        reopened = BranchDayService(self.request).reopen(
+            branch_id=self.branch.pk,
+            business_date=date(2026, 1, 16),
+            reason="Correct a day-end entry",
+        )
+        self.branch.refresh_from_db()
+        self.assertFalse(reopened.is_closed)
+        self.assertEqual(self.branch.business_date, date(2026, 1, 16))
+        self.assertTrue(
+            AuditLog.objects.filter(
+                action="ReopenBusinessDay",
+                entity_name="BranchClosedDay",
+                entity_id=str(closed_day.pk),
+            ).exists()
+        )
+
+    def test_closed_business_date_rejects_journal_creation(self):
+        from core.accounting.services import JournalService
+
+        BranchClosedDay.objects.create(
+            branch=self.branch,
+            business_date=self.branch.business_date,
+            cash_count=Decimal("0.00"),
+            closed_by=self.user,
+        )
+        with self.assertRaisesRegex(ValidationError, "[Bb]usiness date.*is closed"):
+            JournalService(self.request).create_entry(
+                branch_id=self.branch.pk,
+                journal_date=self.branch.business_date,
+                narration="Closed-day posting",
+            )
+
+    def test_day_end_routes_have_permissions_and_post_only_mutations(self):
+        sync_permissions()
+        self.client.force_login(self.user)
+        role = Role.objects.create(name="day-end-access-role")
+        UserRole.objects.create(user=self.user, role=role)
+        routes = {
+            "Module_Branch_day_end_checklist": [],
+            "Module_Branch_day_end_close": [],
+            "Module_Branch_day_end_reopen": [],
+            "Module_BranchHoliday_list": [],
+            "Module_BranchHoliday_create": [],
+            "Module_BranchHoliday_edit": [1],
+        }
+        for route_name, args in routes.items():
+            response = self.client.get(reverse(f"branch:{route_name}", args=args))
+            self.assertEqual(response.status_code, 403, route_name)
+        for route_name in (
+            "Module_Branch_day_end_close",
+            "Module_Branch_day_end_reopen",
+        ):
+            permission = Permission.objects.get(route_name=route_name)
+            RolePermission.objects.create(role=role, permission=permission)
+            response = self.client.get(reverse(f"branch:{route_name}"))
+            self.assertEqual(response.status_code, 405, route_name)
+
+class BranchIsolationRemainderTests(BranchIsolationTests):
     def grant_route(self, route_name):
         role = Role.objects.create(name=f"branch-test-role-{Role.objects.count()}")
         permission = Permission.objects.get(route_name=route_name)
