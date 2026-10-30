@@ -1045,7 +1045,9 @@ class CollectionRouteTests(CollectionFixture, TestCase):
         self.assertEqual(excel.status_code, 200)
         from openpyxl import load_workbook
 
-        workbook = load_workbook(BytesIO(excel.content), read_only=True)
+        workbook = load_workbook(
+            BytesIO(b"".join(excel.streaming_content)), read_only=True
+        )
         values = [cell for row in workbook.active.iter_rows(values_only=True) for cell in row]
         self.assertNotIn("Private Branch B Center", values)
         pdf = self.client.get(reverse("collections:Module_Collections_report_pdf"))

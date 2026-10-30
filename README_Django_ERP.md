@@ -68,7 +68,7 @@ The goal is to grow this platform into a **complete microfinance ERP**. An MFI r
 
 | Area | Status | Notes |
 |---|---|---|
-| Dashboard / home | Partial | Permission-aware, branch-scoped operational metric cards and quick-access shortcuts; metrics still need broader seeded-data coverage |
+| Dashboard / home | Implemented for current cards | Nine permission-aware, branch-scoped metrics; seeded-value and branch-scope tests cover every card |
 | Login and logout | Implemented | Custom login view, redirect to dashboard |
 | Global login-required redirect | Implemented | Anonymous users are sent to the login page |
 | Route-based role permission check | Implemented | Uses the current Django route name; 403 page when denied |
@@ -84,7 +84,7 @@ The goal is to grow this platform into a **complete microfinance ERP**. An MFI r
 | Loans | Done | Requested Phase 5 workflows and reports pass the full PostgreSQL suite; see [section 7.5](#75-loans) |
 | Collections | Done | Collection workflows, reports, exports, permissions, branch isolation, runtime immutability and maker-checker sheet reversal pass PostgreSQL tests |
 | Accounting | Partial | Chart of accounts, fiscal periods, typed system mappings, balanced journals, approval, posting/reversal, account reconciliation and trial balance |
-| Reports | Partial | Collections and loan classification reports exist; the complete catalog and common filtered/exported report framework remain |
+| Reports | Implemented for the listed catalog | 30 registered reports share branch-aware filters, jqGrid, totals, audited Excel/PDF exports and a permission-filtered index; other compliance reports remain |
 | Audit log | Partial | Append-only application audit foundation and log screen exist; database-level immutability and full event coverage remain |
 | Settings module | Planned | [Section 7.10](#710-settings) |
 
@@ -316,7 +316,7 @@ ERP_Project/
 │   ├── loans/                 # (planned)
 │   ├── collections/           # sheets, field entries, reconciliation and reports
 │   ├── accounting/            # chart of accounts, journal engine and reconciliation
-│   ├── reports/               # (planned)
+│   ├── reports/               # registered report definitions, filters and exports
 │   ├── audit/                 # append-only ORM audit log
 │   └── configuration/         # (planned) system, organization, business rules
 ├── templates/
@@ -601,7 +601,7 @@ python manage.py post_savings_interest \
 
 ### 7.7 Accounting
 
-**Status:** Partial. Account, period, typed system-account, journal, reconciliation and trial-balance workflows exist; automated subledger postings, fiscal-year close controls and drill-down reports remain.
+**Status:** Partial. Account, period, typed system-account, journal, reconciliation and trial-balance workflows exist; savings, loan and collection subledger postings are automated. Fiscal-year close controls and account-level drill-down remain.
 
 **Features**
 
@@ -644,19 +644,21 @@ python manage.py post_savings_interest \
 
 ### 7.8 Reports
 
-**Status:** Partial. Collection daily, performance, efficiency and variance reports and loan classification reports have on-screen and Excel/PDF exports. The complete member, savings, loan and financial report catalog, shared filters, server-side jqGrid, export auditing and export caps are not implemented.
+**Status:** Implemented for the catalog below. Each report is declared in a shared registry with columns, queryset, applicable filters, totals and a dedicated page/grid/Excel/PDF permission. The role-filtered `/reports/` index links only to reports the user may open. Grid data is server-paged and sorted; exports carry organization and filter labels and are audited. Without a background runner, Excel streams and Excel/PDF exports are capped at 5,000 rows with a filter-narrowing response.
 
-All reports support filters (branch, center, field officer, date range, status), on-screen view, and **export to Excel and PDF**. Large exports run as background jobs and are downloaded when ready.
+All report pages expose common branch, center, field-officer, date-range and status controls; definitions apply only the filters meaningful to their underlying data. Head-office users can consolidate across accessible branches.
 
 | Group | Reports |
 |---|---|
 | Member | Member list, new members, status summary, KYC pending or expired, member statement |
 | Savings | Account list, transaction register, balance summary, interest posted, dormant accounts |
-| Loan | Disbursement register, outstanding loans, overdue loans, portfolio at risk (PAR), loan aging, loan statement, write-offs, repayment schedule |
+| Loan | Disbursement register, outstanding loans, overdue loans, portfolio at risk (PAR), loan aging, loan statement, write-offs, repayment schedule, loan classification |
 | Collection | Collection sheet, daily collection summary, collector performance, collection efficiency, shortage and excess |
 | Financial | Trial balance, general ledger, cash book, income statement, balance sheet, receipts and payments |
 
-**Screens**: `/reports/members/`, `/reports/savings/`, `/reports/loans/`, `/reports/collections/`, `/reports/financial/`
+**Screens**: `/reports/` and `/reports/<report-slug>/`, with `/data/`, `/export/excel/` and `/export/pdf/` endpoints per registered report.
+
+**PostgreSQL evidence:** `test_financial_reports_balance_and_match_posted_ledger`, `test_loan_reports_match_disbursement_schedule_overdue_and_writeoff_data`, `test_collection_reports_share_the_posted_sheet_source_and_totals`, and the parameterized permission, branch-forgery and audited Excel/PDF tests for every registered report.
 
 ### 7.9 Audit
 
@@ -691,7 +693,7 @@ Changes to settings are audited with old and new values.
 
 ### 7.11 Additional recommended modules
 
-**Status:** Dashboard cards are permission-aware and branch-scoped; the metric test verifies the active-member count and branch isolation. Day-end closing, reopening, branch holidays and closed-business-date posting guards are implemented. The explicit concurrent day-close/posting race test remains outstanding. Centers, groups, staff and field-officer foundations are partial; other additions remain planned.
+**Status:** Dashboard cards are permission-aware and branch-scoped; seeded tests verify known values and cross-branch exclusion for all nine cards. Day-end closing, reopening, branch holidays and closed-business-date posting guards are implemented. `test_day_close_locks_business_date_before_concurrent_journal_posting` proves a concurrent posting waits on the branch business-date row lock and is rejected after close. Centers, groups, staff and field-officer foundations are partial; other additions remain planned.
 
 These were not in the original list but a working MFI needs them.
 
@@ -700,8 +702,8 @@ These were not in the original list but a working MFI needs them.
 | **Centers and Groups** | Partial: branch-scoped center and group records with meeting details |
 | **Staff and Field Officers** | Partial: branch-scoped staff records, user links and center assignments |
 | **Product management** | Savings products, loan products, fee and penalty definitions |
-| **Dashboard** | Permission-aware, branch-scoped cards: active members, savings balance, loans outstanding, today's collection, overdue amount, PAR 1/30/90 and pending approvals |
-| **Day-end closing** | Branch business date, checklist, holiday skipping, audited reopen and closed-date posting guards; direct close/post concurrency test remains outstanding |
+| **Dashboard** | Permission-aware, branch-scoped cards for active members, savings balance, loans outstanding, today's collection, overdue amount, PAR 1/30/90 and pending approvals; seeded metric and branch-scope tests cover each card |
+| **Day-end closing** | Branch business date, checklist, holiday skipping, audited reopen and closed-date posting guards; PostgreSQL row-lock race test proves concurrent close/post safety |
 | **Maker-checker approvals** | A generic approval queue for sensitive actions (large withdrawals, manual journals, write-offs, reversals) |
 | **Holiday calendar** | Skips non-working days when generating repayment schedules and collection sheets |
 | **Notifications** | Email and SMS reminders for upcoming installments, overdue loans, and approvals waiting |
@@ -796,6 +798,7 @@ PAR(x) = Outstanding principal of loans overdue more than x days
 ```
 
 PAR 1, PAR 30 and PAR 90 are shown on the dashboard.
+The shared loan report registry also includes portfolio-at-risk and loan-classification reports; seeded loan-report tests verify PAR thresholds against installment and outstanding-principal data.
 
 Loan classification uses days overdue. The table shows **example defaults only**. Align the thresholds and provisioning rates with the rules of your own regulator before going live.
 
@@ -889,6 +892,8 @@ Series per branch, per fiscal year, and per type, for example `JV-2026-BR01-0001
 | Bank | Ledger bank balance matches the statement after listing unreconciled items |
 | Trial balance | Total debits = total credits |
 
+The shared financial-report seed test checks that the balance sheet balances including the current-year result, and that income statement, cash book, receipts/payments, trial balance and savings balance summary reconcile to their posted ledger/subledger fixtures.
+
 ---
 
 ## 10. Workflows
@@ -966,6 +971,8 @@ The `next` value is accepted only when it points to this site. If the user's rol
 3. Cashier cash count equals the cash book balance, or the difference is explained.
 4. The manager closes the day. The branch business date moves forward and the date's transactions are locked.
 5. Reopening a closed day needs a special permission, a reason, and is audited.
+
+Close and posting serialize on the branch business-date row: a PostgreSQL concurrency test confirms that a journal post blocked behind a close observes the newly closed date and is rejected.
 
 ---
 
@@ -1205,7 +1212,9 @@ Member photos and KYC scans are personal data. They must never be reachable by g
 | Money type | `DecimalField(max_digits=18, decimal_places=2)` and Python `Decimal`. Never `float` |
 | Maker-checker | The user who creates a sensitive action cannot approve it; enforced in the service |
 | Period lock | Posting into a closed period or a closed business date is rejected |
+| Day-close/post concurrency | Close and journal posting lock the branch business-date row; a concurrent post resumes only after close and is rejected for the closed date |
 | Reconciliation alarms | Scheduled jobs compare loan and savings subledgers to the ledger and raise an alert on any difference |
+| Report exports | Each registered report has separate page, grid, Excel and PDF permissions; generated and capped exports are audited with the selected filters |
 
 ```python
 from django.db import transaction
@@ -1238,7 +1247,7 @@ The snippet is illustrative; model and helper names will follow the real apps.
 
 A user must never see or change another branch's data unless their role and branch access allow it. Django has no built-in global query filter, so isolation is built from a **branch-scoped manager that fails closed**.
 
-**Status**: Partial. Hierarchy moves, branch scoping and soft delete are implemented; broader isolation coverage remains.
+**Status**: Partial. Hierarchy moves, branch scoping and soft delete are implemented; broader module-wide isolation coverage remains. Every shared report validates requested branches against the user's accessible branches and scopes its queryset accordingly; parameterized tests reject forged branch ids on every report page and export. Head-office users receive consolidated data only across branches they can access.
 
 ### 12.1 Hierarchy
 
@@ -1367,7 +1376,7 @@ The application is **server-rendered**: Django returns HTML pages, and AJAX is u
 - URLs are lowercase with a trailing slash, grouped by module: `/branch/`, `/members/`, `/loans/applications/`.
 - Every route has a stable `name=` in the form `<module>_<resource>_<action>`. The name is the permission key ([section 11.3](#113-target-decision-flow-default-deny)).
 - List pages are normal routes. **Create and edit open in a popup**; detail pages are normal routes.
-- `GET` reads, `POST` changes. Delete, approve, post, reverse and export-with-side-effects are `POST` only.
+- `GET` reads, `POST` changes. Delete, approve, post and reverse are `POST` only. Report exports are read/download requests (`GET`), separately permissioned and audited; they do not mutate financial data.
 - Dates are ISO 8601 in JSON. Timestamps are UTC in the database (`USE_TZ = True`) and shown in the organization time zone. Business dates are plain dates.
 - Money is `Decimal` on the server. JSON carries it as a string with two decimals, so the browser never does financial arithmetic on floats.
 - Updates use a `version` field (optimistic locking). If the record changed meanwhile the server answers **409** and the UI asks the user to reload.
@@ -1413,6 +1422,8 @@ The browser shows `message` in the top-middle toast and writes `errors` next to 
 ```
 
 Grid requests send `page`, `rows`, `sidx`, `sord`, and `_search` with filters. Paging, sorting and filtering always happen on the server.
+
+Report grids return the same paging envelope with report rows and a `userdata` totals object. Report page, grid, Excel and PDF routes each require their own report permission.
 
 ### 14.3 Popup form workflow
 
@@ -1477,7 +1488,7 @@ The former iframe/window flow conflicted with the production `X-Frame-Options: D
 | Loans | `/loans/products/`, `/loans/products/add/`, `/loans/products/edit/<id>/`, `/loans/applications/`, `/loans/applications/add/`, `/loans/applications/<id>/submit/`, `/loans/applications/<id>/review/`, `/loans/applications/<id>/cancel/`, `/loans/applications/<id>/disburse/`, `/loans/disbursements/`, `/loans/portfolio/`, `/loans/repayments/`, `/loans/<id>/repay/`, `/loans/<id>/schedule/`, `/loans/<id>/reschedule/`, `/loans/<id>/settle/`, `/loans/<id>/write-off/`, `/loans/<id>/recovery/` |
 | Collections | `/collections/sheets/`, `/collections/sheets/generate/`, `/collections/sheets/<id>/`, `/collections/sheets/<id>/start/`, `/collections/sheets/<id>/items/<item-id>/`, `/collections/sheets/<id>/submit/`, `/collections/sheets/<id>/cancel/`, `/collections/sheets/<id>/print/`, `/collections/reconciliation/`, `/collections/reconciliation/<id>/reconcile/`, `/collections/reconciliation/<id>/post/`, `/collections/reports/daily/`, `/collections/reports/performance/`, `/collections/reports/efficiency/`, `/collections/reports/variances/`, `/collections/reports/export/excel/`, `/collections/reports/export/pdf/` |
 | Accounting | `/accounting/chart-of-accounts/`, `/accounting/journal-entries/`, `/accounting/journal-entries/post/<id>/`, `/accounting/reconciliation/`, `/accounting/trial-balance/`, `/accounting/fiscal-years/` |
-| Reports | `/reports/members/`, `/reports/savings/`, `/reports/loans/`, `/reports/collections/`, `/reports/financial/` (each with `?format=xlsx` or `?format=pdf`) |
+| Reports | `/reports/` permission-filtered index; `/reports/<report-slug>/`, `/reports/<report-slug>/data/`, and separate `/export/excel/` and `/export/pdf/` routes for each registered report |
 | Audit | `/audit/logs/`, `/audit/events/`, `/audit/trail/<entity>/<id>/`, `/audit/compliance/`, `/audit/dashboard/` |
 | Settings | `/settings/system/`, `/settings/organization/`, `/settings/business-rules/`, `/settings/preferences/` |
 
@@ -1756,6 +1767,8 @@ Text and background pairs must meet WCAG AA contrast.
 ### 16.6 jqGrid lists
 
 - Server-side paging, sorting and filtering; the response format is in [section 14.2](#142-standard-ajax-response).
+- Shared report grids use the report registry's columns and applicable filters, return totals in `userdata`, and enforce a report-specific grid permission.
+- Report Excel and PDF downloads use the same registered columns, queryset and totals as the grid; they include organization/filter labels, are audited, and reject exports above 5,000 rows with a clear filter-narrowing message.
 - `autoencode: true` so cell values are HTML-escaped.
 - Action buttons (Add, Edit, Delete) are drawn only when the user has that route permission.
 - After a popup save, the grid is reloaded in place.
@@ -1804,8 +1817,9 @@ The details users notice every day. These apply to every screen.
 | Forms | Popup for create and edit; required fields marked; helpful placeholder and hint text; trimmed input; numeric fields with correct step and range |
 | Destructive actions | Confirmation dialog naming the record ("Deactivate branch *Dhaka Main*?"); reason field where audit needs one |
 | Buttons | Loading state while working; disabled when the action is not allowed; primary action on the right |
-| Tables | Server-side paging, sorting, filtering; sticky header; row count; column chooser; empty state with a clear message; right-aligned numbers; export button where permitted |
-| Search | Debounced; shows what filters are active; one-click clear |
+| Tables | Server-side paging, sorting, filtering; sticky header; row count; column chooser; empty state with a clear message; right-aligned numbers; report totals and export controls only where permitted |
+| Search | Debounced; shows active report filters (branch, center, field officer, dates and status); one-click clear |
+| Reports | Permission-filtered report index; same definition drives on-screen columns/totals and Excel/PDF output; organization name and active filters appear on exports |
 | Status | Colored status tags with text (never color alone) |
 | Loading | Skeletons for tables and cards instead of blank screens |
 | Errors | Friendly message plus `traceId` for support; dedicated 403 and 404 pages |
@@ -2162,7 +2176,7 @@ Targets are **suggested starting points**; confirm them with load tests and with
 | **4. Savings** | Products, individual and group accounts, transactions, reversals, interest, statements, automatic postings | Partial |
 | **5. Loans** | Products, applications, eligibility, approvals, disbursement, schedules, repayments, penalties, rescheduling, settlement, write-off, recovery, PAR, statements, classification | Done — requested Phase 5 scope verified on PostgreSQL; see [section 7.5](#75-loans) |
 | **6. Collections** | Sheet generation, collection entry, cash reconciliation, atomic posting, collector performance, reports and maker-checker sheet reversal | Done — reversal and collection workflow tests pass on PostgreSQL |
-| **7. Reporting and control** | All report groups with Excel and PDF export, dashboards, day-end closing, notifications, bulk import, compliance reports | Partial — dashboard and day-end foundation implemented; full report catalog and close/post race test remain |
+| **7. Reporting and control** | All report groups with Excel and PDF export, dashboards, day-end closing, notifications, bulk import, compliance reports | Partial — requested 30-report catalog, dashboard metric coverage and day-close/post race control are implemented; notifications, bulk import and compliance reports remain |
 | **8. Hardening and go-live** | Independent security review and penetration test, load testing, user acceptance testing, data migration from the old system, training, production rollout | Planned |
 
 **Future ideas**: Django REST Framework API, mobile app for field officers with offline collection, mobile wallet and payment gateway integration, SMS gateway automation, credit bureau checks, fixed deposit and DPS products, micro-insurance, HR and payroll, fixed assets, multi-currency, member self-service portal, MFA for all staff.

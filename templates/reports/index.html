@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}Reports{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="form-page-heading">
+        <span class="eyebrow">MANAGEMENT INFORMATION</span>
+        <h1 class="h3">Reports</h1>
+    </div>
+    {% regroup reports by definition.group as report_groups %}
+    <div class="row g-3">
+        {% for group in report_groups %}
+        <section class="col-12" aria-label="{{ group.grouper }} reports">
+            <h2 class="h5">{{ group.grouper }}</h2>
+            <div class="list-group">
+                {% for item in group.list %}
+                <a class="list-group-item list-group-item-action" href="{{ item.url }}">
+                    {{ item.definition.title }}
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% empty %}
+        <div class="col-12">
+            <div class="alert alert-info mb-0">No reports are available for your role.</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

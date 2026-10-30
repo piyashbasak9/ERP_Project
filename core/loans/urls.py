@@ -1,5 +1,7 @@
 from django.urls import path
 
+from core.reports.views import report_excel, report_pdf, report_view
+
 from . import views
 
 app_name = "loans"
@@ -50,17 +52,20 @@ urlpatterns = [
     ),
     path(
         "classification/",
-        views.classification_report,
+        report_view,
+        {"report_slug": "classification"},
         name="Module_Loans_classification",
     ),
     path(
         "classification/export/excel/",
-        views.classification_export_excel,
+        report_excel,
+        {"report_slug": "classification"},
         name="Module_Loans_classification_excel",
     ),
     path(
         "classification/export/pdf/",
-        views.classification_export_pdf,
+        report_pdf,
+        {"report_slug": "classification"},
         name="Module_Loans_classification_pdf",
     ),
     path("applications/", views.application_list, name="Module_Loans_applications"),

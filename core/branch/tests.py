@@ -2,7 +2,8 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from decimal import Decimal
-from threading import Barrier
+from threading import Barrier, Event
+from time import monotonic, sleep
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -579,3 +580,146 @@ class ConcurrentBranchMoveTests(TransactionTestCase):
             first.hierarchy_path.count("/") + second.hierarchy_path.count("/"),
             5,
         )
+
+
+class ConcurrentDayEndPostingTests(TransactionTestCase):
+    def test_day_close_locks_business_date_before_concurrent_journal_posting(self):
+        from core.accounting.models import (
+            AccountingPeriod,
+            FiscalYear,
+            JournalEntry,
+        )
+        from core.accounting.services import JournalService
+        from core.branch.day_end_service import BranchDayService
+
+        branch = Branch.unscoped.create(
+            name="Concurrent Day-End Branch",
+            code="CONCURRENT-DAY-END",
+            business_date=date(2026, 1, 16),
+        )
+        user = get_user_model().objects.create_user(
+            username="concurrent-day-end-manager",
+            password="A-strong-test-password-2026",
+            branch=branch,
+        )
+        manager = Staff.unscoped.create(
+            branch=branch,
+            user=user,
+            full_name="Concurrent Day-End Manager",
+            designation="Branch Manager",
+        )
+        branch.branch_manager = manager
+        branch.save(update_fields=["branch_manager"])
+
+        cash = Account.objects.create(
+            code="CONCURRENT-DAY-END-CASH",
+            name="Concurrent day-end cash",
+            account_type=Account.ASSET,
+            normal_balance=Account.DEBIT,
+        )
+        expense = Account.objects.create(
+            code="CONCURRENT-DAY-END-EXPENSE",
+            name="Concurrent day-end expense",
+            account_type=Account.EXPENSE,
+            normal_balance=Account.DEBIT,
+        )
+        SystemAccountMapping.objects.create(key="cash_in_hand", account=cash)
+        fiscal_year = FiscalYear.objects.create(
+            name="Concurrent day-end FY",
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 12, 31),
+        )
+        AccountingPeriod.objects.create(
+            fiscal_year=fiscal_year,
+            number=1,
+            name="Concurrent day-end annual period",
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 12, 31),
+        )
+        request = RequestFactory().post("/accounting/journal-entries/")
+        request.user = user
+        request.active_branch_id = None
+        journal_service = JournalService(request)
+        entry = journal_service.create_entry(
+            branch_id=branch.pk,
+            journal_date=branch.business_date,
+            narration="Concurrent posting",
+        )
+        journal_service.add_line(
+            entry_id=entry.pk, account_id=cash.pk, debit=Decimal("100.00")
+        )
+        journal_service.add_line(
+            entry_id=entry.pk, account_id=expense.pk, credit=Decimal("100.00")
+        )
+
+        close_has_branch_lock = Event()
+        allow_close_to_continue = Event()
+        posting_started = Event()
+        backend_pids = {}
+        original_checklist = BranchDayService.checklist
+
+        def wait_in_checklist(service, *, branch_id, business_date=None):
+            close_has_branch_lock.set()
+            if not allow_close_to_continue.wait(timeout=10):
+                raise TimeoutError("The test did not release the day-end lock.")
+            return original_checklist(
+                service, branch_id=branch_id, business_date=business_date
+            )
+
+        def close_day():
+            close_old_connections()
+            try:
+                connection = connections["default"]
+                connection.ensure_connection()
+                backend_pids["close"] = connection.connection.get_backend_pid()
+                with patch.object(BranchDayService, "checklist", wait_in_checklist):
+                    return BranchDayService(request).close(
+                        branch_id=branch.pk,
+                        cash_count=Decimal("0.00"),
+                    )
+            finally:
+                connections.close_all()
+
+        def post_entry():
+            close_old_connections()
+            try:
+                connection = connections["default"]
+                connection.ensure_connection()
+                backend_pids["post"] = connection.connection.get_backend_pid()
+                posting_started.set()
+                try:
+                    JournalService(request).post(entry_id=entry.pk)
+                except ValidationError as error:
+                    return "rejected", str(error)
+                return "posted", ""
+            finally:
+                connections.close_all()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            close_future = executor.submit(close_day)
+            self.assertTrue(close_has_branch_lock.wait(timeout=10))
+            post_future = executor.submit(post_entry)
+            self.assertTrue(posting_started.wait(timeout=10))
+            blocked_until = monotonic() + 10
+            is_waiting_for_close_lock = False
+            while monotonic() < blocked_until:
+                with connections["default"].cursor() as cursor:
+                    cursor.execute(
+                        "SELECT %s = ANY(pg_blocking_pids(%s))",
+                        [backend_pids["close"], backend_pids["post"]],
+                    )
+                    is_waiting_for_close_lock = cursor.fetchone()[0]
+                if is_waiting_for_close_lock:
+                    break
+                sleep(0.02)
+            allow_close_to_continue.set()
+            close_future.result(timeout=10)
+            posting_outcome = post_future.result(timeout=10)
+
+        self.assertTrue(is_waiting_for_close_lock)
+        self.assertEqual(posting_outcome[0], "rejected")
+        self.assertIn("is closed", posting_outcome[1])
+        entry.refresh_from_db()
+        self.assertEqual(entry.status, JournalEntry.STATUS_DRAFT)
+        branch.refresh_from_db()
+        self.assertGreater(branch.business_date, date(2026, 1, 16))

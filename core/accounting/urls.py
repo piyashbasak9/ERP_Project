@@ -1,5 +1,7 @@
 from django.urls import path
 
+from core.reports.views import report_view
+
 from . import views
 
 app_name = 'accounting'
@@ -20,7 +22,12 @@ urlpatterns = [
     path('journal-entries/<int:pk>/', views.journal_entry_detail, name='Module_Accounting_journal_detail'),
     path('journal-entries/<int:pk>/post/', views.journal_entry_post, name='Module_Accounting_journal_post'),
     path('journal-entries/<int:pk>/reverse/', views.journal_entry_reverse, name='Module_Accounting_journal_reverse'),
-    path('trial-balance/', views.trial_balance, name='Module_Accounting_trial_balance'),
+    path(
+        'trial-balance/',
+        report_view,
+        {'report_slug': 'trial-balance'},
+        name='Module_Accounting_trial_balance',
+    ),
     path('reconciliation/', views.reconciliation_list, name='Module_Accounting_reconciliation_list'),
     path('reconciliation/add/', views.reconciliation_create, name='Module_Accounting_reconciliation_add'),
     path('reconciliation/<int:pk>/confirm/', views.reconciliation_confirm, name='Module_Accounting_reconciliation_confirm'),

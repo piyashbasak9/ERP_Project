@@ -1,10 +1,28 @@
+import uuid
+from datetime import date, timedelta
+from decimal import Decimal
+
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import get_resolver, reverse
+from django.utils import timezone
 
-from core.accounting.models import Account, SystemAccountMapping
-from core.branch.models import Branch, Member, UserBranchAccess
-from core.loans.models import LoanProduct
+from core.accounting.models import (
+    Account,
+    AccountingPeriod,
+    FiscalYear,
+    JournalEntry,
+    SystemAccountMapping,
+)
+from core.branch.models import (
+    Branch,
+    Center,
+    Member,
+    Staff,
+    UserBranchAccess,
+)
+from core.collections.models import CollectionSheet, CollectionSheetItem
+from core.loans.models import Loan, LoanApplication, LoanInstallment, LoanProduct
 from core.savings.models import SavingsProduct
 
 from .middleware import AUTHENTICATED_ONLY_ROUTE_NAMES, PUBLIC_ROUTE_NAMES
@@ -91,6 +109,252 @@ class RoutePermissionTests(TestCase):
         )
         self.assertContains(response, 'Active members')
         self.assertNotContains(response, 'Savings balance')
+
+    def _seed_dashboard_metrics(self, branch, *, suffix, members_count, savings_balance,
+                                loan_values, collection_amount, pending_count):
+        today = timezone.localdate()
+        center = Center.unscoped.create(
+            branch=branch,
+            name=f'Dashboard Center {suffix}',
+            code=f'DASH-CENTER-{suffix}',
+        )
+        staff = Staff.unscoped.create(
+            branch=branch,
+            full_name=f'Dashboard Officer {suffix}',
+        )
+        center.field_officer = staff
+        center.save(update_fields=['field_officer'])
+        members = [
+            Member.unscoped.create(
+                branch=branch,
+                center=center,
+                member_code=f'DASH-{suffix}-{index:03d}',
+                first_name=f'Member{index}',
+                last_name=suffix,
+                status=Member.STATUS_ACTIVE,
+            )
+            for index in range(members_count)
+        ]
+        savings_product, _ = SavingsProduct.objects.get_or_create(
+            code='DASH-SAV',
+            defaults={
+                'name': 'Dashboard savings',
+                'savings_type': SavingsProduct.TYPE_GENERAL,
+            },
+        )
+        from core.savings.models import SavingsAccount
+
+        account = SavingsAccount(
+            branch=branch,
+            product=savings_product,
+            member=members[0],
+            account_number=f'DASH-{suffix}-SAV',
+            status=SavingsAccount.STATUS_ACTIVE,
+            balance=Decimal(savings_balance),
+            opened_at=today,
+            created_by=self.user,
+        )
+        account._savings_update_authorized = True
+        account.save()
+
+        loan_product, _ = LoanProduct.objects.get_or_create(
+            code='DASH-LOAN',
+            defaults={
+                'name': 'Dashboard loan',
+                'interest_method': LoanProduct.METHOD_FLAT,
+                'annual_interest_rate': 0,
+                'min_amount': 1,
+                'max_amount': 100000,
+                'min_term': 1,
+                'max_term': 12,
+                'installment_frequency': LoanProduct.FREQUENCY_MONTHLY,
+            },
+        )
+        fiscal_year = FiscalYear.objects.create(
+            name=f'Dashboard FY {suffix}',
+            start_date=date(2020, 1, 1),
+            end_date=date(2100, 12, 31),
+        )
+        period = AccountingPeriod.objects.create(
+            fiscal_year=fiscal_year,
+            number=1,
+            name='Dashboard annual period',
+            start_date=date(2020, 1, 1),
+            end_date=date(2100, 12, 31),
+        )
+        journal = JournalEntry.unscoped.create(
+            branch=branch,
+            fiscal_year=fiscal_year,
+            period=period,
+            voucher_type='journal',
+            voucher_number=f'DASH-{suffix}',
+            journal_date=today,
+            narration='Dashboard fixture',
+            created_by=self.user,
+        )
+        for index, (principal, outstanding, overdue_amount, days_overdue) in enumerate(
+            loan_values
+        ):
+            application = LoanApplication.unscoped.create(
+                branch=branch,
+                member=members[index % len(members)],
+                product=loan_product,
+                requested_amount=Decimal(principal),
+                approved_amount=Decimal(principal),
+                term=1,
+                purpose='Dashboard fixture',
+                status=LoanApplication.STATUS_DISBURSED,
+                created_by=self.user,
+            )
+            loan = Loan.unscoped.create(
+                branch=branch,
+                application=application,
+                member=application.member,
+                product=loan_product,
+                principal=Decimal(principal),
+                outstanding_principal=Decimal(outstanding),
+                status=Loan.STATUS_ACTIVE,
+                disbursed_at=today,
+                disbursed_by=self.user,
+                journal_entry=journal,
+                idempotency_key=uuid.uuid4(),
+            )
+            LoanInstallment.objects.create(
+                loan=loan,
+                schedule_version=loan.schedule_version,
+                number=1,
+                due_date=today - timedelta(days=days_overdue),
+                principal_due=Decimal(overdue_amount),
+                interest_due=Decimal('0.00'),
+                fee_due=Decimal('0.00'),
+            )
+
+        sheet = CollectionSheet.unscoped.create(
+            branch=branch,
+            center=center,
+            field_officer=staff,
+            collection_date=today,
+            idempotency_key=uuid.uuid4(),
+            generated_by=self.user,
+        )
+        CollectionSheetItem.unscoped.create(
+            branch=branch,
+            sheet=sheet,
+            member=members[0],
+            collected_amount=Decimal(collection_amount),
+            savings_amount=Decimal('0.00'),
+        )
+        for status in (
+            CollectionSheet.STATUS_IN_PROGRESS,
+            CollectionSheet.STATUS_SUBMITTED,
+            CollectionSheet.STATUS_RECONCILED,
+            CollectionSheet.STATUS_POSTED,
+        ):
+            sheet.status = status
+            if status == CollectionSheet.STATUS_POSTED:
+                sheet.posted_by = self.user
+                sheet.posted_at = timezone.now()
+            sheet.save()
+        for index in range(pending_count):
+            LoanApplication.unscoped.create(
+                branch=branch,
+                member=members[index % len(members)],
+                product=loan_product,
+                requested_amount=Decimal('10.00'),
+                term=1,
+                purpose='Pending dashboard approval',
+                status=LoanApplication.STATUS_SUBMITTED,
+                created_by=self.user,
+            )
+
+    def test_dashboard_has_seeded_metrics_for_every_card(self):
+        UserBranchAccess.objects.filter(user=self.user).delete()
+        self._seed_dashboard_metrics(
+            self.branch,
+            suffix='ONE',
+            members_count=1,
+            savings_balance='250.00',
+            loan_values=[
+                ('1000.00', '500.00', '100.00', 5),
+                ('500.00', '250.00', '50.00', 40),
+                ('200.00', '100.00', '25.00', 100),
+            ],
+            collection_amount='150.00',
+            pending_count=1,
+        )
+        self.grant_routes(
+            'Module_Members_list',
+            'Module_Savings_balance_report',
+            'Module_Loans_portfolio',
+            'Module_Collections_report_daily',
+            'Module_Loans_applications',
+        )
+
+        response = self.client.get('/')
+
+        self.assertEqual(response.status_code, 200)
+        cards = {
+            card['key']: card['value']
+            for card in response.context['dashboard_cards']
+        }
+        self.assertEqual(
+            cards,
+            {
+                'active_members': '1',
+                'savings_balance': '250.00',
+                'loans_outstanding': '850.00',
+                'overdue_amount': '175.00',
+                'par_1': '50.00',
+                'par_30': '20.59',
+                'par_90': '5.88',
+                'todays_collection': '150.00',
+                'pending_approvals': '1',
+            },
+        )
+
+    def test_dashboard_metric_cards_exclude_other_branch_data(self):
+        UserBranchAccess.objects.filter(user=self.user).delete()
+        self._seed_dashboard_metrics(
+            self.branch,
+            suffix='ONE',
+            members_count=1,
+            savings_balance='250.00',
+            loan_values=[('1000.00', '500.00', '100.00', 5)],
+            collection_amount='150.00',
+            pending_count=1,
+        )
+        self._seed_dashboard_metrics(
+            self.other_branch,
+            suffix='TWO',
+            members_count=2,
+            savings_balance='800.00',
+            loan_values=[('2000.00', '1200.00', '400.00', 100)],
+            collection_amount='900.00',
+            pending_count=3,
+        )
+        self.grant_routes(
+            'Module_Members_list',
+            'Module_Savings_balance_report',
+            'Module_Loans_portfolio',
+            'Module_Collections_report_daily',
+            'Module_Loans_applications',
+        )
+
+        response = self.client.get('/')
+
+        cards = {
+            card['key']: card['value']
+            for card in response.context['dashboard_cards']
+        }
+        self.assertEqual(cards['active_members'], '1')
+        self.assertEqual(cards['savings_balance'], '250.00')
+        self.assertEqual(cards['loans_outstanding'], '500.00')
+        self.assertEqual(cards['overdue_amount'], '100.00')
+        self.assertEqual(cards['par_1'], '50.00')
+        self.assertEqual(cards['par_30'], '0.00')
+        self.assertEqual(cards['par_90'], '0.00')
+        self.assertEqual(cards['todays_collection'], '150.00')
+        self.assertEqual(cards['pending_approvals'], '1')
 
     def test_assigned_role_grants_only_its_active_route(self):
         self.grant_routes('Module_Auth_list_users')

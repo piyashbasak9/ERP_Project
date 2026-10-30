@@ -1,5 +1,7 @@
 from django.urls import path
 
+from core.reports.views import report_excel, report_pdf, report_view
+
 from . import views
 
 app_name = "collections"
@@ -68,32 +70,38 @@ urlpatterns = [
     ),
     path(
         "reports/daily/",
-        views.report_daily,
+        report_view,
+        {"report_slug": "collection-summary"},
         name="Module_Collections_report_daily",
     ),
     path(
         "reports/performance/",
-        views.report_performance,
+        report_view,
+        {"report_slug": "collector-performance"},
         name="Module_Collections_report_performance",
     ),
     path(
         "reports/efficiency/",
-        views.report_efficiency,
+        report_view,
+        {"report_slug": "collection-efficiency"},
         name="Module_Collections_report_efficiency",
     ),
     path(
         "reports/variances/",
-        views.report_variances,
+        report_view,
+        {"report_slug": "shortage-excess"},
         name="Module_Collections_report_variances",
     ),
     path(
         "reports/export/excel/",
-        views.report_excel,
+        report_excel,
+        {"report_slug": "collection-register"},
         name="Module_Collections_report_excel",
     ),
     path(
         "reports/export/pdf/",
-        views.report_pdf,
+        report_pdf,
+        {"report_slug": "collection-register"},
         name="Module_Collections_report_pdf",
     ),
 ]
