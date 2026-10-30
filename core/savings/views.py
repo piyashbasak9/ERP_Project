@@ -3,13 +3,16 @@ import csv
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Count, Q, Sum
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
+
+from core.common.popup import popup_json_response, render_popup_form
 
 from .forms import (
     SavingsAccountForm,
@@ -26,16 +29,61 @@ from .services import SavingsService
 
 
 def _show_form(request, template, form, title, *, status=200, **extra):
-    return render(
-        request,
-        template,
-        {'form': form, 'title': title, **extra},
-        status=status,
+    return render_popup_form(
+        request, template, {'form': form, 'title': title, **extra}, status=status
     )
 
 
 @require_GET
 def product_list(request):
+    if 'page' in request.GET or request.GET.get('format') == 'json':
+        products = SavingsProduct.objects.all()
+        status = request.GET.get('status', '').strip()
+        if status in {'active', 'inactive'}:
+            products = products.filter(is_active=status == 'active')
+        search = request.GET.get('searchString', request.GET.get('q', '')).strip()
+        if search:
+            products = products.filter(
+                Q(code__icontains=search) | Q(name__icontains=search)
+            )
+        order_fields = {
+            'code': 'code',
+            'name': 'name',
+            'annual_interest_rate': 'annual_interest_rate',
+            'is_active': 'is_active',
+        }
+        order = order_fields.get(request.GET.get('sidx', 'code'), 'code')
+        if request.GET.get('sord', 'asc').lower() == 'desc':
+            order = f'-{order}'
+        page_obj = Paginator(products.order_by(order), 25).get_page(
+            request.GET.get('page', 1)
+        )
+        return JsonResponse({
+            'page': page_obj.number,
+            'total': page_obj.paginator.num_pages,
+            'records': page_obj.paginator.count,
+            'rows': [
+                {
+                    'id': product.pk,
+                    'code': product.code,
+                    'name': product.name,
+                    'type': product.get_savings_type_display(),
+                    'rate': str(product.annual_interest_rate),
+                    'method': product.get_interest_method_display(),
+                    'frequency': product.get_posting_frequency_display(),
+                    'opening_minimum': f'{product.minimum_opening_balance:.2f}',
+                    'minimum': f'{product.minimum_balance:.2f}',
+                    'withdrawal_limit': (
+                        f'{product.maximum_withdrawal:.2f}'
+                        if product.maximum_withdrawal is not None
+                        else '—'
+                    ),
+                    'fee': f'{product.fee_amount:.2f}',
+                    'active': product.is_active,
+                }
+                for product in page_obj.object_list
+            ],
+        })
     products = SavingsProduct.objects.order_by('code')
     return render(request, 'savings/product_list.html', {'products': products})
 
@@ -43,6 +91,7 @@ def product_list(request):
 @require_http_methods(['GET', 'POST'])
 def product_form(request, pk=None):
     instance = get_object_or_404(SavingsProduct, pk=pk) if pk else None
+    old_values = _savings_product_values(instance) if instance else None
     form = SavingsProductForm(request.POST or None, instance=instance)
     if request.method == 'POST' and form.is_valid():
         product = form.save()
@@ -52,20 +101,76 @@ def product_form(request, pk=None):
             'Update' if instance else 'Create',
             'SavingsProduct',
             product.pk,
-            new_values={'code': product.code, 'name': product.name, 'is_active': product.is_active},
+            old_values=old_values,
+            new_values=_savings_product_values(product),
         )
         message = 'Savings product saved.'
+        response = popup_json_response(
+            request, message=message, data={'id': product.pk}
+        )
+        if response is not None:
+            return response
         messages.success(request, message)
-        if request.GET.get('popup') == '1':
-            return render(request, 'popup_complete.html', {'completion_message': message})
         return redirect('savings:Module_Savings_products')
-    return _show_form(
+    return render_popup_form(
         request,
         'savings/product_form.html',
-        form,
-        'Edit savings product' if instance else 'Create savings product',
+        {
+            'form': form,
+            'title': 'Edit savings product' if instance else 'Create savings product',
+        },
         status=400 if request.method == 'POST' else 200,
     )
+
+
+def _savings_product_values(product):
+    if product is None:
+        return None
+    return {
+        field.name: (
+            str(getattr(product, field.attname))
+            if getattr(product, field.attname) is not None
+            else None
+        )
+        for field in product._meta.concrete_fields
+    }
+
+
+@require_POST
+def product_activate(request, pk):
+    return _set_savings_product_active(request, pk, True)
+
+
+@require_POST
+def product_deactivate(request, pk):
+    return _set_savings_product_active(request, pk, False)
+
+
+@transaction.atomic
+def _set_savings_product_active(request, pk, active):
+    product = get_object_or_404(SavingsProduct.objects.select_for_update(), pk=pk)
+    old_values = _savings_product_values(product)
+    if product.is_active != active:
+        product.is_active = active
+        product.save(update_fields=['is_active'])
+        from core.audit.services import log_action
+
+        log_action(
+            'Activate' if active else 'Deactivate',
+            'SavingsProduct',
+            product.pk,
+            old_values=old_values,
+            new_values=_savings_product_values(product),
+        )
+    message = 'Savings product activated.' if active else 'Savings product deactivated.'
+    if request.headers.get('Accept') == 'application/json':
+        return JsonResponse({
+            'success': True,
+            'message': message,
+            'data': {'id': product.pk},
+        })
+    messages.success(request, message)
+    return redirect('savings:Module_Savings_products')
 
 
 @require_GET
@@ -171,18 +276,19 @@ def account_create(request):
         except ValidationError as exc:
             form.add_error(None, exc)
         else:
+            message = f'Savings account {account.account_number} opened.'
+            response = popup_json_response(
+                request, message=message, data={'id': account.pk}
+            )
+            if response is not None:
+                return response
             if not getattr(account, '_idempotent_replay', False):
-                messages.success(request, f'Savings account {account.account_number} opened.')
-            if request.GET.get('popup') == '1':
-                return render(request, 'popup_complete.html', {
-                    'completion_message': f'Savings account {account.account_number} opened.',
-                })
+                messages.success(request, message)
             return redirect('savings:Module_Savings_accounts')
-    return _show_form(
+    return render_popup_form(
         request,
         'savings/account_form.html',
-        form,
-        'Open savings account',
+        {'form': form, 'title': 'Open savings account'},
         status=400 if request.method == 'POST' else 200,
     )
 
@@ -262,9 +368,10 @@ def _render_transaction_form(request, operation, data):
                 message = 'Withdrawal submitted for approval.'
             else:
                 message = f'{operation.title()} posted successfully.'
+            response = popup_json_response(request, message=message)
+            if response is not None:
+                return response
             messages.success(request, message)
-            if request.GET.get('popup') == '1':
-                return render(request, 'popup_complete.html', {'completion_message': message})
             return redirect('savings:Module_Savings_transactions')
     return _show_form(
         request,
@@ -302,9 +409,10 @@ def _charge_fee(request, data):
             form.add_error(None, exc)
         else:
             message = 'Savings fee posted successfully.'
+            response = popup_json_response(request, message=message)
+            if response is not None:
+                return response
             messages.success(request, message)
-            if request.GET.get('popup') == '1':
-                return render(request, 'popup_complete.html', {'completion_message': message})
             return redirect('savings:Module_Savings_transactions')
     return _show_form(
         request,
@@ -341,11 +449,11 @@ def _interest_post(request, data):
         except ValidationError as exc:
             form.add_error(None, exc)
         else:
-            messages.success(request, f'Interest of {result.amount} posted.')
-            if request.GET.get('popup') == '1':
-                return render(request, 'popup_complete.html', {
-                    'completion_message': f'Interest of {result.amount} posted.',
-                })
+            message = f'Interest of {result.amount} posted.'
+            response = popup_json_response(request, message=message)
+            if response is not None:
+                return response
+            messages.success(request, message)
             return redirect('savings:Module_Savings_transactions')
     return _show_form(
         request,
@@ -486,11 +594,13 @@ def reverse_transaction(request, pk):
         except ValidationError as exc:
             form.add_error(None, exc)
         else:
+            message = f'Transaction reversed as {reversal.pk}.'
+            response = popup_json_response(
+                request, message=message, data={'id': reversal.pk}
+            )
+            if response is not None:
+                return response
             messages.success(request, 'Savings transaction reversed successfully.')
-            if request.GET.get('popup') == '1':
-                return render(request, 'popup_complete.html', {
-                    'completion_message': f'Transaction reversed as {reversal.pk}.',
-                })
             return redirect('savings:Module_Savings_transactions')
     return _show_form(
         request,
@@ -565,11 +675,11 @@ def reject_withdrawal(request, pk):
         except ValidationError as exc:
             form.add_error(None, exc)
         else:
-            messages.success(request, 'Withdrawal rejected; reserved funds were released.')
-            if request.GET.get('popup') == '1':
-                return render(request, 'popup_complete.html', {
-                    'completion_message': 'Withdrawal rejected.',
-                })
+            message = 'Withdrawal rejected; reserved funds were released.'
+            response = popup_json_response(request, message=message)
+            if response is not None:
+                return response
+            messages.success(request, message)
             return redirect('savings:Module_Savings_transactions')
     return _show_form(
         request,

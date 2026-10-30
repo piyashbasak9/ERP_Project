@@ -4,6 +4,8 @@ from django.http import JsonResponse
 from django.urls import Resolver404, resolve
 from django.utils.http import url_has_allowed_host_and_scheme
 
+from core.common.popup import popup_json_response
+
 PUBLIC_ROUTE_NAMES = {
     'Module_Auth_login',
     'health',
@@ -29,6 +31,13 @@ class GlobalLoginRequiredMiddleware:
 
         if not request.user.is_authenticated and not is_public_route and not is_static_path:
             if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                response = popup_json_response(
+                    request,
+                    message='Your session has expired. Please sign in again.',
+                    status=401,
+                )
+                if response is not None:
+                    return response
                 return JsonResponse({
                     'success': False,
                     'message': 'Your session has expired. Please sign in again.',

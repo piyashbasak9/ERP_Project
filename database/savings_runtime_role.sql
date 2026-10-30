@@ -37,6 +37,16 @@ GRANT SELECT, INSERT, UPDATE ON TABLE loan_products TO erp_runtime;
 GRANT SELECT, INSERT ON TABLE
     loan_applications, loans, loan_installments, loan_payments,
     loan_penalties, loan_recoveries TO erp_runtime;
+GRANT SELECT, INSERT ON TABLE
+    loan_guarantors, loan_collateral, loan_status_history,
+    loan_reschedules TO erp_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE
+    loan_approval_tiers, loan_par_buckets TO erp_runtime;
+REVOKE UPDATE, DELETE ON TABLE
+    loan_guarantors, loan_collateral, loan_status_history,
+    loan_reschedules FROM erp_runtime;
+REVOKE DELETE ON TABLE
+    loan_approval_tiers, loan_par_buckets FROM erp_runtime;
 
 REVOKE UPDATE, DELETE ON TABLE loan_applications FROM erp_runtime;
 GRANT UPDATE (
@@ -47,8 +57,8 @@ GRANT UPDATE (
 REVOKE UPDATE, DELETE ON TABLE loans FROM erp_runtime;
 GRANT UPDATE (
     outstanding_principal, written_off_amount, recovered_amount, status,
-    schedule_version, accrued_penalty, closed_at, write_off_idempotency_key,
-    write_off_reason
+    schedule_version, effective_annual_rate, accrued_penalty, closed_at,
+    write_off_idempotency_key, write_off_reason
 ) ON TABLE loans TO erp_runtime;
 
 REVOKE UPDATE, DELETE ON TABLE loan_installments FROM erp_runtime;
@@ -61,6 +71,5 @@ REVOKE UPDATE, DELETE ON TABLE loan_recoveries FROM erp_runtime;
 
 REVOKE UPDATE, DELETE ON TABLE loan_penalties FROM erp_runtime;
 GRANT UPDATE (amount, paid) ON TABLE loan_penalties TO erp_runtime;
-GRANT SELECT, INSERT ON TABLE loan_reschedules TO erp_runtime;
 
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO erp_runtime;

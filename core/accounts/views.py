@@ -8,6 +8,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.views.decorators.http import require_POST
 
+from core.common.popup import popup_json_response, render_popup_form
+
 from .forms import RoleForm, UserCreationForm, UserEditForm
 from .models import Role, UserRole
 
@@ -25,17 +27,21 @@ def create_role(request):
                 messages.error(request, str(exc))
             else:
                 role_name = role.get('name') if isinstance(role, dict) else getattr(role, 'name', str(role))
+                role_id = role.get('id') if isinstance(role, dict) else role.pk
+                response = popup_json_response(
+                    request,
+                    message=f"'{role_name}' created successfully.",
+                    data={'id': role_id},
+                )
+                if response is not None:
+                    return response
                 messages.success(request, f"✅ '{role_name}' Successfully created!")
-                if request.GET.get('popup') == '1':
-                    return render(request, 'popup_complete.html', {
-                        'completion_message': f"'{role_name}' created successfully.",
-                    })
                 return redirect('accounts:Module_Auth_list_roles')
         else:
             messages.error(request, 'Form is not valid.')
     else:
         form = RoleForm()
-    return render(request, 'accounts/create_role.html', {'form': form})
+    return render_popup_form(request, 'accounts/create_role.html', {'form': form})
 
 
 def edit_role(request, pk):
@@ -55,16 +61,21 @@ def edit_role(request, pk):
             except (IntegrityError, ValueError) as exc:
                 messages.error(request, f'Could not update role: {exc}')
             else:
+                response = popup_json_response(
+                    request,
+                    message=f"'{role_data.get('name')}' updated successfully.",
+                    data={'id': role.pk},
+                )
+                if response is not None:
+                    return response
                 messages.success(request, f"✅ '{role_data.get('name')}' updated successfully!")
-                if request.GET.get('popup') == '1':
-                    return render(request, 'popup_complete.html', {
-                        'completion_message': f"'{role_data.get('name')}' updated successfully.",
-                    })
                 return redirect('accounts:Module_Auth_list_roles')
     else:
         form = RoleForm(role_id=pk)
 
-    return render(request, 'accounts/edit_role.html', {'form': form, 'role': role_data})
+    return render_popup_form(
+        request, 'accounts/edit_role.html', {'form': form, 'role': role_data}
+    )
 
 
 def create_user(request):
@@ -83,18 +94,21 @@ def create_user(request):
                         defaults={'role_id': int(role_id)},
                     )
             completion_message = f"'{user.username}' created successfully."
+            response = popup_json_response(
+                request,
+                message=completion_message,
+                data={'id': user.pk},
+            )
+            if response is not None:
+                return response
             if role_id:
                 messages.success(request, f"'{user.username}' created and role assigned successfully!")
             else:
                 messages.warning(request, 'User created, but no role assigned.')
 
-            if request.GET.get('popup') == '1':
-                return render(request, 'popup_complete.html', {
-                    'completion_message': completion_message,
-                })
             return redirect('accounts:Module_Auth_list_users')
         messages.error(request, 'Form is not valid.')
-    return render(request, 'accounts/create_user.html', {'form': form})
+    return render_popup_form(request, 'accounts/create_user.html', {'form': form})
 
 
 def list_roles(request):
@@ -141,12 +155,17 @@ def edit_user(request, pk):
             else:
                 UserRole.objects.filter(user=user).delete()
         messages.success(request, f"'{user.username}' updated successfully!")
-        if request.GET.get('popup') == '1':
-            return render(request, 'popup_complete.html', {
-                'completion_message': f"'{user.username}' updated successfully.",
-            })
+        response = popup_json_response(
+            request,
+            message=f"'{user.username}' updated successfully.",
+            data={'id': user.pk},
+        )
+        if response is not None:
+            return response
         return redirect('accounts:Module_Auth_list_users')
-    return render(request, 'accounts/edit_user.html', {'user': user, 'form': form})
+    return render_popup_form(
+        request, 'accounts/edit_user.html', {'user': user, 'form': form}
+    )
 
 
 @require_POST

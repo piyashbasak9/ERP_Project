@@ -1,29 +1,103 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}Loan products{% endblock %}
 {% block content %}
 <div class="container-fluid py-3">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
         <div><span class="eyebrow">LOANS</span><h1 class="h3 mb-0">Loan products</h1></div>
-        <a class="btn btn-primary" href="{% url 'loans:Module_Loans_product_add' %}">Create product</a>
+        <a class="btn btn-primary" href="{% url 'loans:Module_Loans_product_add' %}?popup=1" data-popup data-popup-title="Create loan product">Create product</a>
     </div>
-    <div class="table-responsive card">
-        <table class="table table-hover align-middle mb-0">
-            <thead class="table-dark"><tr><th>Code</th><th>Name</th><th>Method</th><th>Rate %</th><th>Amount range</th><th>Term range</th><th>Frequency</th><th>Status</th><th></th></tr></thead>
-            <tbody>
-                {% for product in products %}
-                <tr>
-                    <td>{{ product.code }}</td><td>{{ product.name }}</td>
-                    <td>{{ product.get_interest_method_display }}</td>
-                    <td>{{ product.annual_interest_rate|floatformat:4 }}</td>
-                    <td>{{ product.min_amount|floatformat:2 }} – {{ product.max_amount|floatformat:2 }}</td>
-                    <td>{{ product.min_term }}–{{ product.max_term }}</td>
-                    <td>{{ product.get_installment_frequency_display }}</td>
-                    <td>{% if product.is_active %}Active{% else %}Inactive{% endif %}</td>
-                    <td><a class="btn btn-sm btn-outline-primary" href="{% url 'loans:Module_Loans_product_edit' product.pk %}">Edit</a></td>
-                </tr>
-                {% empty %}<tr><td colspan="9" class="text-center text-muted py-4">No loan products configured.</td></tr>{% endfor %}
-            </tbody>
-        </table>
+    <div class="card card-body mb-3">
+        <div class="row g-2">
+            <div class="col-md-6"><label class="form-label" for="loan-product-search">Search</label><input id="loan-product-search" class="form-control" type="search"></div>
+            <div class="col-md-3"><label class="form-label" for="loan-product-status">Status</label><select id="loan-product-status" class="form-select"><option value="">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
+        </div>
     </div>
+    <table id="loanProductGrid"></table>
+    <div id="loanProductPager"></div>
 </div>
+{% endblock %}
+{% block extra_js %}
+<script>
+$(function () {
+    const grid = $("#loanProductGrid");
+    const editUrl = "{% url 'loans:Module_Loans_product_edit' 0 %}".replace("/0/", "/");
+    const activateUrl = "{% url 'loans:Module_Loans_product_activate' 0 %}".replace("/0/activate/", "/");
+    const deactivateUrl = "{% url 'loans:Module_Loans_product_deactivate' 0 %}".replace("/0/deactivate/", "/");
+    const csrf = () => {
+        const part = document.cookie.split("; ").find(item => item.startsWith("csrftoken="));
+        return part ? decodeURIComponent(part.slice("csrftoken=".length)) : "";
+    };
+    grid.jqGrid({
+        url: "{% url 'loans:Module_Loans_products' %}",
+        datatype: "json",
+        mtype: "GET",
+        postData: {format: "json"},
+        colModel: [
+            {name: "id", key: true, hidden: true},
+            {label: "Code", name: "code", width: 90},
+            {label: "Name", name: "name", width: 170},
+            {label: "Method", name: "method", width: 110},
+            {label: "Rate %", name: "rate", width: 85, align: "right"},
+            {label: "Amount range", name: "amount", width: 145},
+            {label: "Term range", name: "term", width: 90},
+            {label: "Frequency", name: "frequency", width: 100},
+            {label: "Status", name: "active", width: 75, formatter: value => value ? "Active" : "Inactive"},
+            {
+                label: "Actions", name: "actions", sortable: false, width: 220,
+                formatter: (value, options, row) => {
+                    const id = Number(row.id);
+                    const edit = document.createElement("a");
+                    edit.className = "btn btn-sm btn-outline-primary me-1";
+                    edit.href = editUrl + id + "/?popup=1";
+                    edit.dataset.popup = "";
+                    edit.dataset.popupTitle = "Edit loan product";
+                    edit.textContent = "Edit";
+                    const toggle = document.createElement("button");
+                    toggle.className = "btn btn-sm " + (row.active ? "btn-outline-danger" : "btn-outline-success");
+                    toggle.type = "button";
+                    toggle.dataset.toggleProduct = row.active ? deactivateUrl + id + "/deactivate/": activateUrl + id + "/activate/";
+                    toggle.textContent = row.active ? "Deactivate" : "Activate";
+                    const wrapper = document.createElement("span");
+                    wrapper.append(edit, toggle);
+                    return wrapper.outerHTML;
+                }
+            }
+        ],
+        jsonReader: {root: "rows", page: "page", total: "total", records: "records", repeatitems: false, id: "id"},
+        pager: "#loanProductPager",
+        rowNum: 25,
+        rowList: [25, 50, 100],
+        viewrecords: true,
+        autowidth: true,
+        height: "auto",
+        autoencode: true,
+        sortname: "code",
+        sortorder: "asc"
+    });
+    const refresh = () => grid.jqGrid("setGridParam", {
+        page: 1,
+        postData: {
+            format: "json",
+            searchString: $("#loan-product-search").val(),
+            status: $("#loan-product-status").val()
+        }
+    }).trigger("reloadGrid");
+    $("#loan-product-search").on("input", refresh);
+    $("#loan-product-status").on("change", refresh);
+    $("#loanProductGrid").on("click", "[data-toggle-product]", async function () {
+        const response = await fetch(this.dataset.toggleProduct, {
+            method: "POST",
+            headers: {"X-CSRFToken": csrf(), "Accept": "application/json"}
+        });
+        const body = await response.json();
+        if (!response.ok) {
+            window.notify.error(body.message || "Product status could not be changed.");
+            return;
+        }
+        window.notify.success(body.message);
+        grid.trigger("reloadGrid");
+    });
+});
+</script>
 {% endblock %}

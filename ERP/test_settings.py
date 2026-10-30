@@ -2,15 +2,33 @@
 
 import os
 
+from django.core.exceptions import ImproperlyConfigured
+
 from .settings import *
 
 SECURE_SSL_REDIRECT = False
 
+REQUIRED_TEST_DATABASE_VARIABLES = (
+    "TEST_DB_NAME",
+    "TEST_DB_USER",
+    "TEST_DB_PASSWORD",
+)
+missing_test_database_variables = [
+    variable
+    for variable in REQUIRED_TEST_DATABASE_VARIABLES
+    if not os.environ.get(variable)
+]
+if missing_test_database_variables:
+    raise ImproperlyConfigured(
+        "Missing required PostgreSQL test database environment variable(s): "
+        + ", ".join(missing_test_database_variables)
+    )
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.environ.get("TEST_DB_NAME", "erp_test"),
-        "USER": os.environ.get("TEST_DB_USER", "erp_test_runner"),
+        "NAME": os.environ["TEST_DB_NAME"],
+        "USER": os.environ["TEST_DB_USER"],
         "PASSWORD": os.environ["TEST_DB_PASSWORD"],
         "HOST": os.environ.get("TEST_DB_HOST", "localhost"),
         "PORT": os.environ.get("TEST_DB_PORT", "5432"),

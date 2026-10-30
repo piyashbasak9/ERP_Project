@@ -1,4 +1,5 @@
 {% load static rbac %}
+{% if request.GET.popup != '1' or request.META.HTTP_X_REQUESTED_WITH != 'XMLHttpRequest' %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -14,6 +15,8 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body{% if request.GET.popup == '1' %} class="popup-mode"{% endif %}>
+{% endif %}
+{% if request.GET.popup != '1' or request.META.HTTP_X_REQUESTED_WITH != 'XMLHttpRequest' %}
     {% if request.GET.popup != '1' %}
     <nav class="navbar navbar-expand-lg navbar-dark navbar-custom sticky-top">
         <div class="container-fluid px-3 px-lg-4">
@@ -116,6 +119,29 @@
                         </ul>
                     </li>
                     {% endif %}
+                    {% can 'Module_Loans_products' as can_loan_products %}
+                    {% can 'Module_Loans_applications' as can_loan_applications %}
+                    {% can 'Module_Loans_disbursements' as can_loan_disbursements %}
+                    {% can 'Module_Loans_portfolio' as can_loan_portfolio %}
+                    {% can 'Module_Loans_classification' as can_loan_classification %}
+                    {% can 'Module_Loans_approval_tiers' as can_loan_approval_tiers %}
+                    {% can 'Module_Loans_par_buckets' as can_loan_par_buckets %}
+                    {% if can_loan_products or can_loan_applications or can_loan_disbursements or can_loan_portfolio or can_loan_classification or can_loan_approval_tiers or can_loan_par_buckets %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-cash-coin me-1" aria-hidden="true"></i>Loans
+                        </a>
+                        <ul class="dropdown-menu">
+                            {% if can_loan_products %}<li><a class="dropdown-item" href="{% url 'loans:Module_Loans_products' %}">Products</a></li>{% endif %}
+                            {% if can_loan_applications %}<li><a class="dropdown-item" href="{% url 'loans:Module_Loans_applications' %}">Applications</a></li>{% endif %}
+                            {% if can_loan_disbursements %}<li><a class="dropdown-item" href="{% url 'loans:Module_Loans_disbursements' %}">Disbursements</a></li>{% endif %}
+                            {% if can_loan_portfolio %}<li><a class="dropdown-item" href="{% url 'loans:Module_Loans_portfolio' %}">Portfolio</a></li>{% endif %}
+                            {% if can_loan_classification %}<li><a class="dropdown-item" href="{% url 'loans:Module_Loans_classification' %}">Classification report</a></li>{% endif %}
+                            {% if can_loan_approval_tiers %}<li><a class="dropdown-item" href="{% url 'loans:Module_Loans_approval_tiers' %}">Approval tiers</a></li>{% endif %}
+                            {% if can_loan_par_buckets %}<li><a class="dropdown-item" href="{% url 'loans:Module_Loans_par_buckets' %}">PAR buckets</a></li>{% endif %}
+                        </ul>
+                    </li>
+                    {% endif %}
                 </ul>
                 <ul class="navbar-nav align-items-lg-center">
                     {% if user.is_authenticated %}
@@ -159,7 +185,9 @@
     {% include 'partials/toasts.html' %}
 
     <main class="main-content">
+{% endif %}
         {% block content %}{% endblock %}
+{% if request.GET.popup != '1' or request.META.HTTP_X_REQUESTED_WITH != 'XMLHttpRequest' %}
     </main>
 
     {% if request.GET.popup != '1' %}
@@ -182,3 +210,4 @@
     {% block extra_js %}{% endblock %}
 </body>
 </html>
+{% endif %}

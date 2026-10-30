@@ -110,6 +110,33 @@ class SavingsProduct(models.Model):
     def __str__(self):
         return f'{self.code} — {self.name}'
 
+    def snapshot_terms(self):
+        names = (
+            'code',
+            'name',
+            'savings_type',
+            'annual_interest_rate',
+            'interest_method',
+            'posting_frequency',
+            'minimum_opening_balance',
+            'minimum_balance',
+            'dormant_after_days',
+            'pays_interest_when_dormant',
+            'fee_amount',
+            'maximum_withdrawal',
+            'withdrawal_approval_threshold',
+            'withholding_tax_rate',
+            'allow_withdrawals',
+        )
+        return {
+            name: (
+                str(getattr(self, name))
+                if isinstance(getattr(self, name), Decimal)
+                else getattr(self, name)
+            )
+            for name in names
+        }
+
 
 class SavingsAccountQuerySet(BranchScopedQuerySet):
     protected_fields = {
@@ -199,6 +226,7 @@ class SavingsAccount(BranchScopedModel):
     unscoped = models.Manager.from_queryset(SavingsAccountQuerySet)()
 
     product = models.ForeignKey(SavingsProduct, on_delete=models.PROTECT, related_name='accounts')
+    terms_snapshot = models.JSONField(default=dict, blank=True)
     member = models.ForeignKey(
         'branch.Member',
         on_delete=models.PROTECT,
@@ -263,6 +291,14 @@ class SavingsAccount(BranchScopedModel):
     @property
     def available_balance(self):
         return self.balance - self.reserved_balance
+
+    def product_term(self, name):
+        value = self.terms_snapshot.get(name)
+        if value is None and name not in self.terms_snapshot:
+            value = getattr(self.product, name)
+        if isinstance(self.product._meta.get_field(name), models.DecimalField):
+            return Decimal(value) if value is not None else None
+        return value
 
     def __str__(self):
         return self.account_number

@@ -75,13 +75,13 @@ The goal is to grow this platform into a **complete microfinance ERP**. An MFI r
 | User management | Implemented | Create, list, edit, delete, assign a role |
 | Role and permission management | Implemented | Role create, edit, list; URL checklist built from the Django URL resolver |
 | Branch management | Partial | Create, list, search, edit, soft delete, jqGrid listing, hierarchy, branch switcher and explicit user branch grants |
-| Popup (modal) create and edit | Implemented | `data-popup` attribute, `popup.js`, `popup_complete.html` |
+| Popup (modal) create and edit | Partial | Shared AJAX-fragment Bootstrap modal replaces iframe/window popup behavior; current PostgreSQL verification is pending |
 | Success and error toasts (top middle, 5 seconds) | Implemented | Shared Django message partial and notification script; verify in browser before production |
 | Security hardening | Partial | Phase 1 hardening is in place: env-based secrets, PostgreSQL config, middleware protections, default-deny routing, private media root, and Django-only ORM migrations |
 | Organization hierarchy (head office, region, area, branch) | Partial | Hierarchy, branch scoping and organization screens exist; full isolation coverage and controls remain |
 | Members | Partial | Member profiles, branch-prefixed codes, status history, photo/KYC handling, verification and scoped downloads |
-| Savings | Partial | [Section 7.4](#74-savings) |
-| Loans | Partial | [Section 7.5](#75-loans) |
+| Savings | Partial | Product CRUD, status controls and term snapshots are implemented; current PostgreSQL verification is pending; see [section 7.4](#74-savings) |
+| Loans | Partial | Phase 5 workflows and reports have implementation and test coverage in progress; current PostgreSQL verification is pending; see [section 7.5](#75-loans) |
 | Collections | Planned | [Section 7.6](#76-collections) |
 | Accounting | Partial | Chart of accounts, fiscal periods, typed system mappings, balanced journals, approval, posting/reversal, account reconciliation and trial balance |
 | Reports | Planned | [Section 7](#7-functional-modules) |
@@ -414,7 +414,7 @@ Each module lists its features, key rules, and main screens. All create and edit
 
 ### 7.3 Members
 
-**Status:** Partial. Implemented: general and compulsory products, individual and group accounts, member-wise group contributions, deposits, withdrawals, product fees, maker-checker withdrawal approval, reversals, daily/minimum-balance interest with withholding tax, automatic ledger postings, account statements, and a branch-scoped balance report. Interest can be run with the management command below; scheduling it is an operations responsibility. Planned: automated scheduling, dormant-account lifecycle controls, and optional transfers.
+**Status:** Partial. Implemented: member profiles, branch-prefixed codes, member status history, photo/KYC handling, verification and scoped downloads. Full lifecycle and isolation coverage remain.
 
 **Features**
 
@@ -457,7 +457,7 @@ Each module lists its features, key rules, and main screens. All create and edit
 
 ### 7.4 Savings
 
-**Status:** Partial. Implemented: general and compulsory products, individual and group accounts, member-wise group contributions, deposits, withdrawals, product fees, maker-checker withdrawal approval, reversals, daily/minimum-balance interest with withholding tax, automatic ledger postings, account statements, and a branch-scoped balance report. Interest can be run with the management command below; scheduling it is an operations responsibility. Planned: automated scheduling, dormant-account lifecycle controls, and optional transfers.
+**Status:** Partial. Implemented: general and compulsory products, product list/create/edit/status management, account term snapshots, individual and group accounts, member-wise group contributions, deposits, withdrawals, product fees, maker-checker withdrawal approval, reversals, daily/minimum-balance interest with withholding tax, automatic ledger postings, account statements, and a branch-scoped balance report. Product changes do not alter terms already copied to accounts. Automated scheduling and optional transfers remain outside the completed scope.
 
 **Features**
 
@@ -466,7 +466,7 @@ Each module lists its features, key rules, and main screens. All create and edit
 - Generate savings reports and statements
 - **Interest calculation** where the product pays interest
 
-**Savings products** define: name, type (general, compulsory, and later fixed deposit or DPS), interest rate, interest method, posting frequency, minimum opening balance, minimum balance, withdrawal limits, and fees.
+**Savings products** define: name, code, type (general or compulsory), annual interest rate and method, posting frequency, minimum opening balance and balance, withdrawal limits, fees, optional withholding tax, dormancy days, dormant-account interest treatment, and active status.
 
 **Accounts**
 
@@ -497,11 +497,24 @@ python manage.py post_savings_interest \
 
 ### 7.5 Loans
 
-**Status: Partial.** Phase 5 implements products, application eligibility and maker-checker review, disbursement and ledger posting, flat and declining schedules, repayments, penalties, rescheduling, early settlement, write-off and recovery, PAR 1/30/90, branch-scoped screens and route permissions. The PostgreSQL test suite must pass before this phase can be accepted.
+**Status: Partial.** Phase 5 screens, policies, accounting paths and test cases have been added. The required current PostgreSQL run has not completed in this environment because `TEST_DB_PASSWORD` is unavailable to workspace commands; do not treat these test names as passing evidence until the suite is rerun.
 
-**Known scope limits:** disbursement to a member savings account, guarantors/collateral, fixed penalties, configurable interest waiver/settlement policies, role/branch approval tiers, separate insurance-fee accounting, overpayment refunds or savings transfers, loan classification/provisioning reports, and full loan history/statement screens are not implemented. Overpayments are rejected unless a destination is explicitly implemented; current processing/insurance charges are deducted and mapped to Fee Income.
-
-**Status:** Planned.
+| Phase 5 requirement | Status | Test evidence (added; PostgreSQL run pending) |
+|---|---|---|
+| Loan statement/history: versioned schedules, payments, penalties, balances, PAR, status history, printable and branch-scoped | Partial | `test_statement_history_and_classification_exports_render`; `test_branch_scope_blocks_forged_ids_for_loan_lifecycle_routes`; `test_every_loan_route_is_denied_without_its_permission` |
+| Guarantors/collateral, product-required validation and audit | Partial | `test_guarantor_and_collateral_requirements_are_validated_and_audited` |
+| Approval tiers by role and branch level; maker cannot approve | Partial | `test_approval_tier_limits_are_applied_by_role_and_branch_level`; `test_maker_checker_disbursement_posts_once_with_balanced_ledger` |
+| Refund or savings-transfer overpayment handling, atomic/idempotent and ledger-posted | Partial | `test_overpayment_refund_is_atomic_idempotent_and_ledger_posted`; `test_overpayment_savings_transfer_posts_once_to_member_account` |
+| Per-product full, pro-rata and waived-interest settlement; waiver permission, reason and audit | Partial | `test_full_and_pro_rata_settlement_policies_are_distinct`; `test_early_settlement_waives_unearned_interest_and_posts_fee`; `test_early_settlement_waiver_requires_permission_and_reason` |
+| Separate insurance-fee accounting mapping | Partial | `test_disbursement_fees_are_deducted_and_credited_separately` |
+| Configurable PAR classification/provisioning with Excel and PDF export | Partial | `test_classification_report_uses_configured_par_buckets`; `test_statement_history_and_classification_exports_render` |
+| Branch A cannot list/open/approve/disburse/repay/reschedule/settle/write off/recover/view branch B loans with forged IDs | Partial | `test_branch_scope_blocks_forged_ids_for_loan_lifecycle_routes` |
+| Golden flat and declining schedules balance principal plus interest | Partial | `test_flat_golden_schedule_rounds_last_installment_and_balances`; `test_declining_golden_schedule_has_expected_first_installment_and_totals` |
+| Concurrent repayment retry, idempotency and ledger balance | Partial | `test_concurrent_retries_of_full_repayment_create_one_payment`; `test_repayment_is_locked_atomic_idempotent_and_posts` |
+| Penalty assessment/cap/allocation and reschedule version integrity | Partial | `test_late_penalty_is_assessed_capped_and_allocated_before_interest`; `test_reschedule_preserves_old_version_and_is_idempotent` |
+| Disbursement/repayment fee ledger balance and rollback on missing mapping | Partial | `test_disbursement_fees_are_deducted_and_credited_separately`; `test_missing_mapping_rolls_back_disbursement_and_draft_journal` |
+| Runtime-role immutability for posted loan payments/history | Partial | `test_runtime_role_cannot_update_or_delete_posted_loan_payments` |
+| All loan routes permission-checked; state-changing actions reject GET | Partial | `test_every_loan_route_is_denied_without_its_permission`; `test_get_is_not_allowed_on_state_transition_routes` |
 
 **Features**
 
@@ -511,7 +524,14 @@ python manage.py post_savings_interest \
 - Loan status monitoring
 - Interest and principal calculation
 
-**Loan products** define: name, interest method (flat or declining balance), annual interest rate, min and max amount, min and max term, installment frequency (weekly, bi-weekly, monthly), processing fee, insurance fee, grace period, penalty rules, required compulsory savings, and loan cycle limits.
+**Loan products** define: name, code, interest method (flat or declining balance), annual interest rate, min and max amount, min and max term, installment frequency (weekly, bi-weekly, monthly), processing and insurance fees, grace period, penalty rules, required compulsory savings, loan cycle limits, maximum concurrent loans, guarantor/collateral requirements, overpayment policy and settlement policy. New loans snapshot product terms at disbursement.
+
+| Earlier delivery requirement | Status | Test evidence (added; PostgreSQL run pending) |
+|---|---|---|
+| One AJAX-fragment Bootstrap modal for Branch, Users, Roles, Members, Savings, Loans and Accounting | Partial | `test_ajax_popup_routes_return_fragments_and_keep_frame_denial`; `test_popup_routes_require_login_and_route_permission`; `test_popup_save_uses_standard_json_envelope_for_success_and_validation` |
+| Savings Product list/create/edit/status actions, validation, audit and role permissions | Partial | `test_savings_product_crud_status_filter_and_audit`; `test_savings_routes_are_denied_without_explicit_permission` |
+| Loan Product list/create/edit/status actions, validation, audit and role permissions | Partial | `test_loan_product_crud_status_filter_and_audit`; `test_every_loan_route_is_denied_without_its_permission` |
+| Existing savings accounts and loans retain copied product terms after product edits | Partial | `test_existing_account_keeps_product_terms_after_product_change`; `test_disbursed_loan_keeps_the_product_terms_copied_at_creation` |
 
 **Application**
 
@@ -1399,21 +1419,21 @@ sequenceDiagram
     participant B as Browser (popup.js)
     participant S as Server
     U->>B: Click Add or Edit (data-popup)
-    B->>S: GET /branch/add/ (AJAX)
+    B->>S: AJAX GET fragment URL with popup=1 and XMLHttpRequest
     S-->>B: Form HTML fragment
     B-->>U: Show modal
     U->>B: Submit
-    B->>S: POST with CSRF header
+    B->>S: AJAX POST with CSRF header
     alt valid
-        S-->>B: 200 JSON success and message
+        S-->>B: 200 JSON envelope (success, message, data, errors, request_id)
         B-->>U: Close modal, toast, reload grid page
     else invalid
-        S-->>B: 400 JSON errors
-        B-->>U: Keep modal open, show field errors, toast
+        S-->>B: 400 JSON envelope with field errors
+        B-->>U: Keep modal open and show field errors
     end
 ```
 
-Today `popup_complete.html` shows the completion message after a popup save. The target is the JSON flow above plus the toast, so the grid refreshes in place without a full page reload.
+The former iframe/window flow conflicted with the production `X-Frame-Options: DENY` policy and used a legacy HTML completion page. The shared implementation now uses only an AJAX HTML fragment in an in-page Bootstrap modal; it does not use an iframe or `window.open`. Production frame protections remain enabled.
 
 ### 14.4 Status codes and browser behaviour
 
@@ -1609,16 +1629,16 @@ All create and edit forms open in a popup so the page behind them keeps its plac
 
 | Behaviour | Standard |
 |---|---|
-| Opening | An element with `data-popup="<url>"` loads the form by AJAX into a centered Bootstrap modal; the first field is focused |
+| Opening | An element with `data-popup` loads its `href` as an AJAX HTML fragment into a centered Bootstrap modal; the first field is focused |
 | Closing | Close button, Cancel and `Esc`. The dark backdrop does **not** close a form with unsaved changes |
 | Unsaved changes | Closing a dirty form asks for confirmation |
 | Submit | The button shows a spinner and is disabled while saving, so double clicks cannot create duplicates |
 | Validation | HTML5 checks plus server errors written beside each field (`is-invalid`, `invalid-feedback`) |
-| On success | Modal closes, a success toast appears, the grid reloads and keeps its page, sort and filters |
+| On success | Modal closes, a success toast appears, and the grid reloads |
 | On failure | Modal stays open with the data intact and an error toast is shown |
 | Layout | `modal-dialog-scrollable`: long forms scroll inside the body while the title and buttons stay visible |
 | Small screens | `modal-fullscreen-sm-down` |
-| Security | The fragment endpoint enforces the same route permission as a full page and includes `{% csrf_token %}` |
+| Security | The fragment endpoint enforces login and the same route permission as a full page; saves send the CSRF header. `X-Frame-Options: DENY` stays enabled |
 
 Mostly read-only screens (member profile, loan statement) are normal pages. Only create and edit use popups.
 
@@ -2137,7 +2157,7 @@ Targets are **suggested starting points**; confirm them with load tests and with
 | **2. Organization and members** | Branch hierarchy and isolation, centers and groups, staff, members with photo and KYC, audit module | Partial |
 | **3. Accounting core** | Chart of accounts, fiscal years and periods, journal engine with double entry, voucher numbering, trial balance, system account mappings | Partial |
 | **4. Savings** | Products, individual and group accounts, transactions, reversals, interest, statements, automatic postings | Partial |
-| **5. Loans** | Products, applications, eligibility, approvals, disbursement, schedules, repayments, penalties, rescheduling, settlement, write-off, recovery, PAR | Partial — implementation added; PostgreSQL execution and remaining scope limits are outstanding |
+| **5. Loans** | Products, applications, eligibility, approvals, disbursement, schedules, repayments, penalties, rescheduling, settlement, write-off, recovery, PAR, statements, classification | Partial — Phase 5 tests are added but the current PostgreSQL run is pending test-role credentials; see [section 7.5](#75-loans) |
 | **6. Collections** | Sheet generation, collection entry, cash reconciliation, posting, collector performance | Planned |
 | **7. Reporting and control** | All report groups with Excel and PDF export, dashboards, day-end closing, notifications, bulk import, compliance reports | Planned |
 | **8. Hardening and go-live** | Independent security review and penetration test, load testing, user acceptance testing, data migration from the old system, training, production rollout | Planned |

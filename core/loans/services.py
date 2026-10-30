@@ -13,20 +13,27 @@ from core.accounting.models import (
     VoucherSequence,
 )
 from core.accounting.services import JournalService
+from core.accounts.models import Permission, UserRole
 from core.audit.services import log_action
 from core.branch.models import Branch, Member, MemberKYC
 from core.savings.models import SavingsAccount, SavingsProduct
+from core.savings.services import SavingsService
 
 from .models import (
     Loan,
     LoanApplication,
+    LoanApprovalTier,
+    LoanCollateral,
+    LoanGuarantor,
     LoanHoliday,
     LoanInstallment,
+    LoanPARBucket,
     LoanPayment,
     LoanPenalty,
     LoanProduct,
     LoanRecovery,
     LoanReschedule,
+    LoanStatusHistory,
 )
 
 CENT = Decimal("0.01")
@@ -228,7 +235,19 @@ class LoanService:
         return cycle_number
 
     @transaction.atomic
-    def create_application(self, *, branch_id, member_id, product_id, amount, term, purpose, idempotency_key):
+    def create_application(
+        self,
+        *,
+        branch_id,
+        member_id,
+        product_id,
+        amount,
+        term,
+        purpose,
+        idempotency_key,
+        guarantor_id=None,
+        collateral=None,
+    ):
         amount = money(amount)
         try:
             idempotency_key = uuid.UUID(str(idempotency_key))
@@ -247,6 +266,14 @@ class LoanService:
                 or replay.requested_amount != amount
                 or replay.term != term
                 or replay.purpose != purpose.strip()
+                or (replay.guarantors.first().member_id if replay.guarantors.exists() else None)
+                != guarantor_id
+                or (
+                    replay.collateral.first().description
+                    if replay.collateral.exists()
+                    else None
+                )
+                != (collateral or {}).get("description")
             ):
                 raise ValidationError(
                     {"idempotency_key": "This key was already used with different details."}
@@ -280,6 +307,52 @@ class LoanService:
         )
         application.full_clean()
         application.save()
+        if product.requires_guarantor and not guarantor_id:
+            raise ValidationError({"guarantor": "This product requires a guarantor."})
+        if product.requires_collateral and not collateral:
+            raise ValidationError({"collateral": "This product requires collateral."})
+        if guarantor_id:
+            guarantor = Member.unscoped.select_for_update().filter(
+                pk=guarantor_id, branch=branch, status=Member.STATUS_ACTIVE
+            ).first()
+            if guarantor is None:
+                raise ValidationError({"guarantor": "Select an active member in this branch."})
+            record = LoanGuarantor(
+                application=application,
+                member=guarantor,
+                created_by=user,
+            )
+            record.full_clean()
+            record.save()
+            log_action(
+                "AddGuarantor",
+                "LoanApplication",
+                application.pk,
+                new_values={"guarantor_member_id": guarantor.pk},
+                branch_id=branch.pk,
+            )
+        if collateral:
+            record = LoanCollateral(
+                application=application,
+                description=collateral["description"].strip(),
+                reference_number=collateral.get("reference_number", "").strip(),
+                estimated_value=money(collateral["estimated_value"]),
+                created_by=user,
+            )
+            record.full_clean()
+            record.save()
+            log_action(
+                "AddCollateral",
+                "LoanApplication",
+                application.pk,
+                new_values={
+                    "description": record.description,
+                    "reference_number": record.reference_number,
+                    "estimated_value": str(record.estimated_value),
+                },
+                branch_id=branch.pk,
+            )
+        self._record_status(application=application, old_status="", new_status=application.status)
         log_action("Create", "LoanApplication", application.pk, new_values={"status": application.status, "amount": str(amount)}, branch_id=branch.pk)
         return application
 
@@ -297,6 +370,11 @@ class LoanService:
         application.submitted_at = timezone.now()
         application.full_clean()
         application.save(update_fields=["status", "submitted_at", "updated_at"])
+        self._record_status(
+            application=application,
+            old_status=old_status,
+            new_status=application.status,
+        )
         log_action("Submit", "LoanApplication", application.pk, old_values={"status": old_status}, new_values={"status": application.status}, branch_id=application.branch_id)
         return application
 
@@ -331,9 +409,14 @@ class LoanService:
                 raise ValidationError(
                     {"approved_amount": "Approved amount is outside this product's limits."}
                 )
+            if application.product.requires_guarantor and not application.guarantors.exists():
+                raise ValidationError({"guarantor": "A guarantor is required before approval."})
+            if application.product.requires_collateral and not application.collateral.exists():
+                raise ValidationError({"collateral": "Collateral is required before approval."})
+            self._validate_approval_tier(application, amount)
             limit = application.product.approval_limit
             if limit is not None and amount > limit and not self.request.user.is_superuser:
-                raise ValidationError("This amount exceeds the configured approver limit.")
+                raise ValidationError("This amount exceeds the configured product approval limit.")
         old_status = application.status
         application.status = decision
         application.approved_amount = amount
@@ -341,6 +424,12 @@ class LoanService:
         application.review_comment = comment.strip()
         application.reviewed_at = timezone.now()
         application.save(update_fields=["status", "approved_amount", "reviewed_by", "review_comment", "reviewed_at", "updated_at"])
+        self._record_status(
+            application=application,
+            old_status=old_status,
+            new_status=decision,
+            reason=comment.strip(),
+        )
         log_action(decision.title(), "LoanApplication", application.pk, old_values={"status": old_status}, new_values={"status": decision, "approved_amount": str(amount) if amount else None}, remarks=comment, branch_id=application.branch_id)
         return application
 
@@ -385,11 +474,8 @@ class LoanService:
             lines=[
                 ("loans_to_members", amount, ZERO, "Loan principal"),
                 (channel, ZERO, amount - total_fees, "Net disbursement"),
-                *(
-                    [("fee_income", ZERO, total_fees, "Processing and insurance fees")]
-                    if total_fees
-                    else []
-                ),
+                ("fee_income", ZERO, processing, "Processing fee"),
+                ("insurance_income", ZERO, insurance, "Insurance fee"),
             ],
         )
         loan = Loan(
@@ -397,6 +483,7 @@ class LoanService:
             application=application,
             member=application.member,
             product=product,
+            terms_snapshot=product.snapshot_terms(),
             principal=amount,
             outstanding_principal=amount,
             disbursed_at=disbursement_date,
@@ -414,12 +501,12 @@ class LoanService:
         )
         schedule = generate_schedule(
             amount,
-            product.annual_interest_rate / 100,
+            loan.product_term("annual_interest_rate") / 100,
             application.term,
-            product.installment_frequency,
-            product.interest_method,
+            loan.product_term("installment_frequency"),
+            loan.product_term("interest_method"),
             first_due_date,
-            holiday_convention=product.holiday_convention,
+            holiday_convention=loan.product_term("holiday_convention"),
         )
         loan.effective_annual_rate = schedule["effective_annual_rate"]
         loan.save(update_fields=["effective_annual_rate"])
@@ -435,6 +522,12 @@ class LoanService:
         )
         application.status = LoanApplication.STATUS_DISBURSED
         application.save(update_fields=["status", "updated_at"])
+        self._record_status(
+            application=application,
+            old_status=LoanApplication.STATUS_APPROVED,
+            new_status=application.status,
+        )
+        self._record_status(loan=loan, old_status="", new_status=loan.status)
         log_action("Disburse", "Loan", loan.pk, new_values={"principal": str(amount), "journal_entry_id": journal.pk}, branch_id=loan.branch_id)
         return loan
 
@@ -481,10 +574,27 @@ class LoanService:
         penalty_due = self._assess_penalties(loan, installments, payment_date)
         outstanding_fees = sum((row.fee_remaining for row in installments), ZERO)
         outstanding_interest = sum((row.interest_remaining for row in installments), ZERO)
-        if amount > loan.outstanding_principal + outstanding_fees + outstanding_interest + penalty_due:
-            raise ValidationError({"amount": "Overpayment is not allowed; refund or savings transfer must be handled separately."})
+        total_due = (
+            loan.outstanding_principal
+            + outstanding_fees
+            + outstanding_interest
+            + penalty_due
+        )
+        overpayment = max(ZERO, amount - total_due)
+        savings_account = None
+        if overpayment and loan.product_term("overpayment_policy") == LoanProduct.OVERPAYMENT_SAVINGS:
+            savings_account = SavingsAccount.unscoped.select_for_update().filter(
+                member_id=loan.member_id,
+                branch_id=loan.branch_id,
+                status=SavingsAccount.STATUS_ACTIVE,
+            ).order_by("pk").first()
+            if savings_account is None:
+                raise ValidationError({
+                    "amount": "The borrower has no active savings account for the overpayment transfer."
+                })
+        allocation_amount = amount - overpayment
 
-        remaining = amount
+        remaining = allocation_amount
         penalty_paid = min(remaining, penalty_due)
         remaining -= penalty_paid
         fee_paid = self._apply_to_installments(
@@ -511,19 +621,8 @@ class LoanService:
             include_future=include_future,
         )
         remaining -= principal_paid
-        advance_amount = ZERO
         if remaining:
-            advance_amount = self._apply_to_installments(
-                installments,
-                remaining,
-                "principal",
-                include_future=True,
-                as_of_date=payment_date,
-            )
-            principal_paid += advance_amount
-            remaining -= advance_amount
-        if remaining:
-            raise ValidationError("Payment exceeds outstanding loan obligations.")
+            raise ValidationError("The payment could not be allocated to loan obligations.")
         for row in installments:
             row.save(update_fields=["principal_paid", "interest_paid", "fee_paid"])
         self._apply_penalty_payment(installments, penalty_paid)
@@ -536,6 +635,7 @@ class LoanService:
         loan.outstanding_principal -= principal_paid
         if loan.outstanding_principal < ZERO:
             raise ValidationError("Payment would overpay principal.")
+        previous_status = loan.status
         if loan.outstanding_principal == ZERO and all(row.interest_remaining == ZERO and row.fee_remaining == ZERO for row in installments):
             loan.status = Loan.STATUS_CLOSED
             loan.closed_at = payment_date
@@ -555,9 +655,52 @@ class LoanService:
                         ("penalty_income", penalty_paid, "Penalty"),
                         ("fee_income", fee_paid, "Fees"),
                     ]
+                )
+                + (
+                    [("loan_overpayment_payable", overpayment, "Overpayment received")]
+                    if overpayment
+                    else []
                 ),
             ],
         )
+        refund_journal = None
+        savings_transaction = None
+        if overpayment:
+            if loan.product_term("overpayment_policy") == LoanProduct.OVERPAYMENT_REFUND:
+                refund_journal = self._journal(
+                    branch_id=loan.branch_id,
+                    journal_date=payment_date,
+                    narration=f"Refund loan overpayment for {loan.member.member_code}",
+                    idempotency_key=key,
+                    source_type="loan_overpayment_refund",
+                    source_id=key,
+                    lines=[
+                        ("loan_overpayment_payable", overpayment, ZERO, "Refund payable"),
+                        (payment_channel, ZERO, overpayment, "Refund to borrower"),
+                    ],
+                )
+            elif savings_account is not None:
+                savings_journal = self._journal(
+                    branch_id=loan.branch_id,
+                    journal_date=payment_date,
+                    narration=f"Transfer loan overpayment to savings for {loan.member.member_code}",
+                    idempotency_key=key,
+                    source_type="loan_overpayment_savings",
+                    source_id=key,
+                    lines=[
+                        ("loan_overpayment_payable", overpayment, ZERO, "Overpayment clearing"),
+                        ("member_savings", ZERO, overpayment, "Member savings transfer"),
+                    ],
+                )
+                savings_transaction = SavingsService(self.request).credit_from_loan_repayment(
+                    account_id=savings_account.pk,
+                    member_id=loan.member_id,
+                    amount=overpayment,
+                    transaction_date=payment_date,
+                    idempotency_key=uuid.uuid5(key, f"loan-overpayment-{loan.pk}"),
+                    journal_entry=savings_journal,
+                    narration=f"Loan {loan.pk} overpayment transfer",
+                )
         loan.save(
             update_fields=[
                 "outstanding_principal",
@@ -566,6 +709,12 @@ class LoanService:
                 "closed_at",
             ]
         )
+        if loan.status != previous_status:
+            self._record_status(
+                loan=loan,
+                old_status=previous_status,
+                new_status=loan.status,
+            )
         payment = LoanPayment.objects.create(
             branch_id=loan.branch_id,
             loan=loan,
@@ -575,10 +724,13 @@ class LoanService:
             fee_paid=fee_paid,
             interest_paid=interest_paid,
             principal_paid=principal_paid,
-            advance_amount=advance_amount,
+            advance_amount=ZERO,
+            overpayment_amount=overpayment,
             payment_date=payment_date,
             idempotency_key=key,
             journal_entry=journal,
+            refund_journal_entry=refund_journal,
+            savings_transaction=savings_transaction,
             created_by=self.request.user,
         )
         log_action("Repay", "LoanPayment", payment.pk, new_values={"amount": str(amount), "principal": str(principal_paid), "interest": str(interest_paid), "penalty": str(penalty_paid)}, branch_id=loan.branch_id)
@@ -606,7 +758,12 @@ class LoanService:
             return loan
         if loan.status != Loan.STATUS_ACTIVE:
             raise ValidationError("Only active loans can be rescheduled.")
-        if not reason.strip() or not loan.product.min_term <= new_term <= loan.product.max_term:
+        if (
+            not reason.strip()
+            or not loan.product_term("min_term")
+            <= new_term
+            <= loan.product_term("max_term")
+        ):
             raise ValidationError("A valid product term and reason are required.")
         if loan.disbursed_by_id == self.request.user.pk:
             raise ValidationError("The disburser cannot approve a reschedule.")
@@ -632,12 +789,12 @@ class LoanService:
         next_version = old_version + 1
         schedule = generate_schedule(
             loan.outstanding_principal,
-            loan.product.annual_interest_rate / 100,
+            loan.product_term("annual_interest_rate") / 100,
             new_term,
-            loan.product.installment_frequency,
-            loan.product.interest_method,
-            _next_due_date(effective_date, loan.product.installment_frequency),
-            holiday_convention=loan.product.holiday_convention,
+            loan.product_term("installment_frequency"),
+            loan.product_term("interest_method"),
+            _next_due_date(effective_date, loan.product_term("installment_frequency")),
+            holiday_convention=loan.product_term("holiday_convention"),
         )
         if schedule["installments"] and accrued_interest:
             schedule["installments"][0]["interest_due"] += accrued_interest
@@ -681,7 +838,7 @@ class LoanService:
         return loan
 
     @transaction.atomic
-    def settle(self, *, loan_id, settlement_date, idempotency_key):
+    def settle(self, *, loan_id, settlement_date, idempotency_key, reason=""):
         loan = Loan.objects.select_for_update().filter(pk=loan_id).first()
         if loan is None:
             raise Loan.DoesNotExist
@@ -702,27 +859,51 @@ class LoanService:
             .filter(loan=loan, schedule_version=loan.schedule_version)
             .order_by("due_date")
         )
-        due_interest = sum(
-            (
-                row.interest_remaining
-                for row in schedules
-                if row.due_date <= settlement_date
-            ),
-            ZERO,
-        )
-        for row in schedules:
-            if row.due_date > settlement_date:
-                row.interest_waived += row.interest_remaining
-                row.save(update_fields=["interest_waived"])
+        policy = loan.product_term("early_settlement_policy")
+        unearned_rows = [row for row in schedules if row.due_date > settlement_date]
+        unearned_interest = sum((row.interest_remaining for row in unearned_rows), ZERO)
+        if policy == LoanProduct.SETTLEMENT_WAIVE_UNEARNED:
+            waived = unearned_interest
+        elif policy == LoanProduct.SETTLEMENT_PRO_RATA:
+            final_due = max((row.due_date for row in schedules), default=settlement_date)
+            elapsed_days = max(0, (settlement_date - loan.disbursed_at).days)
+            total_days = max(1, (final_due - loan.disbursed_at).days)
+            earned_fraction = min(Decimal(1), Decimal(elapsed_days) / total_days)
+            waived = unearned_interest - money(unearned_interest * earned_fraction)
+        elif policy == LoanProduct.SETTLEMENT_FULL:
+            waived = ZERO
+        else:
+            raise ValidationError("The product has an unsupported early-settlement policy.")
+        if waived:
+            if not reason.strip():
+                raise ValidationError({"reason": "A reason is required when interest is waived."})
+            self._require_waiver_permission()
+            self._waive_interest(unearned_rows, waived)
+            log_action(
+                "WaiveLoanInterest",
+                "Loan",
+                loan.pk,
+                old_values={"unearned_interest": str(unearned_interest)},
+                new_values={"waived_interest": str(waived), "policy": policy},
+                remarks=reason.strip(),
+                branch_id=loan.branch_id,
+            )
         fee_row = next((row for row in schedules if row.due_date <= settlement_date), None)
         if fee_row is None and schedules:
             fee_row = schedules[0]
-        if fee_row and loan.product.early_settlement_fee:
-            fee_row.fee_due += loan.product.early_settlement_fee
+        settlement_fee = loan.product_term("early_settlement_fee")
+        if fee_row and settlement_fee:
+            fee_row.fee_due += settlement_fee
             fee_row.save(update_fields=["fee_due"])
         penalty_due = self._assess_penalties(loan, schedules, settlement_date)
         outstanding_fees = sum((row.fee_remaining for row in schedules), ZERO)
-        amount = loan.outstanding_principal + due_interest + outstanding_fees + penalty_due
+        outstanding_interest = sum((row.interest_remaining for row in schedules), ZERO)
+        amount = (
+            loan.outstanding_principal
+            + outstanding_interest
+            + outstanding_fees
+            + penalty_due
+        )
         payment = self.repay(
             loan_id=loan.pk,
             amount=amount,
@@ -730,7 +911,14 @@ class LoanService:
             idempotency_key=key,
             include_future=True,
         )
-        log_action("Settle", "Loan", loan.pk, new_values={"payment_id": payment.pk}, branch_id=loan.branch_id)
+        log_action(
+            "Settle",
+            "Loan",
+            loan.pk,
+            new_values={"payment_id": payment.pk, "policy": policy},
+            remarks=reason.strip(),
+            branch_id=loan.branch_id,
+        )
         return payment
 
     @transaction.atomic
@@ -792,6 +980,12 @@ class LoanService:
                 "status",
                 "closed_at",
             ]
+        )
+        self._record_status(
+            loan=loan,
+            old_status=Loan.STATUS_ACTIVE,
+            new_status=loan.status,
+            reason=reason.strip(),
         )
         log_action("WriteOff", "Loan", loan.pk, new_values={"status": loan.status, "journal_entry_id": journal.pk}, remarks=reason.strip(), branch_id=loan.branch_id)
         return loan
@@ -867,6 +1061,71 @@ class LoanService:
         if latest_payment_date and payment_date < latest_payment_date:
             raise ValidationError("A loan transaction cannot be backdated before a payment.")
 
+    def _record_status(
+        self, *, application=None, loan=None, old_status, new_status, reason=""
+    ):
+        history = LoanStatusHistory(
+            application=application,
+            loan=loan,
+            old_status=old_status,
+            new_status=new_status,
+            reason=reason[:500],
+            changed_by=self.request.user,
+        )
+        history.full_clean()
+        history.save()
+
+    def _validate_approval_tier(self, application, amount):
+        if self.request.user.is_superuser:
+            return
+        matching = LoanApprovalTier.objects.filter(
+            is_active=True,
+            branch_type=application.branch.branch_type,
+        ).filter(Q(branch=application.branch) | Q(branch__isnull=True))
+        if not matching.exists():
+            return
+        assigned_role = UserRole.objects.filter(
+            user=self.request.user
+        ).values_list("role_id", flat=True).first()
+        tier = matching.filter(
+            role_id=assigned_role, branch=application.branch
+        ).first()
+        if tier is None:
+            tier = matching.filter(
+                role_id=assigned_role, branch__isnull=True
+            ).first()
+        if tier is None:
+            raise ValidationError("Your role has no approval tier for this branch level.")
+        if amount > tier.amount_limit:
+            raise ValidationError("This amount exceeds your role's approval tier.")
+
+    def _require_waiver_permission(self):
+        if self.request.user.is_superuser:
+            return
+        allowed = Permission.objects.filter(
+            route_name="Module_Loans_waive_interest",
+            is_active=True,
+            roles__user_roles__user_id=self.request.user.pk,
+        ).exists()
+        if not allowed:
+            raise ValidationError({
+                "permission": "You do not have permission to waive loan interest."
+            })
+
+    @staticmethod
+    def _waive_interest(installments, amount):
+        remaining = amount
+        for row in reversed(installments):
+            waiver = min(remaining, row.interest_remaining)
+            if waiver:
+                row.interest_waived += waiver
+                row.save(update_fields=["interest_waived"])
+                remaining -= waiver
+            if remaining <= ZERO:
+                break
+        if remaining:
+            raise ValidationError("The requested interest waiver exceeds unearned interest.")
+
     def portfolio(self, *, as_of_date, branch_ids):
         loans = Loan.objects.filter(
             branch_id__in=branch_ids, status=Loan.STATUS_ACTIVE
@@ -891,21 +1150,121 @@ class LoanService:
             }
         return {"loans": loans, "principal": principal_total, "par": par_amounts}
 
+    def classification_report(self, *, as_of_date, branch_ids):
+        loans = list(
+            Loan.objects.filter(
+                branch_id__in=branch_ids,
+                status=Loan.STATUS_ACTIVE,
+            ).select_related("member", "branch", "product")
+        )
+        buckets = list(LoanPARBucket.objects.filter(is_active=True))
+        if not buckets and loans:
+            raise ValidationError("Configure active PAR classification buckets before running this report.")
+        values = {
+            bucket.pk: {
+                "name": bucket.name,
+                "minimum_days": bucket.minimum_days,
+                "maximum_days": bucket.maximum_days,
+                "provision_rate": bucket.provision_rate,
+                "principal": ZERO,
+                "provision": ZERO,
+                "loan_count": 0,
+            }
+            for bucket in buckets
+        }
+        par_amounts = {
+            threshold: ZERO for threshold in (1, 30, 90)
+        }
+        total_principal = sum((loan.outstanding_principal for loan in loans), ZERO)
+        for loan in loans:
+            oldest_overdue = None
+            for installment in LoanInstallment.objects.filter(
+                loan=loan,
+                schedule_version=loan.schedule_version,
+                due_date__lt=as_of_date,
+            ).order_by("due_date", "number"):
+                if (
+                    installment.principal_remaining > ZERO
+                    or installment.interest_remaining > ZERO
+                    or installment.fee_remaining > ZERO
+                ):
+                    oldest_overdue = installment
+                    break
+            days_overdue = (
+                max(0, (as_of_date - oldest_overdue.due_date).days)
+                if oldest_overdue
+                else 0
+            )
+            bucket = next(
+                (
+                    candidate
+                    for candidate in buckets
+                    if candidate.minimum_days <= days_overdue
+                    and (
+                        candidate.maximum_days is None
+                        or days_overdue <= candidate.maximum_days
+                    )
+                ),
+                None,
+            )
+            if bucket is None:
+                raise ValidationError(
+                    f"No active PAR classification bucket covers {days_overdue} overdue days."
+                )
+            row = values[bucket.pk]
+            row["principal"] += loan.outstanding_principal
+            row["provision"] += money(
+                loan.outstanding_principal * bucket.provision_rate / 100
+            )
+            row["loan_count"] += 1
+            for threshold in par_amounts:
+                if days_overdue > threshold:
+                    par_amounts[threshold] += loan.outstanding_principal
+        classified = [
+            values[bucket.pk]
+            for bucket in buckets
+        ]
+        for threshold, amount in par_amounts.items():
+            par_amounts[threshold] = {
+                "amount": amount,
+                "percentage": (
+                    money(amount / total_principal * 100)
+                    if total_principal
+                    else ZERO
+                ),
+            }
+        return {
+            "as_of_date": as_of_date,
+            "buckets": classified,
+            "principal": total_principal,
+            "provision_total": sum((row["provision"] for row in classified), ZERO),
+            "loan_count": len(loans),
+            "par": par_amounts,
+        }
+
     def _assess_penalties(self, loan, installments, payment_date):
         total = ZERO
+        penalty_type = loan.product_term("penalty_type")
+        penalty_value = loan.product_term("late_penalty_rate")
+        penalty_frequency = loan.product_term("penalty_frequency")
+        grace_days = loan.product_term("penalty_grace_days")
+        cap_rate = loan.product_term("penalty_cap_rate")
         for installment in installments:
             overdue = installment.principal_remaining + installment.interest_remaining + installment.fee_remaining
-            overdue_days = (payment_date - installment.due_date).days - loan.product.penalty_grace_days
-            if overdue <= ZERO or overdue_days <= 0 or loan.product.late_penalty_rate <= 0:
+            overdue_days = (payment_date - installment.due_date).days - grace_days
+            if overdue <= ZERO or overdue_days <= 0 or penalty_value <= 0:
                 continue
             period_days = (
                 7
-                if loan.product.penalty_frequency == LoanProduct.PENALTY_WEEKLY
+                if penalty_frequency == LoanProduct.PENALTY_WEEKLY
                 else 1
             )
             periods = Decimal((overdue_days + period_days - 1) // period_days)
-            target = money(overdue * loan.product.late_penalty_rate / 100 * periods)
-            cap = money(installment.principal_due * loan.product.penalty_cap_rate / 100)
+            if penalty_type == LoanProduct.PENALTY_FIXED:
+                target = money(penalty_value * periods)
+            else:
+                target = money(overdue * penalty_value / 100 * periods)
+            cap = money(installment.principal_due * cap_rate / 100)
             target = min(target, cap)
             previous = LoanPenalty.objects.filter(installment=installment).aggregate(total=Sum("amount"))["total"] or ZERO
             if target > previous:

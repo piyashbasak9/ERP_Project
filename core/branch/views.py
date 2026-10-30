@@ -11,6 +11,7 @@ from django.utils.text import get_valid_filename
 from django.views.decorators.http import require_GET, require_POST
 
 from core.audit.services import log_action
+from core.common.popup import popup_json_response, render_popup_form
 
 from .forms import (
     BranchForm,
@@ -112,13 +113,15 @@ def add(request):
                 },
                 branch_id=branch.pk,
             )
-            messages.success(request, f"'{branch.name}' was created successfully.")
-            if request.GET.get('popup') == '1':
-                return render(request, 'popup_complete.html', {
-                    'completion_message': f"'{branch.name}' was created successfully.",
-                })
+            message = f"'{branch.name}' was created successfully."
+            response = popup_json_response(
+                request, message=message, data={'id': branch.pk}
+            )
+            if response is not None:
+                return response
+            messages.success(request, message)
             return redirect('branch:Module_Branch_index_branch')
-    return render(request, 'branch/add.html', {'form': form})
+    return render_popup_form(request, 'branch/add.html', {'form': form})
 
 
 def edit(request, pk):
@@ -155,14 +158,18 @@ def edit(request, pk):
                     },
                     branch_id=updated.pk,
                 )
-                messages.success(request, f"'{updated.name}' was updated successfully.")
-                if request.GET.get('popup') == '1':
-                    return render(request, 'popup_complete.html', {
-                        'completion_message': f"'{updated.name}' was updated successfully.",
-                    })
+                message = f"'{updated.name}' was updated successfully."
+                response = popup_json_response(
+                    request, message=message, data={'id': updated.pk}
+                )
+                if response is not None:
+                    return response
+                messages.success(request, message)
                 return redirect('branch:Module_Branch_index_branch')
             return JsonResponse({'success': False, 'message': 'Branch not found.'}, status=404)
-    return render(request, 'branch/add.html', {'pk': pk, 'form': form, 'branch': branch})
+    return render_popup_form(
+        request, 'branch/add.html', {'pk': pk, 'form': form, 'branch': branch}
+    )
 
 
 
@@ -283,13 +290,17 @@ def member_add(request):
                 },
                 branch_id=member.branch_id,
             )
-            messages.success(request, 'Member registered successfully.')
-            if request.GET.get('popup') == '1':
-                return render(request, 'popup_complete.html', {
-                    'completion_message': f'Member {member.member_code} was registered.',
-                })
+            message = 'Member registered successfully.'
+            response = popup_json_response(
+                request,
+                message=message,
+                data={'id': member.pk},
+            )
+            if response is not None:
+                return response
+            messages.success(request, message)
             return redirect('branch:Module_Members_detail', pk=member.pk)
-    return render(
+    return render_popup_form(
         request,
         'members/form.html',
         {'form': form, 'title': 'Register member'},
@@ -320,13 +331,17 @@ def member_edit(request, pk):
                 },
                 branch_id=member.branch_id,
             )
-            messages.success(request, 'Member profile updated.')
-            if request.GET.get('popup') == '1':
-                return render(request, 'popup_complete.html', {
-                    'completion_message': f'Member {member.member_code} was updated.',
-                })
+            message = 'Member profile updated.'
+            response = popup_json_response(
+                request,
+                message=message,
+                data={'id': member.pk},
+            )
+            if response is not None:
+                return response
+            messages.success(request, message)
             return redirect('branch:Module_Members_detail', pk=member.pk)
-    return render(
+    return render_popup_form(
         request,
         'members/form.html',
         {
@@ -382,13 +397,16 @@ def member_kyc(request, pk):
             new_values={'document_type': document.document_type, 'status': document.status},
             branch_id=member.branch_id,
         )
+        response = popup_json_response(
+            request,
+            message='KYC document uploaded successfully.',
+            data={'id': document.pk},
+        )
+        if response is not None:
+            return response
         messages.success(request, 'KYC document uploaded for verification.')
-        if request.GET.get('popup') == '1':
-            return render(request, 'popup_complete.html', {
-                'completion_message': 'KYC document uploaded successfully.',
-            })
         return redirect('branch:Module_Members_detail', pk=member.pk)
-    return render(
+    return render_popup_form(
         request,
         'members/kyc_form.html',
         {'member': member, 'form': form},
@@ -517,13 +535,17 @@ def organization_form(request, resource, pk=None):
                 new_values={'name': getattr(record, 'name', getattr(record, 'full_name', ''))},
                 branch_id=record.branch_id,
             )
-            messages.success(request, f'{singular} saved successfully.')
-            if request.GET.get('popup') == '1':
-                return render(request, 'popup_complete.html', {
-                    'completion_message': f'{singular} saved successfully.',
-                })
+            message = f'{singular} saved successfully.'
+            response = popup_json_response(
+                request,
+                message=message,
+                data={'id': record.pk},
+            )
+            if response is not None:
+                return response
+            messages.success(request, message)
             return redirect(f'branch:{list_route}')
-    return render(request, 'branch/organization_form.html', {
+    return render_popup_form(request, 'branch/organization_form.html', {
         'resource': resource,
         'title': f'Edit {singular}' if instance else f'Create {singular}',
         'list_url': reverse(f'branch:{list_route}'),

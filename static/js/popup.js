@@ -1,107 +1,198 @@
 (function ($) {
     const useJqueryUi = $ && $.fn.dialog;
-    let $frame = null;
-    let nativeDialog = null;
-    let nativeFrame = null;
     let $confirmDialog = null;
     let confirmTarget = null;
+    let popupModal = null;
+    let popupElement = null;
+    let popupUrl = null;
+    let formDirty = false;
 
-    function openNativePopup(link, title, width, height) {
-        if (!nativeDialog) {
-            nativeDialog = document.createElement('dialog');
-            nativeDialog.className = 'app-popup-native-dialog';
-            nativeDialog.innerHTML = '<header class="app-popup-header"><strong></strong><button type="button" aria-label="Close">&times;</button></header><iframe title="" class="app-popup-frame"></iframe>';
-            document.body.appendChild(nativeDialog);
-            nativeFrame = nativeDialog.querySelector('iframe');
-            nativeDialog.querySelector('button').addEventListener('click', function () {
-                nativeDialog.close();
-                nativeFrame.src = 'about:blank';
-            });
-            nativeDialog.addEventListener('close', function () {
-                nativeFrame.src = 'about:blank';
-            });
-        }
-
-        nativeDialog.style.width = Math.min(width, window.innerWidth - 32) + 'px';
-        nativeDialog.style.height = Math.min(height, window.innerHeight - 32) + 'px';
-        nativeDialog.querySelector('strong').textContent = title;
-        nativeFrame.title = title;
-        nativeFrame.src = link.href;
-        nativeDialog.showModal();
-    }
-
-    function handlePopupClick(event, link) {
-        if (
-            event.defaultPrevented ||
-            (event.which && event.which !== 1) ||
-            event.ctrlKey ||
-            event.metaKey ||
-            event.shiftKey ||
-            event.altKey
-        ) {
+    function ensurePopupModal() {
+        if (popupElement) {
             return;
         }
-
-        event.preventDefault();
-        const title = link.getAttribute('data-popup-title') || link.textContent.trim() || 'Details';
-        const width = Number(link.getAttribute('data-popup-width')) || 900;
-        const height = Number(link.getAttribute('data-popup-height')) || 760;
-
-        if (!useJqueryUi) {
-            openNativePopup(link, title, width, height);
-            return;
-        }
-
-        const $dialog = $('.app-popup-dialog');
-        $dialog.dialog('option', {
-            title: title,
-            width: Math.min(width, window.innerWidth - 32),
-            height: Math.min(height, window.innerHeight - 32)
-        });
-
-        $frame = $('<iframe>', {
-            src: link.href,
-            title: title,
-            css: {
-                width: '100%',
-                height: '100%',
-                minHeight: '300px',
-                border: 0
+        popupElement = document.createElement('div');
+        popupElement.className = 'modal fade';
+        popupElement.tabIndex = -1;
+        popupElement.setAttribute('aria-hidden', 'true');
+        popupElement.innerHTML = '<div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down modal-lg"><div class="modal-content"><div class="modal-header"><h2 class="modal-title fs-5"></h2><button type="button" class="btn-close" aria-label="Close" data-popup-dismiss></button></div><div class="modal-body"></div></div></div>';
+        document.body.appendChild(popupElement);
+        popupModal = new bootstrap.Modal(popupElement, {backdrop: 'static', keyboard: false});
+        popupElement.addEventListener('hide.bs.modal', function (event) {
+            if (formDirty && !window.confirm('Discard your unsaved changes?')) {
+                event.preventDefault();
             }
-        }).appendTo($dialog.empty());
-
-        $dialog.dialog('open');
+        });
+        popupElement.addEventListener('hidden.bs.modal', function () {
+            popupElement.querySelector('.modal-body').replaceChildren();
+            formDirty = false;
+        });
     }
 
-    function handlePopupMessage(event) {
-        if (
-            event.origin !== window.location.origin ||
-            (event.data !== 'erp-popup-complete' && event.data !== 'erp-popup-close')
-        ) {
-            return;
+    function notifyError(message) {
+        if (window.notify) {
+            window.notify.error(message);
         }
+    }
 
-        const sourceFrame = useJqueryUi && $frame
-            ? $frame[0]
-            : nativeFrame;
-        if (!sourceFrame || event.source !== sourceFrame.contentWindow) {
-            return;
-        }
+    function csrfToken(form) {
+        const cookie = document.cookie.split('; ').find(function (part) {
+            return part.startsWith('csrftoken=');
+        });
+        return cookie
+            ? decodeURIComponent(cookie.slice('csrftoken='.length))
+            : (form.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
+    }
 
-        if (useJqueryUi && $frame) {
-            $frame.closest('.app-popup-dialog').dialog('close');
-        } else if (nativeDialog) {
-            nativeDialog.close();
-        }
-
-        if (event.data === 'erp-popup-complete') {
+    function refreshGrid() {
+        const grids = document.querySelectorAll('table.ui-jqgrid-btable');
+        if ($ && grids.length) {
+            grids.forEach(function (grid) {
+                const $grid = $(grid);
+                const currentPage = Number($grid.jqGrid('getGridParam', 'page')) || 1;
+                $grid.jqGrid('setGridParam', {page: currentPage}).trigger('reloadGrid');
+            });
+        } else {
             window.location.reload();
         }
     }
 
+    function clearFieldErrors(form) {
+        form.querySelectorAll('.is-invalid').forEach(function (field) {
+            field.classList.remove('is-invalid');
+        });
+        form.querySelectorAll('[data-popup-field-error]').forEach(function (error) {
+            error.remove();
+        });
+        form.querySelectorAll('[data-popup-form-error]').forEach(function (error) {
+            error.remove();
+        });
+    }
+
+    function showFieldErrors(form, errors) {
+        Object.entries(errors || {}).forEach(function (entry) {
+            const name = entry[0];
+            const messages = entry[1];
+            const field = form.querySelector('[name="' + CSS.escape(name) + '"]');
+            if (!field) {
+                const error = document.createElement('div');
+                error.className = 'alert alert-danger';
+                error.dataset.popupFormError = '';
+                error.textContent = messages.join(' ');
+                form.prepend(error);
+                return;
+            }
+            field.classList.add('is-invalid');
+            const error = document.createElement('div');
+            error.className = 'invalid-feedback d-block';
+            error.dataset.popupFieldError = '';
+            error.textContent = messages.join(' ');
+            field.insertAdjacentElement('afterend', error);
+        });
+    }
+
+    async function openPopup(link) {
+        ensurePopupModal();
+        const title = link.getAttribute('data-popup-title') || link.textContent.trim() || 'Details';
+        popupUrl = new URL(link.href, window.location.href);
+        popupUrl.searchParams.set('popup', '1');
+        popupElement.querySelector('.modal-title').textContent = title;
+        popupElement.querySelector('.modal-body').innerHTML = '<div class="d-flex justify-content-center p-5"><div class="spinner-border" role="status"><span class="visually-hidden">Loading</span></div></div>';
+        popupModal.show();
+        try {
+            const response = await fetch(popupUrl, {
+                credentials: 'same-origin',
+                headers: {
+                    'Accept': 'text/html',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            if (response.status === 401) {
+                const result = await response.json();
+                popupModal.hide();
+                window.location.assign('/accounts/login/?next=' + encodeURIComponent(window.location.pathname));
+                throw new Error(result.message || 'Your session has expired. Please sign in again.');
+            }
+            const contentType = response.headers.get('content-type') || '';
+            if (!response.ok || !contentType.includes('text/html')) {
+                throw new Error('The form could not be loaded. Please try again.');
+            }
+            popupElement.querySelector('.modal-body').innerHTML = await response.text();
+            const form = popupElement.querySelector('form');
+            if (form) {
+                if (!form.getAttribute('action')) {
+                    form.setAttribute('action', popupUrl.href);
+                } else {
+                    const action = new URL(form.getAttribute('action'), popupUrl);
+                    action.searchParams.set('popup', '1');
+                    form.setAttribute('action', action.href);
+                }
+                form.addEventListener('input', function () {
+                    formDirty = true;
+                });
+                form.addEventListener('change', function () {
+                    formDirty = true;
+                });
+                const firstField = form.querySelector('input:not([type=hidden]), select, textarea');
+                if (firstField) {
+                    firstField.focus({preventScroll: true});
+                }
+            }
+        } catch (error) {
+            popupElement.querySelector('.modal-body').replaceChildren();
+            popupModal.hide();
+            notifyError(error.message);
+        }
+    }
+
+    async function submitPopupForm(form) {
+        clearFieldErrors(form);
+        const submit = form.querySelector('[type=submit]');
+        if (submit) {
+            submit.disabled = true;
+            submit.dataset.originalText = submit.innerHTML;
+            submit.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Saving…';
+        }
+        try {
+            const response = await fetch(form.action || popupUrl.href, {
+                method: (form.method || 'POST').toUpperCase(),
+                body: new FormData(form),
+                credentials: 'same-origin',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRFToken': csrfToken(form),
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            const result = await response.json();
+            if (response.status === 401) {
+                popupModal.hide();
+                window.location.assign('/accounts/login/?next=' + encodeURIComponent(window.location.pathname));
+                return;
+            }
+            if (!response.ok || !result.success) {
+                showFieldErrors(form, result.errors);
+                notifyError(result.message || 'Please correct the highlighted fields.');
+                return;
+            }
+            formDirty = false;
+            popupModal.hide();
+            if (window.notify) {
+                window.notify.success(result.message);
+            }
+            refreshGrid();
+        } catch (error) {
+            notifyError(error.message || 'The request failed. Please try again.');
+        } finally {
+            if (submit) {
+                submit.disabled = false;
+                submit.innerHTML = submit.dataset.originalText;
+            }
+        }
+    }
+
     function sendDeleteRequest(link) {
-        const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
-        const csrfToken = csrfInput ? csrfInput.value : '';
+        const token = csrfToken(document);
         const $error = $confirmDialog && $confirmDialog.find('[data-confirm-error]');
         if ($error) {
             $error.text('').addClass('d-none');
@@ -113,7 +204,7 @@
             headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken,
+                'X-CSRFToken': token,
                 'X-Requested-With': 'XMLHttpRequest'
             }
         }).then(function (response) {
@@ -130,7 +221,7 @@
                 $error.text(error.message).removeClass('d-none');
                 return;
             }
-            window.alert(error.message);
+            notifyError(error.message);
         });
     }
 
@@ -181,36 +272,16 @@
         $confirmDialog.dialog('open');
     }
 
-    if (useJqueryUi) {
-        $(function () {
-            const $dialog = $('<div class="app-popup-dialog"></div>').appendTo('body');
-            $dialog.dialog({
-                autoOpen: false,
-                modal: true,
-                resizable: true,
-                dialogClass: 'app-popup-window',
-                width: Math.min(900, window.innerWidth - 32),
-                height: Math.min(760, window.innerHeight - 32),
-                close: function () {
-                    if ($frame) {
-                        $frame.attr('src', 'about:blank').remove();
-                        $frame = null;
-                    }
-                }
-            });
-        });
-    }
-
     document.addEventListener('click', function (event) {
         const target = event.target instanceof Element ? event.target : null;
         if (!target) {
             return;
         }
 
-        const closeControl = target.closest('[data-popup-close]');
-        if (closeControl && window.parent !== window) {
+        const dismiss = target.closest('[data-popup-dismiss], [data-popup-close]');
+        if (dismiss && popupModal && popupElement.contains(dismiss)) {
             event.preventDefault();
-            window.parent.postMessage('erp-popup-close', window.location.origin);
+            popupModal.hide();
             return;
         }
 
@@ -232,9 +303,25 @@
 
         const link = target.closest('a[data-popup]');
         if (link) {
-            handlePopupClick(event, link);
+            if (
+                (event.which && event.which !== 1) ||
+                event.ctrlKey ||
+                event.metaKey ||
+                event.shiftKey ||
+                event.altKey
+            ) {
+                return;
+            }
+            event.preventDefault();
+            openPopup(link);
         }
     });
 
-    window.addEventListener('message', handlePopupMessage);
+    document.addEventListener('submit', function (event) {
+        const form = event.target instanceof HTMLFormElement ? event.target : null;
+        if (form && popupElement && popupElement.contains(form)) {
+            event.preventDefault();
+            submitPopupForm(form);
+        }
+    });
 })(window.jQuery);

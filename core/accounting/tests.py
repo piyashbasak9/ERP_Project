@@ -28,7 +28,7 @@ class JournalServiceTests(TestCase):
         self.branch = Branch.objects.create(name='Accounting Branch', code='ACC')
         self.user = get_user_model().objects.create_user(
             username='accounting-maker',
-            password='A-strong-test-password-123',
+            password='A-strong-test-password-123',  # nosec B106 - isolated test account
             branch=self.branch,
         )
         self.request = RequestFactory().post('/accounting/journal-entries/')

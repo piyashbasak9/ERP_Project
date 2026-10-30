@@ -186,7 +186,9 @@ class SystemAccountMapping(models.Model):
         ('interest_income', 'Interest Income'),
         ('interest_expense', 'Interest Expense on Savings'),
         ('fee_income', 'Fee Income'),
+        ('insurance_income', 'Insurance Fee Income'),
         ('penalty_income', 'Penalty Income'),
+        ('loan_overpayment_payable', 'Loan Overpayment Payable'),
         ('recovery_income', 'Recovery of Written-off Loans'),
         ('withholding_tax_payable', 'Withholding Tax Payable'),
     ]
@@ -199,7 +201,9 @@ class SystemAccountMapping(models.Model):
         'interest_income': Account.INCOME,
         'interest_expense': Account.EXPENSE,
         'fee_income': Account.INCOME,
+        'insurance_income': Account.INCOME,
         'penalty_income': Account.INCOME,
+        'loan_overpayment_payable': Account.LIABILITY,
         'recovery_income': Account.INCOME,
         'withholding_tax_payable': Account.LIABILITY,
     }

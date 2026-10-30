@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}Loan classification and provisioning{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+        <div><span class="eyebrow">LOAN REPORT</span><h1 class="h3 mb-0">Classification and provisioning</h1></div>
+        <div class="d-flex gap-2"><a class="btn btn-outline-primary" href="{% url 'loans:Module_Loans_classification_excel' %}">Excel</a><a class="btn btn-outline-primary" href="{% url 'loans:Module_Loans_classification_pdf' %}">PDF</a></div>
+    </div>
+    <p class="text-muted">As of {{ as_of_date }}. Outstanding principal {{ principal|floatformat:2 }} across {{ loan_count }} active loans; required provision {{ provision_total|floatformat:2 }}.</p>
+    <div class="row g-2 mb-3">{% for days, data in par.items %}<div class="col-md-4"><div class="card card-body"><span>PAR {{ days }}</span><strong>{{ data.amount|floatformat:2 }} ({{ data.percentage|floatformat:2 }}%)</strong></div></div>{% endfor %}</div>
+    <div class="table-responsive card"><table class="table table-hover align-middle mb-0">
+        <thead class="table-dark"><tr><th>Class</th><th>Days overdue</th><th>Active loans</th><th>Outstanding principal</th><th>Provision rate</th><th>Required provision</th></tr></thead>
+        <tbody>{% for row in buckets %}
+            <tr><td>{{ row.name }}</td><td>{{ row.minimum_days }}–{{ row.maximum_days|default:"and above" }}</td><td>{{ row.loan_count }}</td><td>{{ row.principal|floatformat:2 }}</td><td>{{ row.provision_rate|floatformat:2 }}%</td><td>{{ row.provision|floatformat:2 }}</td></tr>
+        {% empty %}<tr><td colspan="6" class="text-center text-muted py-4">No active loans.</td></tr>{% endfor %}</tbody>
+    </table></div>
+</div>
+{% endblock %}

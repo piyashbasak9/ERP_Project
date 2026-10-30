@@ -39,7 +39,7 @@ class SavingsRoutePermissionTests(SimpleTestCase):
         self.assertIn("Module_Savings_balance_report", savings_routes)
 
 
-class SavingsServiceTests(TestCase):
+class SavingsServiceTestFixture:
     def setUp(self):
         self.branch = Branch.unscoped.create(name="Savings Branch", code="SAV")
         self.user = get_user_model().objects.create_user(
@@ -128,6 +128,8 @@ class SavingsServiceTests(TestCase):
             idempotency_key=key or uuid.uuid4(),
         )
 
+
+class SavingsServiceTests(SavingsServiceTestFixture, TestCase):
     def test_opening_account_and_deposit_are_idempotent_and_ledger_posted(self):
         open_key = uuid.uuid4()
         account = self.open_account(key=open_key)
@@ -159,6 +161,28 @@ class SavingsServiceTests(TestCase):
         self.assertEqual(account.balance, Decimal("125.00"))
         self.assertEqual(first.journal_entry.status, JournalEntry.STATUS_POSTED)
         self.assertEqual(first.journal_entry.lines.count(), 2)
+
+    def test_existing_account_keeps_product_terms_after_product_change(self):
+        self.product.withdrawal_approval_threshold = None
+        self.product.save(update_fields=["withdrawal_approval_threshold"])
+        account = self.open_account(opening_balance=Decimal("100.00"))
+
+        self.product.minimum_balance = Decimal("90.00")
+        self.product.save(update_fields=["minimum_balance"])
+        withdrawal = self.service.withdraw(
+            account_id=account.pk,
+            amount=Decimal("20.00"),
+            transaction_date=date(2025, 1, 2),
+            payment_channel=SavingsTransaction.CHANNEL_CASH,
+            idempotency_key=uuid.uuid4(),
+        )
+
+        account.refresh_from_db()
+        self.assertEqual(
+            account.product_term("minimum_balance"), Decimal("0.00")
+        )
+        self.assertEqual(withdrawal.status, SavingsTransaction.STATUS_POSTED)
+        self.assertEqual(account.balance, Decimal("80.00"))
 
     def test_withdrawal_reserves_funds_requires_different_checker_and_posts(self):
         account = self.open_account()
@@ -595,22 +619,39 @@ class SavingsServiceTests(TestCase):
 
     def test_sequential_account_numbers_and_closing_zero_balance_account(self):
         first = self.open_account()
-        second = self.open_account()
-        self.assertTrue(first.account_number.endswith("000001"))
-        self.assertTrue(second.account_number.endswith("000002"))
-
         self.product.withdrawal_approval_threshold = None
         self.product.save(update_fields=["withdrawal_approval_threshold"])
-        self.service.withdraw(
+        pending = self.service.withdraw(
             account_id=first.pk,
             amount=Decimal("100.00"),
             transaction_date=date(2025, 1, 2),
             payment_channel=SavingsTransaction.CHANNEL_CASH,
             idempotency_key=uuid.uuid4(),
         )
-        closed = self.service.close_account(account_id=first.pk)
+        self.assertEqual(pending.status, SavingsTransaction.STATUS_PENDING)
+
+        second = self.service.open_account(
+            branch_id=self.branch.pk,
+            product_id=self.product.pk,
+            member_id=self.member.pk,
+            opened_at=date(2025, 1, 1),
+            opening_balance=Decimal("100.00"),
+            idempotency_key=uuid.uuid4(),
+        )
+        self.assertTrue(first.account_number.endswith("000001"))
+        self.assertTrue(second.account_number.endswith("000002"))
+
+        self.service.withdraw(
+            account_id=second.pk,
+            amount=Decimal("100.00"),
+            transaction_date=date(2025, 1, 2),
+            payment_channel=SavingsTransaction.CHANNEL_CASH,
+            idempotency_key=uuid.uuid4(),
+        )
+        closed = self.service.close_account(account_id=second.pk)
         self.assertEqual(closed.status, SavingsAccount.STATUS_CLOSED)
         self.assertEqual(closed.balance, Decimal("0.00"))
+        self.assertEqual(first.balance, Decimal("100.00"))
 
     def test_savings_transactions_are_branch_scoped_and_immutable(self):
         account = self.open_account()
@@ -707,6 +748,86 @@ class SavingsViewTests(TestCase):
         self.assertEqual(list_response.status_code, 200)
         self.assertContains(list_response, "Page 1 of 2")
 
+    def test_savings_product_crud_status_filter_and_audit(self):
+        create_url = (
+            reverse("savings:Module_Savings_product_add") + "?popup=1"
+        )
+        headers = {
+            "HTTP_X_REQUESTED_WITH": "XMLHttpRequest",
+            "HTTP_ACCEPT": "application/json",
+        }
+        product_data = {
+            "code": "UI-SPEC",
+            "name": "Popup-managed product",
+            "savings_type": SavingsProduct.TYPE_GENERAL,
+            "annual_interest_rate": "0.050000",
+            "interest_method": SavingsProduct.METHOD_DAILY_BALANCE,
+            "posting_frequency": SavingsProduct.FREQUENCY_MONTHLY,
+            "minimum_opening_balance": "10.00",
+            "minimum_balance": "5.00",
+            "dormant_after_days": "",
+            "pays_interest_when_dormant": "on",
+            "fee_amount": "2.00",
+            "maximum_withdrawal": "500.00",
+            "withdrawal_approval_threshold": "100.00",
+            "withholding_tax_rate": "0.100000",
+            "allow_withdrawals": "on",
+            "is_active": "on",
+        }
+        created = self.client.post(create_url, product_data, **headers)
+        self.assertEqual(created.status_code, 200)
+        self.assertEqual(
+            set(created.json()),
+            {"success", "message", "data", "errors", "request_id"},
+        )
+        product = SavingsProduct.objects.get(code="UI-SPEC")
+
+        updated = self.client.post(
+            reverse("savings:Module_Savings_product_edit", args=[product.pk])
+            + "?popup=1",
+            {**product_data, "name": "Updated product name"},
+            **headers,
+        )
+        self.assertEqual(updated.status_code, 200)
+        product.refresh_from_db()
+        self.assertEqual(product.name, "Updated product name")
+        update_audit = AuditLog.objects.get(
+                entity_name="SavingsProduct",
+                entity_id=str(product.pk),
+                action="Update",
+            )
+        self.assertEqual(update_audit.old_values["name"], "Popup-managed product")
+        self.assertEqual(update_audit.new_values["name"], "Updated product name")
+
+        listed = self.client.get(
+            reverse("savings:Module_Savings_products"),
+            {"format": "json", "searchString": "UI-SPEC", "status": "active"},
+        )
+        self.assertEqual(listed.json()["records"], 1)
+        deactivated = self.client.post(
+            reverse("savings:Module_Savings_product_deactivate", args=[product.pk]),
+            **headers,
+        )
+        self.assertTrue(deactivated.json()["success"])
+        status_audit = AuditLog.objects.get(
+            entity_name="SavingsProduct",
+            entity_id=str(product.pk),
+            action="Deactivate",
+        )
+        self.assertTrue(status_audit.old_values["is_active"])
+        self.assertFalse(status_audit.new_values["is_active"])
+        inactive = self.client.get(
+            reverse("savings:Module_Savings_products"),
+            {"format": "json", "status": "inactive"},
+        )
+        self.assertEqual(inactive.json()["records"], 1)
+        self.client.post(
+            reverse("savings:Module_Savings_product_activate", args=[product.pk]),
+            **headers,
+        )
+        product.refresh_from_db()
+        self.assertTrue(product.is_active)
+
     def test_savings_routes_are_denied_without_explicit_permission(self):
         user = get_user_model().objects.create_user(
             username="savings-no-permissions",
@@ -714,60 +835,19 @@ class SavingsViewTests(TestCase):
             branch=self.branch,
         )
         self.client.force_login(user)
-        route_names = [
-            "Module_Savings_products",
-            "Module_Savings_product_add",
-            "Module_Savings_product_edit",
-            "Module_Savings_account_add",
-            "Module_Savings_accounts",
-            "Module_Savings_close_account",
-            "Module_Savings_product_edit",
-            "Module_Savings_statement",
-            "Module_Savings_statement_export",
-            "Module_Savings_reactivation_form",
-            "Module_Savings_reactivate_account",
-            "Module_Savings_balance_report",
-            "Module_Savings_reconciliation",
-            "Module_Savings_transactions",
-            "Module_Savings_deposit",
-            "Module_Savings_submit_deposit",
-            "Module_Savings_withdraw",
-            "Module_Savings_submit_withdraw",
-            "Module_Savings_fee",
-            "Module_Savings_submit_fee",
-            "Module_Savings_interest",
-            "Module_Savings_submit_interest",
-            "Module_Savings_approve_withdrawal",
-            "Module_Savings_rejection_form",
-            "Module_Savings_reject_withdrawal",
-            "Module_Savings_reversal_form",
-            "Module_Savings_reverse",
-        ]
-        for route_name in route_names:
-            args = (
-                [999999]
-                if route_name
-                in {
-                    "Module_Savings_close_account",
-                    "Module_Savings_product_edit",
-                    "Module_Savings_statement",
-                    "Module_Savings_statement_export",
-                    "Module_Savings_reactivation_form",
-                    "Module_Savings_reactivate_account",
-                    "Module_Savings_approve_withdrawal",
-                    "Module_Savings_rejection_form",
-                    "Module_Savings_reject_withdrawal",
-                    "Module_Savings_reversal_form",
-                    "Module_Savings_reverse",
-                }
-                else []
-            )
+        for route in get_all_urls():
+            route_name = route["route_name"]
+            if not route_name.startswith("Module_Savings_"):
+                continue
+            args = [999999] * route["url"].count("<int:")
             with self.subTest(route_name=route_name):
                 response = self.client.get(reverse(f"savings:{route_name}", args=args))
                 self.assertEqual(response.status_code, 403)
 
     def test_state_changing_savings_action_routes_reject_get(self):
         action_names = [
+            ("Module_Savings_product_activate", [1]),
+            ("Module_Savings_product_deactivate", [1]),
             ("Module_Savings_submit_deposit", []),
             ("Module_Savings_submit_withdraw", []),
             ("Module_Savings_submit_fee", []),
@@ -933,12 +1013,12 @@ class SavingsBranchIsolationTests(TestCase):
         )
 
 
-class SavingsConcurrencyTests(TransactionTestCase):
+class SavingsConcurrencyTests(SavingsServiceTestFixture, TransactionTestCase):
     reset_sequences = True
 
     def setUp(self):
         self.assertEqual(connection.vendor, "postgresql")
-        SavingsServiceTests.setUp(self)
+        super().setUp()
 
     def test_two_simultaneous_withdrawals_cannot_overdraw_account(self):
         account = self.open_account(opening_balance=Decimal("100.00"))

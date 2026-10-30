@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}Loan approval tiers{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div><span class="eyebrow">LOAN BUSINESS RULES</span><h1 class="h3 mb-0">Approval tiers</h1></div>
+        <a class="btn btn-primary" href="{% url 'loans:Module_Loans_approval_tier_add' %}?popup=1" data-popup data-popup-title="Add approval tier">Add tier</a>
+    </div>
+    <p class="text-muted">When any tier is configured for a branch level, a reviewer needs a matching role and a sufficient limit. A branch-specific tier takes precedence over a level-wide tier.</p>
+    <div class="table-responsive card"><table class="table table-hover align-middle mb-0">
+        <thead class="table-dark"><tr><th>Level</th><th>Branch scope</th><th>Role</th><th>Limit</th><th>Status</th><th></th></tr></thead>
+        <tbody>{% for tier in tiers %}
+            <tr><td>{{ tier.get_branch_type_display }}</td><td>{{ tier.branch|default:"All branches at level" }}</td><td>{{ tier.role.name }}</td><td>{{ tier.amount_limit|floatformat:2 }}</td><td>{% if tier.is_active %}Active{% else %}Inactive{% endif %}</td><td><a class="btn btn-sm btn-outline-primary" href="{% url 'loans:Module_Loans_approval_tier_edit' tier.pk %}?popup=1" data-popup data-popup-title="Edit approval tier">Edit</a></td></tr>
+        {% empty %}<tr><td colspan="6" class="text-center text-muted py-4">No approval tiers configured.</td></tr>{% endfor %}</tbody>
+    </table></div>
+</div>
+{% endblock %}

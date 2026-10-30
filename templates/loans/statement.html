@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block title %}Loan statement{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 loan-print-area">
+    <div class="d-flex justify-content-between align-items-center mb-3 no-print">
+        <div><span class="eyebrow">LOANS</span><h1 class="h3 mb-0">Loan statement #{{ loan.pk }}</h1></div>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-secondary" onclick="window.print()">Print</button>
+            <a class="btn btn-outline-primary" href="{% url 'loans:Module_Loans_history' loan.pk %}">Full history</a>
+        </div>
+    </div>
+    <div class="card card-body mb-3">
+        <div class="row g-3">
+            <div class="col-md-3"><span class="text-muted">Member</span><div>{{ loan.member.member_code }} — {{ loan.member.first_name }} {{ loan.member.last_name }}</div></div>
+            <div class="col-md-3"><span class="text-muted">Branch / Product</span><div>{{ loan.branch.code }} / {{ product_name }}</div></div>
+            <div class="col-md-2"><span class="text-muted">Status</span><div>{{ loan.get_status_display }}</div></div>
+            <div class="col-md-2"><span class="text-muted">Disbursed</span><div>{{ loan.disbursed_at }}</div></div>
+            <div class="col-md-2"><span class="text-muted">Schedule version</span><div>{{ loan.schedule_version }}</div></div>
+            <div class="col-md-2"><span class="text-muted">Principal balance</span><div>{{ loan.outstanding_principal|floatformat:2 }}</div></div>
+            <div class="col-md-2"><span class="text-muted">Interest due</span><div>{{ outstanding_interest|floatformat:2 }}</div></div>
+            <div class="col-md-2"><span class="text-muted">Fees / penalties</span><div>{{ outstanding_fees|floatformat:2 }} / {{ penalty_balance|floatformat:2 }}</div></div>
+            <div class="col-md-2"><span class="text-muted">Total due</span><div>{{ outstanding_total|floatformat:2 }}</div></div>
+            <div class="col-md-2"><span class="text-muted">Days past due</span><div>{{ days_past_due }}</div></div>
+            <div class="col-md-2"><span class="text-muted">PAR classification</span><div>{{ par_classification }}</div></div>
+        </div>
+    </div>
+
+    <h2 class="h5 mt-4">Repayment schedule versions</h2>
+    {% regroup installments by schedule_version as schedule_versions %}
+    {% for version in schedule_versions %}
+    <h3 class="h6 mt-3">Version {{ version.grouper }}{% if version.grouper == loan.schedule_version %} (current){% endif %}</h3>
+    <div class="table-responsive card mb-3">
+        <table class="table table-sm table-striped align-middle mb-0">
+            <thead class="table-dark"><tr><th>#</th><th>Due</th><th>Principal</th><th>Interest</th><th>Fees</th><th>Principal paid</th><th>Interest paid</th><th>Interest waived</th><th>Fee paid</th><th>Remaining</th></tr></thead>
+            <tbody>{% for row in version.list %}
+                <tr><td>{{ row.number }}</td><td>{{ row.due_date }}</td><td>{{ row.principal_due|floatformat:2 }}</td><td>{{ row.interest_due|floatformat:2 }}</td><td>{{ row.fee_due|floatformat:2 }}</td><td>{{ row.principal_paid|floatformat:2 }}</td><td>{{ row.interest_paid|floatformat:2 }}</td><td>{{ row.interest_waived|floatformat:2 }}</td><td>{{ row.fee_paid|floatformat:2 }}</td><td>{{ row.total_due|floatformat:2 }}</td></tr>
+            {% endfor %}</tbody>
+        </table>
+    </div>
+    {% empty %}<p class="text-muted">No schedule records.</p>{% endfor %}
+
+    <h2 class="h5 mt-4">Payments</h2>
+    <div class="table-responsive card"><table class="table table-sm table-striped align-middle mb-0">
+        <thead class="table-dark"><tr><th>Date</th><th>Amount</th><th>Principal</th><th>Interest</th><th>Fees</th><th>Penalty</th><th>Overpayment</th><th>Posted by</th><th>Voucher</th></tr></thead>
+        <tbody>{% for payment in payments %}
+            <tr><td>{{ payment.payment_date }}</td><td>{{ payment.amount|floatformat:2 }}</td><td>{{ payment.principal_paid|floatformat:2 }}</td><td>{{ payment.interest_paid|floatformat:2 }}</td><td>{{ payment.fee_paid|floatformat:2 }}</td><td>{{ payment.penalty_paid|floatformat:2 }}</td><td>{{ payment.overpayment_amount|floatformat:2 }}</td><td>{{ payment.created_by.username }}</td><td>{{ payment.journal_entry.voucher_number }}</td></tr>
+        {% empty %}<tr><td colspan="9" class="text-center text-muted py-3">No payments posted.</td></tr>{% endfor %}</tbody>
+    </table></div>
+
+    <h2 class="h5 mt-4">Penalties</h2>
+    <div class="table-responsive card"><table class="table table-sm table-striped align-middle mb-0">
+        <thead class="table-dark"><tr><th>Due installment</th><th>Assessed date</th><th>Amount</th><th>Paid</th><th>Outstanding</th></tr></thead>
+        <tbody>{% for penalty in penalties %}
+            <tr><td>{{ penalty.installment.number }} / {{ penalty.installment.due_date }}</td><td>{{ penalty.as_of_date }}</td><td>{{ penalty.amount|floatformat:2 }}</td><td>{{ penalty.paid|floatformat:2 }}</td><td>{{ penalty.remaining|floatformat:2 }}</td></tr>
+        {% empty %}<tr><td colspan="5" class="text-center text-muted py-3">No penalties assessed.</td></tr>{% endfor %}</tbody>
+    </table></div>
+
+    <h2 class="h5 mt-4">Status history</h2>
+    <div class="table-responsive card"><table class="table table-sm table-striped align-middle mb-0">
+        <thead class="table-dark"><tr><th>When</th><th>From</th><th>To</th><th>Reason</th><th>Changed by</th></tr></thead>
+        <tbody>{% for item in status_history %}
+            <tr><td>{{ item.changed_at }}</td><td>{{ item.old_status|default:"—" }}</td><td>{{ item.new_status }}</td><td>{{ item.reason|default:"—" }}</td><td>{{ item.changed_by.username }}</td></tr>
+        {% empty %}<tr><td colspan="5" class="text-center text-muted py-3">No status history.</td></tr>{% endfor %}</tbody>
+    </table></div>
+</div>
+<style>@media print { .no-print, nav, footer { display: none !important; } .container-fluid { width: 100%; } .card { border: 0; } }</style>
+{% endblock %}

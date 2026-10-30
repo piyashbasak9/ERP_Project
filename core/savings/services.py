@@ -116,6 +116,7 @@ class SavingsService:
         account = SavingsAccount(
             branch=branch,
             product=product,
+            terms_snapshot=product.snapshot_terms(),
             member=member,
             group=group,
             account_number=account_number,
@@ -194,6 +195,83 @@ class SavingsService:
         )
 
     @transaction.atomic
+    def credit_from_loan_repayment(
+        self,
+        *,
+        account_id,
+        member_id,
+        amount,
+        transaction_date,
+        idempotency_key,
+        journal_entry,
+        narration,
+    ):
+        account = self._get_account_for_update(account_id)
+        amount = self._validate_money(amount, allow_zero=False, field='amount')
+        key = self._uuid_key(idempotency_key)
+        existing = SavingsTransaction.objects.filter(
+            account=account, idempotency_key=key
+        ).first()
+        if existing:
+            if (
+                existing.amount != amount
+                or existing.transaction_date != transaction_date
+                or existing.journal_entry_id != journal_entry.pk
+            ):
+                raise ValidationError({
+                    'idempotency_key': 'This key was already used with different savings details.'
+                })
+            return existing
+        if account.member_id != member_id or account.status != SavingsAccount.STATUS_ACTIVE:
+            raise ValidationError({
+                'savings_account': 'Select an active individual savings account for this borrower.'
+            })
+        if journal_entry.branch_id != account.branch_id:
+            raise ValidationError('The savings transfer journal must belong to the account branch.')
+        balance_before = account.balance
+        balance_after = balance_before + amount
+        if balance_after < account.product_term('minimum_balance'):
+            raise ValidationError('The transfer would violate the savings minimum balance.')
+        account.balance = balance_after
+        account.version += 1
+        self._save_account(account, update_fields=['balance', 'version', 'updated_at'])
+        transaction_record = SavingsTransaction(
+            branch_id=account.branch_id,
+            account=account,
+            transaction_type=SavingsTransaction.TYPE_DEPOSIT,
+            status=SavingsTransaction.STATUS_POSTED,
+            transaction_date=transaction_date,
+            amount=amount,
+            gross_amount=amount,
+            tax_amount=ZERO,
+            balance_before=balance_before,
+            balance_after=balance_after,
+            payment_channel=SavingsTransaction.CHANNEL_CASH,
+            journal_entry=journal_entry,
+            idempotency_key=key,
+            narration=narration[:255],
+            created_by=self.request.user,
+        )
+        transaction_record._posting_authorized = True
+        try:
+            transaction_record.full_clean()
+            transaction_record.save()
+        finally:
+            del transaction_record._posting_authorized
+        log_action(
+            'LoanOverpaymentTransfer',
+            'SavingsTransaction',
+            transaction_record.pk,
+            new_values={
+                'loan_journal_id': journal_entry.pk,
+                'amount': str(amount),
+                'balance_after': str(balance_after),
+            },
+            branch_id=account.branch_id,
+        )
+        return transaction_record
+
+    @transaction.atomic
     def withdraw(
         self,
         *,
@@ -215,17 +293,17 @@ class SavingsService:
             return replay
         self._validate_member_transaction(account, withdrawal=True)
         self._validate_amount(amount)
-        product = account.product
-        if not product.allow_withdrawals:
+        if not account.product_term('allow_withdrawals'):
             raise ValidationError({'amount': 'Withdrawals are disabled for this savings product.'})
-        if product.maximum_withdrawal is not None and amount > product.maximum_withdrawal:
+        maximum_withdrawal = account.product_term('maximum_withdrawal')
+        if maximum_withdrawal is not None and amount > maximum_withdrawal:
             raise ValidationError({
-                'amount': f'The maximum withdrawal is {product.maximum_withdrawal}.'
+                'amount': f'The maximum withdrawal is {maximum_withdrawal}.'
             })
-        if account.available_balance - amount < product.minimum_balance:
+        if account.available_balance - amount < account.product_term('minimum_balance'):
             raise ValidationError({'amount': 'The withdrawal would breach the minimum available balance.'})
 
-        threshold = product.withdrawal_approval_threshold
+        threshold = account.product_term('withdrawal_approval_threshold')
         if threshold is not None and amount > threshold:
             account.reserved_balance += amount
             account.version += 1
@@ -280,15 +358,15 @@ class SavingsService:
         account = self._get_account_for_update(account_id)
         replay = self._existing_transaction(account, idempotency_key, {
             'transaction_type': SavingsTransaction.TYPE_FEE,
-            'amount': account.product.fee_amount,
+            'amount': account.product_term('fee_amount'),
             'transaction_date': transaction_date,
         })
         if replay:
             return replay
         self._validate_member_transaction(account, withdrawal=True)
-        amount = account.product.fee_amount
+        amount = account.product_term('fee_amount')
         self._validate_amount(amount)
-        if account.available_balance - amount < account.product.minimum_balance:
+        if account.available_balance - amount < account.product_term('minimum_balance'):
             raise ValidationError({'amount': 'The fee would breach the minimum available balance.'})
         return self._post_transaction(
             account=account,
@@ -318,7 +396,7 @@ class SavingsService:
             raise ValidationError('The maker cannot approve their own withdrawal.')
         if account.reserved_balance < pending.amount:
             raise ValidationError('The reserved withdrawal amount is inconsistent with the account.')
-        if account.balance - pending.amount < account.product.minimum_balance:
+        if account.balance - pending.amount < account.product_term('minimum_balance'):
             raise ValidationError('The withdrawal would breach the minimum balance.')
 
         balance_before = account.balance
@@ -426,7 +504,7 @@ class SavingsService:
         balance_before = account.balance
         balance_delta = original.balance_after - original.balance_before
         balance_after = balance_before - balance_delta
-        if balance_after < account.product.minimum_balance:
+        if balance_after < account.product_term('minimum_balance'):
             raise ValidationError('The reversal would breach the account minimum balance.')
 
         journal_reversal = JournalService(self.request).reverse(
@@ -527,7 +605,9 @@ class SavingsService:
                 'transaction_date',
                 flat=True,
             ).first() or account.opened_at
-            dormant_after = last_activity + timedelta(days=account.product.dormant_after_days)
+            dormant_after = last_activity + timedelta(
+                days=account.product_term('dormant_after_days')
+            )
             if as_of_date < dormant_after:
                 continue
             account.status = SavingsAccount.STATUS_DORMANT
@@ -634,12 +714,12 @@ class SavingsService:
             raise ValidationError('Only active or eligible dormant accounts earn interest.')
         if (
             account.status == SavingsAccount.STATUS_DORMANT
-            and not account.product.pays_interest_when_dormant
+            and not account.product_term('pays_interest_when_dormant')
         ):
             raise ValidationError('This savings product does not pay interest on dormant accounts.')
         self._validate_transaction_date(account, end_date)
         self._validate_interest_period(
-            account.product.posting_frequency,
+            account.product_term('posting_frequency'),
             start_date,
             end_date,
         )
@@ -658,7 +738,9 @@ class SavingsService:
         )
         if gross_interest <= ZERO:
             raise ValidationError('There is no positive interest to post for this period.')
-        tax_amount = (gross_interest * account.product.withholding_tax_rate).quantize(
+        tax_amount = (
+            gross_interest * account.product_term('withholding_tax_rate')
+        ).quantize(
             CENT,
             rounding=ROUND_HALF_UP,
         )
@@ -688,10 +770,11 @@ class SavingsService:
             return ZERO
         if (
             account.status == SavingsAccount.STATUS_DORMANT
-            and not account.product.pays_interest_when_dormant
+            and not account.product_term('pays_interest_when_dormant')
         ):
             return ZERO
-        product = account.product
+        annual_interest_rate = account.product_term('annual_interest_rate')
+        interest_method = account.product_term('interest_method')
         prior = SavingsTransaction.unscoped.filter(
             account=account,
             status=SavingsTransaction.STATUS_POSTED,
@@ -715,10 +798,15 @@ class SavingsService:
             if current_date in day_balances:
                 balance = day_balances[current_date]
             minimum_balance = balance if minimum_balance is None else min(minimum_balance, balance)
-            daily_interest_sum += balance * product.annual_interest_rate / YEAR_DAYS
+            daily_interest_sum += balance * annual_interest_rate / YEAR_DAYS
 
-        if product.interest_method == SavingsProduct.METHOD_MINIMUM_BALANCE:
-            interest = (minimum_balance or ZERO) * product.annual_interest_rate * Decimal(day_count) / YEAR_DAYS
+        if interest_method == SavingsProduct.METHOD_MINIMUM_BALANCE:
+            interest = (
+                (minimum_balance or ZERO)
+                * annual_interest_rate
+                * Decimal(day_count)
+                / YEAR_DAYS
+            )
         else:
             interest = daily_interest_sum
         return interest.quantize(CENT, rounding=ROUND_HALF_UP)
@@ -750,7 +838,7 @@ class SavingsService:
             SavingsTransaction.TYPE_WITHDRAWAL,
             SavingsTransaction.TYPE_FEE,
         }:
-            if account.available_balance - amount < account.product.minimum_balance:
+            if account.available_balance - amount < account.product_term('minimum_balance'):
                 raise ValidationError({
                     'amount': 'The transaction would breach the minimum available balance.'
                 })
@@ -760,7 +848,7 @@ class SavingsService:
         balance_before = account.balance
         balance_after = balance_before + balance_delta
         self._validate_money(balance_after, allow_zero=True, field='balance')
-        if balance_after < account.product.minimum_balance:
+        if balance_after < account.product_term('minimum_balance'):
             raise ValidationError({'amount': 'The transaction would breach the minimum balance.'})
         gross_amount = amount if gross_amount is None else gross_amount
         self._validate_money(gross_amount, allow_zero=False, field='gross_amount')
@@ -956,7 +1044,7 @@ class SavingsService:
 
     def _ensure_account_active(self, account, *, allow_dormant_interest=False):
         allowed_statuses = {SavingsAccount.STATUS_ACTIVE}
-        if allow_dormant_interest and account.product.pays_interest_when_dormant:
+        if allow_dormant_interest and account.product_term('pays_interest_when_dormant'):
             allowed_statuses.add(SavingsAccount.STATUS_DORMANT)
         if account.status not in allowed_statuses:
             raise ValidationError('Savings transactions require an active account.')

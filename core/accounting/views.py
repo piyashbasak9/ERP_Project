@@ -9,6 +9,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from core.audit.services import log_action
+from core.common.popup import popup_json_response, render_popup_form
 
 from .forms import (
     AccountForm,
@@ -63,13 +64,16 @@ def account_form(request, pk=None):
                 'account_type': account.account_type,
             },
         )
+        response = popup_json_response(
+            request,
+            message='Account saved successfully.',
+            data={'id': account.pk},
+        )
+        if response is not None:
+            return response
         messages.success(request, 'Account saved successfully.')
-        if request.GET.get('popup') == '1':
-            return render(request, 'popup_complete.html', {
-                'completion_message': 'Account saved successfully.',
-            })
         return redirect('accounting:Module_Accounting_account_list')
-    return render(request, 'accounting/account_form.html', {
+    return render_popup_form(request, 'accounting/account_form.html', {
         'form': form,
         'title': 'Edit account' if instance else 'Create account',
     }, status=400 if request.method == 'POST' else 200)
@@ -92,9 +96,16 @@ def fiscal_year_form(request):
             fiscal_year.pk,
             new_values={'name': fiscal_year.name},
         )
+        response = popup_json_response(
+            request,
+            message='Fiscal year created successfully.',
+            data={'id': fiscal_year.pk},
+        )
+        if response is not None:
+            return response
         messages.success(request, 'Fiscal year created successfully.')
         return redirect('accounting:Module_Accounting_fiscal_years')
-    return render(request, 'accounting/fiscal_year_form.html', {
+    return render_popup_form(request, 'accounting/fiscal_year_form.html', {
         'form': form,
         'title': 'Create fiscal year',
     }, status=400 if request.method == 'POST' else 200)
@@ -115,9 +126,16 @@ def period_form(request):
                 'name': period.name,
             },
         )
+        response = popup_json_response(
+            request,
+            message='Accounting period created successfully.',
+            data={'id': period.pk},
+        )
+        if response is not None:
+            return response
         messages.success(request, 'Accounting period created successfully.')
         return redirect('accounting:Module_Accounting_fiscal_years')
-    return render(request, 'accounting/period_form.html', {
+    return render_popup_form(request, 'accounting/period_form.html', {
         'form': form,
         'title': 'Create accounting period',
     }, status=400 if request.method == 'POST' else 200)
@@ -141,13 +159,16 @@ def system_account_form(request, pk=None):
             mapping.pk,
             new_values={'key': mapping.key, 'account_id': mapping.account_id},
         )
+        response = popup_json_response(
+            request,
+            message='System account mapping saved.',
+            data={'id': mapping.pk},
+        )
+        if response is not None:
+            return response
         messages.success(request, 'System account mapping saved.')
-        if request.GET.get('popup') == '1':
-            return render(request, 'popup_complete.html', {
-                'completion_message': 'System account mapping saved.',
-            })
         return redirect('accounting:Module_Accounting_system_accounts')
-    return render(request, 'accounting/system_account_form.html', {
+    return render_popup_form(request, 'accounting/system_account_form.html', {
         'form': form,
         'title': 'Edit system account mapping' if instance else 'Create system account mapping',
     }, status=400 if request.method == 'POST' else 200)
@@ -219,14 +240,16 @@ def journal_entry_create(request):
         except ValidationError as error:
             form.add_error(None, error)
         else:
-            messages.success(request, f'Journal voucher {entry.voucher_number} was saved.')
-            if request.GET.get('popup') == '1':
-                return render(request, 'popup_complete.html', {
-                    'completion_message': f'Journal voucher {entry.voucher_number} was saved.',
-                })
+            message = f'Journal voucher {entry.voucher_number} was saved.'
+            response = popup_json_response(
+                request, message=message, data={'id': entry.pk}
+            )
+            if response is not None:
+                return response
+            messages.success(request, message)
             return redirect('accounting:Module_Accounting_journal_detail', pk=entry.pk)
 
-    return render(request, 'accounting/journal_entry_form.html', {
+    return render_popup_form(request, 'accounting/journal_entry_form.html', {
         'form': form,
         'line_formset': line_formset,
     }, status=400 if request.method == 'POST' else 200)
@@ -276,9 +299,16 @@ def journal_entry_reverse(request, pk):
         except ValidationError as error:
             form.add_error(None, error)
         else:
+            response = popup_json_response(
+                request,
+                message=f'Reversal voucher {reversal.voucher_number} was posted.',
+                data={'id': reversal.pk},
+            )
+            if response is not None:
+                return response
             messages.success(request, f'Reversal voucher {reversal.voucher_number} was posted.')
             return redirect('accounting:Module_Accounting_journal_detail', pk=reversal.pk)
-    return render(request, 'accounting/reversal_form.html', {
+    return render_popup_form(request, 'accounting/reversal_form.html', {
         'form': form,
         'entry': entry,
     }, status=400 if request.method == 'POST' else 200)
@@ -332,13 +362,14 @@ def reconciliation_create(request):
         except ValidationError as error:
             form.add_error(None, error)
         else:
+            response = popup_json_response(
+                request, message='Reconciliation prepared successfully.'
+            )
+            if response is not None:
+                return response
             messages.success(request, 'Reconciliation prepared for review.')
-            if request.GET.get('popup') == '1':
-                return render(request, 'popup_complete.html', {
-                    'completion_message': 'Reconciliation prepared successfully.',
-                })
             return redirect('accounting:Module_Accounting_reconciliation_list')
-    return render(request, 'accounting/reconciliation_form.html', {
+    return render_popup_form(request, 'accounting/reconciliation_form.html', {
         'form': form,
     }, status=400 if request.method == 'POST' else 200)
 

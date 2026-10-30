@@ -1,6 +1,8 @@
 from django.shortcuts import render
 from django.urls import Resolver404, resolve
 
+from core.common.popup import popup_json_response
+
 from .models import UserRole
 
 PUBLIC_ROUTE_NAMES = {'Module_Auth_login', 'health'}
@@ -30,15 +32,36 @@ class URLPermissionMiddleware:
         if route_name in AUTHENTICATED_ONLY_ROUTE_NAMES:
             if request.user.is_authenticated and request.user.is_active:
                 return self.get_response(request)
+            response = popup_json_response(
+                request,
+                message='You do not have permission to do that.',
+                status=403,
+            )
+            if response is not None:
+                return response
             return render(request, 'access_denied.html', {'message': 'Authentication is required.'}, status=403)
 
         if not request.user.is_authenticated or not request.user.is_active:
+            response = popup_json_response(
+                request,
+                message='You do not have permission to do that.',
+                status=403,
+            )
+            if response is not None:
+                return response
             return render(request, 'access_denied.html', {'message': 'Authentication is required.'}, status=403)
 
         if request.user.is_superuser:
             return self.get_response(request)
 
         if not route_name:
+            response = popup_json_response(
+                request,
+                message='You do not have permission to do that.',
+                status=403,
+            )
+            if response is not None:
+                return response
             return render(request, 'access_denied.html', {
                 'message': 'This route is not classified.',
             }, status=403)
@@ -46,6 +69,13 @@ class URLPermissionMiddleware:
         try:
             user_role = UserRole.objects.select_related('role').get(user=request.user)
         except UserRole.DoesNotExist:
+            response = popup_json_response(
+                request,
+                message='You do not have permission to do that.',
+                status=403,
+            )
+            if response is not None:
+                return response
             return render(request, 'access_denied.html', {
                 'message': "You don't have a role assigned.",
             }, status=403)
@@ -58,6 +88,13 @@ class URLPermissionMiddleware:
         if allowed_routes:
             return self.get_response(request)
 
+        response = popup_json_response(
+            request,
+            message='You do not have permission to do that.',
+            status=403,
+        )
+        if response is not None:
+            return response
         return render(request, 'access_denied.html', {
             'message': 'Access Denied: This route is not allowed.',
         }, status=403)
