@@ -743,8 +743,20 @@ class SavingsViewTests(TestCase):
         statement_response = self.client.get(
             reverse("savings:Module_Savings_statement", args=[account.pk])
         )
+        export_response = self.client.get(
+            reverse("savings:Module_Savings_statement_export", args=[account.pk])
+        )
         list_response = self.client.get(reverse("savings:Module_Savings_accounts"))
         self.assertEqual(statement_response.status_code, 200)
+        self.assertEqual(export_response.status_code, 200)
+        self.assertIn(b"Organization", export_response.content)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                action="Export",
+                entity_name="SavingsStatement",
+                entity_id=str(account.pk),
+            ).exists()
+        )
         self.assertEqual(list_response.status_code, 200)
         self.assertContains(list_response, "Page 1 of 2")
 

@@ -6,11 +6,14 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.models import Sum
 from django.test import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
 from openpyxl import load_workbook
+from PIL import Image as PillowImage
 
 from core.accounting.models import (
     Account,
@@ -24,6 +27,7 @@ from core.accounting.services import JournalService
 from core.accounts.models import Permission, Role, RolePermission, UserRole
 from core.branch.models import Branch, Center, Member, Staff, UserBranchAccess
 from core.collections.models import CollectionSheet, CollectionSheetItem
+from core.configuration.models import OrganizationConfiguration
 from core.loans.models import (
     Loan,
     LoanApplication,
@@ -34,7 +38,7 @@ from core.loans.models import (
 )
 from core.savings.models import SavingsAccount, SavingsProduct
 
-from .registry import REPORTS
+from .registry import REPORTS, REPORTS_BY_SLUG
 
 
 def _route_names(report):
@@ -127,6 +131,87 @@ def test_every_registered_report_rejects_forged_branch_ids_on_page_grid_and_expo
     assert grid.status_code == 403
     assert excel.status_code == 403
     assert pdf.status_code == 403
+
+
+@pytest.mark.django_db
+def test_user_access_review_is_branch_scoped_and_filters_user_status(client):
+    branch = Branch.objects.create(name="Access review branch", code="ACCESS-A")
+    other_branch = Branch.objects.create(
+        name="Other access branch", code="ACCESS-B"
+    )
+    user = _create_user(branch)
+    inactive_user = get_user_model().objects.create_user(
+        username=f"inactive-access-{uuid.uuid4().hex[:8]}",
+        password="A-strong-test-password-123",
+        branch=branch,
+        is_active=False,
+    )
+    outside_user = _create_user(other_branch)
+    report = REPORTS_BY_SLUG["user-access-review"]
+    _grant_report(user, report)
+    outside_role = Role.objects.create(name=f"outside-role-{uuid.uuid4().hex[:8]}")
+    UserRole.objects.create(user=outside_user, role=outside_role)
+    inactive_role = Role.objects.create(
+        name=f"inactive-role-{uuid.uuid4().hex[:8]}"
+    )
+    UserRole.objects.create(user=inactive_user, role=inactive_role)
+    client.force_login(user)
+
+    active_response = client.get(
+        reverse(f"reports:{report.grid_route_name}"),
+        {"status": "active"},
+    )
+    inactive_response = client.get(
+        reverse(f"reports:{report.grid_route_name}"),
+        {"status": "inactive"},
+    )
+    forged_branch_response = client.get(
+        reverse(f"reports:{report.grid_route_name}"),
+        {"branch": other_branch.pk},
+    )
+
+    assert active_response.status_code == 200
+    active_rows = active_response.json()["rows"]
+    assert all(row["branch"] == branch.name for row in active_rows)
+    assert all(row["username"] != outside_user.username for row in active_rows)
+    assert inactive_response.status_code == 200
+    assert [row["username"] for row in inactive_response.json()["rows"]] == [
+        inactive_user.username
+    ]
+    assert forged_branch_response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_excel_and_pdf_exports_include_organization_logo(
+    client, request, tmp_path, settings
+):
+    settings.MEDIA_ROOT = tmp_path
+    cache.clear()
+    request.addfinalizer(cache.clear)
+    branch = Branch.objects.create(name="Branded report branch", code="RPT-BRAND")
+    organization = OrganizationConfiguration.objects.create(
+        legal_name="Branded Organization"
+    )
+    image = BytesIO()
+    PillowImage.new("RGB", (20, 20), color="blue").save(image, format="PNG")
+    organization.logo.save(
+        "organization-logo.png",
+        SimpleUploadedFile("organization-logo.png", image.getvalue(), "image/png"),
+        save=True,
+    )
+    user = _create_user(branch)
+    report = REPORTS_BY_SLUG["trial-balance"]
+    _grant_report(user, report)
+    client.force_login(user)
+
+    excel = client.get(reverse(f"reports:{report.excel_route_name}"))
+    workbook = load_workbook(BytesIO(b"".join(excel.streaming_content)))
+    assert len(workbook.active._images) == 1
+    workbook.close()
+
+    pdf = client.get(reverse(f"reports:{report.pdf_route_name}"))
+    assert pdf.status_code == 200
+    assert pdf.content.startswith(b"%PDF-")
 
 
 @pytest.mark.django_db

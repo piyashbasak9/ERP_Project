@@ -12,7 +12,9 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from core.audit.services import log_action
 from core.common.popup import popup_json_response, render_popup_form
+from core.configuration.services import get_organization_configuration
 
 from .forms import (
     SavingsAccountForm,
@@ -95,8 +97,6 @@ def product_form(request, pk=None):
     form = SavingsProductForm(request.POST or None, instance=instance)
     if request.method == 'POST' and form.is_valid():
         product = form.save()
-        from core.audit.services import log_action
-
         log_action(
             'Update' if instance else 'Create',
             'SavingsProduct',
@@ -154,8 +154,6 @@ def _set_savings_product_active(request, pk, active):
     if product.is_active != active:
         product.is_active = active
         product.save(update_fields=['is_active'])
-        from core.audit.services import log_action
-
         log_action(
             'Activate' if active else 'Deactivate',
             'SavingsProduct',
@@ -494,6 +492,11 @@ def statement_export(request, pk):
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = f'attachment; filename="{account.account_number}-statement.csv"'
     writer = csv.writer(response)
+    organization = get_organization_configuration()
+    writer.writerow([organization.legal_name])
+    writer.writerow(['Savings statement', account.account_number])
+    writer.writerow(['Branch', account.branch.name])
+    writer.writerow([])
     writer.writerow(['Date', 'Type', 'Amount', 'Balance before', 'Balance after', 'Narration'])
     writer.writerows(
         (
@@ -505,6 +508,17 @@ def statement_export(request, pk):
             transaction.narration,
         )
         for transaction in transactions
+    )
+    log_action(
+        'Export',
+        'SavingsStatement',
+        account.pk,
+        new_values={
+            'format': 'csv',
+            'row_count': transactions.count(),
+            'account_id': account.pk,
+        },
+        branch_id=account.branch_id,
     )
     return response
 

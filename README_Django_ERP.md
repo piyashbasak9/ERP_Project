@@ -84,9 +84,9 @@ The goal is to grow this platform into a **complete microfinance ERP**. An MFI r
 | Loans | Done | Requested Phase 5 workflows and reports pass the full PostgreSQL suite; see [section 7.5](#75-loans) |
 | Collections | Done | Collection workflows, reports, exports, permissions, branch isolation, runtime immutability and maker-checker sheet reversal pass PostgreSQL tests |
 | Accounting | Partial | Chart of accounts, fiscal periods, typed system mappings, balanced journals, approval, posting/reversal, account reconciliation and trial balance |
-| Reports | Implemented for the listed catalog | 30 registered reports share branch-aware filters, jqGrid, totals, audited Excel/PDF exports and a permission-filtered index; other compliance reports remain |
-| Audit log | Partial | Append-only application audit foundation and log screen exist; database-level immutability and full event coverage remain |
-| Settings module | Planned | [Section 7.10](#710-settings) |
+| Reports | Implemented for the listed catalog | 36 registered reports share branch-aware filters, jqGrid, totals, audited Excel/PDF exports and a permission-filtered index |
+| Audit and compliance | Partial | Permissioned logs, record trails, system events, activity dashboard, compliance reports, ORM immutability and a PostgreSQL append-only trigger; producer coverage for background jobs and integrations remains |
+| Settings module | Partial | Permissioned system, organization, user-preference and business-rule screens; translation catalogs and shared-cache deployment configuration remain |
 
 ### 1.3 Highlights (target system)
 
@@ -655,6 +655,7 @@ All report pages expose common branch, center, field-officer, date-range and sta
 | Loan | Disbursement register, outstanding loans, overdue loans, portfolio at risk (PAR), loan aging, loan statement, write-offs, repayment schedule, loan classification |
 | Collection | Collection sheet, daily collection summary, collector performance, collection efficiency, shortage and excess |
 | Financial | Trial balance, general ledger, cash book, income statement, balance sheet, receipts and payments |
+| Compliance | User access review, role/permission history, privileged actions, failed logins/lockouts, reopened days/reversals, KYC completeness |
 
 **Screens**: `/reports/` and `/reports/<report-slug>/`, with `/data/`, `/export/excel/` and `/export/pdf/` endpoints per registered report.
 
@@ -662,34 +663,40 @@ All report pages expose common branch, center, field-officer, date-range and sta
 
 ### 7.9 Audit
 
-**Status:** Partial. An append-only ORM log and activity screen are present; complete event coverage, database-level immutability and compliance workflows remain.
+**Status:** Partial. Permissioned audit logs, record trails, system events, activity dashboard and shared-framework compliance reports are implemented. The ORM rejects updates/deletes and a PostgreSQL trigger plus runtime-role grants protect `audit_logs`. Successful POST mutations are audited inside the request transaction; failed mutations roll back. Background job and integration event producers and exhaustive event-specific coverage remain.
 
 **Features**
 
 - User activity logging
-- System event tracking
+- System event tracking for request errors and lockouts; the event service accepts job and integration events when producers are added
 - Audit trail generation (who changed what, with before and after values)
 - Compliance reporting
 - Activity dashboard
 
 Details are in [section 13](#13-audit-and-compliance).
 
-**Screens**: `/audit/logs/`, `/audit/events/`, `/audit/trail/`, `/audit/compliance/`, `/audit/dashboard/`
+**Screens**: `/audit/logs/`, `/audit/events/`, `/audit/trail/<entity>/<id>/`, `/audit/dashboard/`; compliance reports are in `/reports/`
+
+**PostgreSQL evidence:** `AuditScreenTests.test_audit_screens_and_record_trail_require_permissions`, `AuditScreenTests.test_audit_search_and_activity_dashboard_are_branch_scoped`, `AuditScreenTests.test_axes_lockout_signal_creates_audited_system_activity`, `AuditScreenTests.test_member_sensitive_read_is_audited_without_copying_identifier_values`, and `AuditLogTests.test_postgresql_trigger_rejects_direct_audit_log_mutation`.
 
 ### 7.10 Settings
 
-**Status:** Planned.
+**Status:** Partial. Each screen has its own route permission; system and organization changes are validated, cached and audited with old/new values. User preferences are self-only and affect report page size, landing page and date display; the selected language is applied, but translation catalogs remain incomplete. Business-rule screens reuse product, approval-tier and PAR-bucket controls instead of duplicating them. Multi-process deployments should configure a shared Django cache backend for cross-worker invalidation.
 
 | Group | What it controls |
 |---|---|
-| **System configuration** | Application name and logo, currency and number format, date format, time zone, fiscal year start, password policy, session timeout, file upload limits, email and SMS gateway |
-| **Organization settings** | Legal name, registration number, address, contacts, logo for reports and receipts, regulator details |
+| **System configuration** | Application name and logo, currency and number format, date format, time zone, fiscal year start, password policy, session timeout and file upload limits. Mail/SMS credentials remain in environment variables and are not stored in the database. |
+| **Organization settings** | Legal name, registration number, address, phone, email, website and logo in report/print headers; regulator details remain future work |
 | **User preferences** | Per-user: language, default page size, default landing page, date format |
 | **Business rules configuration** | Loan and savings limits, approval limits, penalty rules, repayment allocation order, PAR thresholds, member status rules, collection rules, rounding rules |
 
 Changes to settings are audited with old and new values.
 
 **Screens**: `/settings/system/`, `/settings/organization/`, `/settings/business-rules/`, `/settings/preferences/`
+
+**PostgreSQL evidence:** `ConfigurationRouteTests.test_settings_screens_and_mutations_require_their_own_permission`, `ConfigurationRouteTests.test_settings_mutation_routes_reject_get`, `ConfigurationRouteTests.test_settings_index_lists_only_screens_the_user_can_open`, `ConfigurationRouteTests.test_system_configuration_is_validated_audited_and_effective_immediately`, `ConfigurationRouteTests.test_user_preferences_only_update_the_logged_in_user`, `ConfigurationRouteTests.test_every_settings_mutation_route_writes_a_request_audit`, and `ConfigurationRouteTests.test_settings_change_rolls_back_when_its_audit_write_fails`.
+
+**Full PostgreSQL validation:** `pytest -q` — 257 passed, 256 subtests passed, zero failures, zero errors and zero skips (2026-10-30).
 
 ### 7.11 Additional recommended modules
 
@@ -1034,7 +1041,7 @@ flowchart TD
 3. **Route names are the permission keys.** Give every route a stable `name=`, using `<module>_<resource>_<action>` (for example `loans_application_approve`). Renaming a route silently changes who can use it, so renames go through code review.
 4. **Destructive and state-changing routes accept POST only** (`@require_POST`) and are CSRF-protected. Deleting or approving through a link (GET) is never allowed.
 5. **Object-level checks are separate.** A permission says "may use this page". Branch scope and ownership still decide *which records* ([section 12](#12-branch-data-isolation)).
-6. Permissions are cached per role and **invalidated when a role changes**, so a change takes effect immediately.
+6. Route permissions are checked against active role assignments on every request, so role and permission changes take effect on the next request.
 
 ### 11.4 Permission registry and role screen
 
@@ -1056,14 +1063,14 @@ reports_loans_export         audit_log_list              accounts_role_edit
 
 | Area | Standard | Status |
 |---|---|---|
-| Password hashing | Argon2 as the first hasher; existing PBKDF2 hashes upgrade automatically at next login | Planned |
-| Password policy | Minimum length 10 to 12, common-password and numeric-only checks, similarity to user data, history of the last N passwords, optional expiry | Planned |
+| Password hashing | Argon2 as the first hasher; existing PBKDF2 hashes upgrade automatically at next login | Implemented |
+| Password policy | Configurable minimum length plus common-password, numeric-only and similarity checks; password history and expiry remain unimplemented | Partial |
 | Password confirmation | Required when creating a user | Implemented |
 | First login | New and admin-reset users must change the password before doing anything else | Planned |
-| Lockout | `django-axes`: 5 failed attempts, 15-minute cool-off, reset on success, every lockout audited | Planned |
+| Lockout | `django-axes`: 5 failed attempts, 15-minute cool-off, reset on success, lockout audited | Implemented |
 | Error messages | One generic message for a wrong username or password, so accounts cannot be enumerated | Planned |
 | `next` parameter | Accepted only if `url_has_allowed_host_and_scheme()` approves it, so the login page cannot redirect to another site | Planned |
-| Session cookie | `HttpOnly`, `Secure`, `SameSite=Lax` (or `Strict`), short idle timeout (default 30 minutes), absolute lifetime limit | Planned |
+| Session cookie | `HttpOnly`, `Secure`, `SameSite=Lax`, configurable idle timeout (default 30 minutes); absolute lifetime limit remains unimplemented | Partial |
 | Session rotation | New session key at login (Django does this), and after a password change (`update_session_auth_hash`) | Planned |
 | Logout | Flush the server-side session, then redirect to login | Implemented |
 | Password reset | Django token flow, short token lifetime (1 hour), same response whether or not the account exists | Planned |
@@ -1247,7 +1254,7 @@ The snippet is illustrative; model and helper names will follow the real apps.
 
 A user must never see or change another branch's data unless their role and branch access allow it. Django has no built-in global query filter, so isolation is built from a **branch-scoped manager that fails closed**.
 
-**Status**: Partial. Hierarchy moves, branch scoping and soft delete are implemented; broader module-wide isolation coverage remains. Every shared report validates requested branches against the user's accessible branches and scopes its queryset accordingly; parameterized tests reject forged branch ids on every report page and export. Head-office users receive consolidated data only across branches they can access.
+**Status**: Partial. Hierarchy moves, branch scoping and soft delete are implemented; broader module-wide isolation coverage remains. Every shared report and compliance report validates requested branches against the user's accessible branches and scopes its queryset accordingly; parameterized tests reject forged branch ids on every report page and export. Audit screens are branch-scoped, user preferences are constrained to the authenticated user, and head-office users receive consolidation only across branches they can access.
 
 ### 12.1 Hierarchy
 
@@ -1317,7 +1324,7 @@ class BranchScopedModel(models.Model):
 
 ## 13. Audit and Compliance
 
-**Status**: Planned. Branches currently carry `created_by`, `updated_by`, `created_at` and `updated_at` only.
+**Status**: Partial. Audit events are written for successful state-changing requests inside the request transaction, with authentication, role/permission, configuration, KYC download, sensitive member reads and report exports covered. Failed state-changing requests roll back. PostgreSQL append-only protection is installed by migration and documented in the runtime-role SQL. Job and integration producers, exhaustive event-specific audit assertions and retention/archival operations remain.
 
 ### 13.1 What is recorded
 
@@ -1353,7 +1360,7 @@ class BranchScopedModel(models.Model):
 - Bulk operations (`queryset.update()`, `bulk_create`) skip signals. Business code changes data through services, which write audit entries explicitly in those cases.
 - Authentication signals (`user_logged_in`, `user_logged_out`, `user_login_failed`) and the lockout event from `django-axes` write login entries.
 - Explicit `audit.log(...)` calls cover non-model events: approvals, exports, KYC file downloads, day-end reopen.
-- The audit table is **append-only**. The model refuses updates and deletes, and PostgreSQL privileges plus a trigger block them for the runtime account.
+- The audit table is **append-only**. The model refuses updates and deletes; a PostgreSQL trigger blocks direct mutation, and the runtime-role SQL revokes update/delete privileges.
 - Secrets, password hashes and tokens are never written to the log.
 - Retention is configurable (default: keep for the legal minimum of your jurisdiction, archive older rows).
 
@@ -1823,7 +1830,7 @@ The details users notice every day. These apply to every screen.
 | Status | Colored status tags with text (never color alone) |
 | Loading | Skeletons for tables and cards instead of blank screens |
 | Errors | Friendly message plus `traceId` for support; dedicated 403 and 404 pages |
-| Formats | Money with thousand separators and two decimals; dates as `DD-MMM-YYYY`; both configurable in Settings |
+| Formats | Money with configured currency symbol and western/Indian grouping in printable financial statements; dates use the user's configured format |
 | Time | Stored in UTC, shown in the organization time zone |
 | Keyboard | Tab order is logical; `Enter` submits a form; `Esc` closes a popup; visible focus ring |
 | Responsive | Usable on tablet; collection screens are optimized for small screens |
@@ -1832,7 +1839,7 @@ The details users notice every day. These apply to every screen.
 | Session | Idle warning before auto logout; returning to the original page after login |
 | Accessibility | Labels on all inputs, ARIA roles on custom components, WCAG 2.1 AA contrast |
 | Safety | No double submits; unsaved-changes warning; optimistic locking message when two users edit the same record |
-| Language | All text goes through Django translation (`gettext`, `{% trans %}`); no hard-coded strings in templates or JavaScript |
+| Language | The selected language is applied through Django's translation context; complete translation catalogs and removal of hard-coded strings remain |
 
 ---
 
@@ -2176,7 +2183,7 @@ Targets are **suggested starting points**; confirm them with load tests and with
 | **4. Savings** | Products, individual and group accounts, transactions, reversals, interest, statements, automatic postings | Partial |
 | **5. Loans** | Products, applications, eligibility, approvals, disbursement, schedules, repayments, penalties, rescheduling, settlement, write-off, recovery, PAR, statements, classification | Done — requested Phase 5 scope verified on PostgreSQL; see [section 7.5](#75-loans) |
 | **6. Collections** | Sheet generation, collection entry, cash reconciliation, atomic posting, collector performance, reports and maker-checker sheet reversal | Done — reversal and collection workflow tests pass on PostgreSQL |
-| **7. Reporting and control** | All report groups with Excel and PDF export, dashboards, day-end closing, notifications, bulk import, compliance reports | Partial — requested 30-report catalog, dashboard metric coverage and day-close/post race control are implemented; notifications, bulk import and compliance reports remain |
+| **7. Reporting and control** | All report groups with Excel and PDF export, dashboards, day-end closing, notifications, bulk import, compliance reports, settings and audit screens | Partial — 36 reports, dashboard metrics, day-close/post race control, settings, audit screens and compliance reports are implemented; notifications, bulk import and full audit producer coverage remain |
 | **8. Hardening and go-live** | Independent security review and penetration test, load testing, user acceptance testing, data migration from the old system, training, production rollout | Planned |
 
 **Future ideas**: Django REST Framework API, mobile app for field officers with offline collection, mobile wallet and payment gateway integration, SMS gateway automation, credit bureau checks, fixed deposit and DPS products, micro-insurance, HR and payroll, fixed assets, multi-currency, member self-service portal, MFA for all staff.

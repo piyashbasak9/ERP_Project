@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}Audit trail{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <h1 class="h3">Audit trail: {{ entity }} #{{ entity_id }}</h1>
+    <div class="table-responsive card"><table class="table table-hover align-middle mb-0">
+        <thead class="table-dark"><tr><th>Time</th><th>User</th><th>Action</th><th>Field</th><th>Before</th><th>After</th><th>Remarks</th></tr></thead>
+        <tbody>
+        {% for entry in entries %}
+            {% for change in entry.changes %}
+            <tr><td>{{ entry.log.timestamp_utc|date:"Y-m-d H:i:s" }}</td><td>{{ entry.log.user_name|default:"System" }}</td><td>{{ entry.log.action }}</td><td>{{ change.field }}</td><td>{{ change.old }}</td><td>{{ change.new }}</td><td>{{ entry.log.remarks }}</td></tr>
+            {% empty %}
+            <tr><td>{{ entry.log.timestamp_utc|date:"Y-m-d H:i:s" }}</td><td>{{ entry.log.user_name|default:"System" }}</td><td>{{ entry.log.action }}</td><td>—</td><td>—</td><td>—</td><td>{{ entry.log.remarks }}</td></tr>
+            {% endfor %}
+        {% endfor %}
+        </tbody>
+    </table></div>
+</div>
+{% endblock %}

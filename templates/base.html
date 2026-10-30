@@ -6,7 +6,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token }}">
-    <title>{% block title %}ERP Management{% endblock %}</title>
+    <title>{% block title %}{{ system_configuration.application_name }}{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.13.2/themes/base/jquery-ui.min.css">
@@ -21,8 +21,12 @@
     <nav class="navbar navbar-expand-lg navbar-dark navbar-custom sticky-top">
         <div class="container-fluid px-3 px-lg-4">
             <a class="navbar-brand fw-bold d-flex align-items-center" href="{% url 'Module_Home_home' %}">
+                {% if system_configuration.logo and can_view_system_logo %}
+                <img src="{% url 'configuration:Module_Settings_system_logo' %}" alt="" class="me-2" style="max-height:2rem;max-width:2rem">
+                {% else %}
                 <i class="bi bi-box-seam-fill me-2" aria-hidden="true"></i>
-                <span>ERP <span class="brand-light">Management</span></span>
+                {% endif %}
+                <span>{{ system_configuration.application_name }}</span>
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
@@ -66,7 +70,8 @@
                     {% endif %}
                     {% can 'Module_Auth_list_roles' as can_list_roles %}
                     {% can 'Module_Auth_list_users' as can_list_users %}
-                    {% if can_list_roles or can_list_users %}
+                    {% can 'Module_Settings_index' as can_settings %}
+                    {% if can_list_roles or can_list_users or can_settings %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="bi bi-shield-lock me-1" aria-hidden="true"></i>Administration
@@ -74,6 +79,7 @@
                         <ul class="dropdown-menu">
                             {% if can_list_roles %}<li><a class="dropdown-item" href="{% url 'accounts:Module_Auth_list_roles' %}">Roles</a></li>{% endif %}
                             {% if can_list_users %}<li><a class="dropdown-item" href="{% url 'accounts:Module_Auth_list_users' %}">Users</a></li>{% endif %}
+                            {% if can_settings %}<li><a class="dropdown-item" href="{% url 'configuration:Module_Settings_index' %}">Settings</a></li>{% endif %}
                             {% can 'Module_Auth_create_role' as can_create_role %}
                             {% if can_create_role %}<li><a class="dropdown-item" href="{% url 'accounts:Module_Auth_create_role' %}?popup=1" data-popup data-popup-title="Create role">Create role</a></li>{% endif %}
                             {% can 'Module_Auth_create_user' as can_create_user %}

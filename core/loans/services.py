@@ -1,7 +1,7 @@
 import calendar
 import uuid
 from datetime import date, timedelta
-from decimal import ROUND_HALF_UP, Decimal, localcontext
+from decimal import Decimal, localcontext
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -16,6 +16,11 @@ from core.accounting.services import JournalService
 from core.accounts.models import Permission, UserRole
 from core.audit.services import log_action
 from core.branch.models import Branch, Member, MemberKYC
+from core.configuration.services import (
+    configured_rounding,
+    get_business_rules,
+    member_status_allowed,
+)
 from core.savings.models import SavingsAccount, SavingsProduct
 from core.savings.services import SavingsService
 
@@ -47,7 +52,7 @@ PERIODS_PER_YEAR = {
 
 
 def money(value):
-    return Decimal(value).quantize(CENT, rounding=ROUND_HALF_UP)
+    return Decimal(value).quantize(CENT, rounding=configured_rounding())
 
 
 def generate_schedule(
@@ -201,8 +206,8 @@ class LoanService:
             raise ValidationError({"branch": "You cannot access this branch."})
 
     def _eligible(self, member, product, amount):
-        if member.status != Member.STATUS_ACTIVE:
-            raise ValidationError("Only active members may apply for a loan.")
+        if not member_status_allowed("loan_application", member.status):
+            raise ValidationError("This member status cannot apply for a loan.")
         if product.requires_verified_kyc and not MemberKYC.objects.filter(
             member=member, status=MemberKYC.STATUS_VERIFIED
         ).exists():
@@ -578,6 +583,8 @@ class LoanService:
         loan = Loan.objects.select_for_update().filter(pk=loan_id).first()
         if loan is None:
             raise Loan.DoesNotExist
+        if not member_status_allowed("loan_repayment", loan.member.status):
+            raise ValidationError("This member status cannot repay a loan.")
         self._ensure_access(loan.branch_id)
         key = self._uuid(idempotency_key)
         amount = money(amount)
@@ -642,29 +649,26 @@ class LoanService:
         allocation_amount = amount - overpayment
 
         remaining = allocation_amount
-        penalty_paid = min(remaining, penalty_due)
-        remaining -= penalty_paid
-        fee_paid = self._apply_to_installments(
-            installments,
-            remaining,
-            "fee",
-            as_of_date=payment_date,
-        )
-        remaining -= fee_paid
-        interest_paid = self._apply_to_installments(
-            installments,
-            remaining,
-            "interest",
-            as_of_date=payment_date,
-        )
-        remaining -= interest_paid
-        principal_paid = self._apply_to_installments(
-            installments,
-            remaining,
-            "principal",
-            as_of_date=payment_date,
-        )
-        remaining -= principal_paid
+        allocated = {"penalty": ZERO, "fees": ZERO, "interest": ZERO, "principal": ZERO}
+        allocation_functions = {
+            "penalty": lambda amount_left: min(amount_left, penalty_due),
+            "fees": lambda amount_left: self._apply_to_installments(
+                installments, amount_left, "fee", as_of_date=payment_date
+            ),
+            "interest": lambda amount_left: self._apply_to_installments(
+                installments, amount_left, "interest", as_of_date=payment_date
+            ),
+            "principal": lambda amount_left: self._apply_to_installments(
+                installments, amount_left, "principal", as_of_date=payment_date
+            ),
+        }
+        for component in get_business_rules().repayment_allocation_order:
+            allocated[component] = allocation_functions[component](remaining)
+            remaining -= allocated[component]
+        penalty_paid = allocated["penalty"]
+        fee_paid = allocated["fees"]
+        interest_paid = allocated["interest"]
+        principal_paid = allocated["principal"]
         advance_amount = ZERO
         if include_future:
             for row in installments:

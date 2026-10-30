@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}Activity dashboard{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <h1 class="h3 mb-3">Activity dashboard</h1>
+    <div class="alert alert-warning">Failed logins and lockouts today: <strong>{{ failed_logins_today }}</strong></div>
+    <div class="row g-3">
+        <div class="col-lg-6"><div class="card card-body"><h2 class="h5">Logins per day</h2><ul>{% for row in logins_per_day %}<li>{{ row.day }} — {{ row.count }}</li>{% empty %}<li>No logins recorded.</li>{% endfor %}</ul></div></div>
+        <div class="col-lg-6"><div class="card card-body"><h2 class="h5">Top actions</h2><ol>{% for row in top_actions %}<li>{{ row.action }} — {{ row.count }}</li>{% empty %}<li>No activity recorded.</li>{% endfor %}</ol></div></div>
+        <div class="col-lg-6"><div class="card card-body"><h2 class="h5">Most active users</h2><ol>{% for row in most_active_users %}<li>{{ row.user_name }} — {{ row.count }}</li>{% empty %}<li>No user activity recorded.</li>{% endfor %}</ol></div></div>
+        <div class="col-lg-6"><div class="card card-body"><h2 class="h5">Recent sensitive activity</h2><ul>{% for log in sensitive_actions %}<li>{{ log.timestamp_utc|date:"Y-m-d H:i" }} — {{ log.user_name }} — {{ log.action }} {{ log.entity_name }} #{{ log.entity_id }}</li>{% empty %}<li>No sensitive activity recorded.</li>{% endfor %}</ul></div></div>
+    </div>
+</div>
+{% endblock %}

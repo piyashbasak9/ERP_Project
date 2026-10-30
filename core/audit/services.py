@@ -61,3 +61,24 @@ def log_action(
         correlation_id=context.get('correlation_id', ''),
         remarks=remarks[:500],
     )
+
+
+def record_system_event(*, category, severity, message, status="failed", branch_id=None):
+    allowed_categories = {"error", "job", "integration", "configuration"}
+    allowed_severities = {"info", "warning", "error", "critical"}
+    if category not in allowed_categories:
+        raise ValueError(f"Unsupported system event category: {category}")
+    if severity not in allowed_severities:
+        raise ValueError(f"Unsupported system event severity: {severity}")
+    return log_action(
+        "SystemEvent",
+        "SystemEvent",
+        category,
+        new_values={
+            "category": category,
+            "severity": severity,
+            "status": status[:32],
+            "message": message[:500],
+        },
+        branch_id=branch_id,
+    )

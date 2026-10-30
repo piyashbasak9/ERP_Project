@@ -5,7 +5,7 @@ from tempfile import SpooledTemporaryFile
 
 from django.core.exceptions import FieldError, PermissionDenied
 from django.db.models import QuerySet, Sum
-from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
+from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils import timezone
@@ -14,6 +14,7 @@ from django.views.decorators.http import require_GET
 
 from core.audit.services import log_action
 from core.branch.models import Branch, Center, Staff
+from core.configuration.services import get_organization_configuration
 
 from .registry import REPORTS, REPORTS_BY_SLUG
 
@@ -199,7 +200,11 @@ def _sorted_rows(rows, report, sort_key, direction):
 
 
 def _page_values(request, report, rows):
-    page_size = min(max(_integer_filter(request, "rows") or 25, 1), 100)
+    preference = getattr(request, "user_preference", None)
+    default_page_size = preference.default_page_size if preference else 25
+    page_size = min(
+        max(_integer_filter(request, "rows") or default_page_size, 1), 100
+    )
     page = max(_integer_filter(request, "page") or 1, 1)
     direction = request.GET.get("sord", "asc").lower()
     rows = _sorted_rows(
@@ -219,6 +224,9 @@ def _page_values(request, report, rows):
 
 
 def _organization_name():
+    organization = get_organization_configuration()
+    if organization.pk and organization.legal_name:
+        return organization.legal_name
     head_office = Branch.unscoped.filter(
         branch_type=Branch.BRANCH_TYPE_HEAD_OFFICE
     ).order_by("pk").first()
@@ -226,6 +234,18 @@ def _organization_name():
         return head_office.name
     root = Branch.unscoped.filter(parent__isnull=True).order_by("pk").first()
     return root.name if root else "Organization"
+
+
+def _organization_logo(organization):
+    logo = organization.logo
+    if (
+        not logo
+        or not logo.name.lower().endswith((".jpg", ".jpeg", ".png"))
+        or not logo.storage.exists(logo.name)
+    ):
+        return None
+    with logo.open("rb") as logo_file:
+        return logo_file.read()
 
 
 def _filter_labels(filters):
@@ -282,6 +302,11 @@ def _report_context(request, report):
         "officers": officers,
         "filter_text": filter_text,
         "organization_name": _organization_name(),
+        "default_page_size": (
+            request.user_preference.default_page_size
+            if getattr(request, "user_preference", None)
+            else 25
+        ),
         "columns_json": [
             {"key": column.key, "label": column.label}
             for column in report.columns
@@ -405,15 +430,15 @@ def _audit_export(
     )
 
 
-def _excel_stream(workbook):
-    def chunks():
-        with SpooledTemporaryFile(max_size=1_048_576, mode="w+b") as spool:
-            workbook.save(spool)
-            spool.seek(0)
-            while chunk := spool.read(64 * 1024):
-                yield chunk
-
-    return chunks()
+def _excel_file(workbook):
+    spool = SpooledTemporaryFile(max_size=1_048_576, mode="w+b")  # noqa: SIM115 - FileResponse owns the stream.
+    try:
+        workbook.save(spool)
+    except Exception:
+        spool.close()
+        raise
+    spool.seek(0)
+    return spool
 
 
 @require_GET
@@ -433,11 +458,23 @@ def report_excel(request, report_slug):
         )
         return export_context
 
+    from io import BytesIO
+
     from openpyxl import Workbook
+    from openpyxl.drawing.image import Image as ExcelImage
+    from openpyxl.utils import get_column_letter
 
     totals, filter_text = export_context
     workbook = Workbook(write_only=True)
     sheet = workbook.create_sheet(title=report.title[:31])
+    organization = get_organization_configuration()
+    logo_data = _organization_logo(organization)
+    if logo_data:
+        logo = ExcelImage(BytesIO(logo_data))
+        scale = min(120 / logo.width, 60 / logo.height, 1)
+        logo.width *= scale
+        logo.height *= scale
+        sheet.add_image(logo, f"{get_column_letter(len(report.columns) + 2)}1")
     sheet.append([_organization_name()])
     sheet.append([report.title])
     sheet.append([filter_text])
@@ -452,9 +489,10 @@ def report_excel(request, report_slug):
                 for index, column in enumerate(report.columns)
             ]
         )
+    excel_file = _excel_file(workbook)
     _audit_export(request, report, filters, "xlsx", len(rows))
-    response = StreamingHttpResponse(
-        _excel_stream(workbook),
+    response = FileResponse(
+        excel_file,
         content_type=EXCEL_CONTENT_TYPE,
     )
     response["Content-Disposition"] = (
@@ -496,6 +534,7 @@ def report_pdf(request, report_slug):
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib.units import inch
     from reportlab.platypus import (
+        Image,
         Paragraph,
         SimpleDocTemplate,
         Table,
@@ -506,6 +545,18 @@ def report_pdf(request, report_slug):
     from io import BytesIO
 
     buffer = BytesIO()
+    story = []
+    organization = get_organization_configuration()
+    logo_data = _organization_logo(organization)
+    if logo_data:
+        logo = Image(
+            BytesIO(logo_data),
+            width=0.65 * inch,
+            height=0.65 * inch,
+            kind="proportional",
+        )
+        logo.hAlign = "LEFT"
+        story.append(logo)
     document = SimpleDocTemplate(
         buffer,
         pagesize=landscape(letter),
@@ -543,7 +594,7 @@ def report_pdf(request, report_slug):
             ]
         )
     )
-    document.build(
+    story.extend(
         [
             Paragraph(_pdf_value(_organization_name()), styles["Title"]),
             Paragraph(_pdf_value(report.title), styles["Heading2"]),
@@ -551,6 +602,7 @@ def report_pdf(request, report_slug):
             table,
         ]
     )
+    document.build(story)
     _audit_export(request, report, filters, "pdf", len(rows))
     response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
     response["Content-Disposition"] = (

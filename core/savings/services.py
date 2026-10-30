@@ -1,7 +1,7 @@
 import uuid
 from calendar import monthrange
 from datetime import timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -16,6 +16,7 @@ from core.accounting.models import (
 from core.accounting.services import ZERO, JournalService
 from core.audit.services import log_action
 from core.branch.models import Branch, Group, Member
+from core.configuration.services import configured_rounding, member_status_allowed
 
 from .models import (
     SavingsAccount,
@@ -742,7 +743,7 @@ class SavingsService:
             gross_interest * account.product_term('withholding_tax_rate')
         ).quantize(
             CENT,
-            rounding=ROUND_HALF_UP,
+            rounding=configured_rounding(),
         )
         net_amount = gross_interest - tax_amount
         if net_amount <= ZERO:
@@ -809,7 +810,7 @@ class SavingsService:
             )
         else:
             interest = daily_interest_sum
-        return interest.quantize(CENT, rounding=ROUND_HALF_UP)
+        return interest.quantize(CENT, rounding=configured_rounding())
 
 
     def _post_transaction(
@@ -1023,11 +1024,10 @@ class SavingsService:
 
     def _validate_member_transaction(self, account, *, withdrawal, contribution_member_id=None):
         self._ensure_account_active(account)
+        action = "savings_withdrawal" if withdrawal else "savings_deposit"
         if account.member_id:
-            if account.member.status not in {Member.STATUS_ACTIVE, Member.STATUS_INACTIVE}:
-                raise ValidationError('Savings transactions are blocked for pending or suspended members.')
-            if withdrawal and account.member.status != Member.STATUS_ACTIVE:
-                raise ValidationError('Only active members may withdraw savings.')
+            if not member_status_allowed(action, account.member.status):
+                raise ValidationError('This member status cannot make savings transactions.')
         elif account.group_id:
             if contribution_member_id is not None:
                 member = Member.unscoped.filter(
@@ -1035,7 +1035,7 @@ class SavingsService:
                     group_id=account.group_id,
                     branch_id=account.branch_id,
                 ).first()
-                if member is None or member.status == Member.STATUS_SUSPENDED:
+                if member is None or not member_status_allowed(action, member.status):
                     raise ValidationError({
                         'contribution_member': 'Select a non-suspended member in this group.'
                     })

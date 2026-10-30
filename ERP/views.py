@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from django.db.models import DecimalField, ExpressionWrapper, F, Sum
 from django.http import JsonResponse
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.utils import timezone
 
 from core.accounts.models import Permission
@@ -182,6 +182,24 @@ def _dashboard_cards(request):
 
 
 def home(request):
+    preference = getattr(request, "user_preference", None)
+    landing_page = preference.default_landing_page if preference else "/"
+    landing_routes = {
+        "/reports/": "Module_Reports_index",
+        "/loans/portfolio/": "Module_Loans_portfolio",
+        "/savings/accounts/": "Module_Savings_accounts",
+    }
+    landing_route = landing_routes.get(landing_page)
+    if landing_route and (
+        request.user.is_superuser
+        or Permission.objects.filter(
+            role_permissions__role__user_roles__user=request.user,
+            route_name=landing_route,
+            is_allowed=True,
+            is_active=True,
+        ).exists()
+    ):
+        return redirect(landing_page)
     return render(request, 'home.html', {"dashboard_cards": _dashboard_cards(request)})
 
 

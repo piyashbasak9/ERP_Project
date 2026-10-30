@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.db.models import (
@@ -15,6 +15,7 @@ from django.db.models import (
     When,
 )
 from django.db.models.functions import Coalesce
+from django.utils import timezone
 
 ZERO = Decimal("0.00")
 MONEY = DecimalField(max_digits=18, decimal_places=2)
@@ -56,14 +57,30 @@ class ReportDefinition:
 
 def _date_status_filters(queryset, report, filters):
     if report.date_field:
-        if filters.start_date:
-            queryset = queryset.filter(
-                **{f"{report.date_field}__gte": filters.start_date}
-            )
-        if filters.end_date:
-            queryset = queryset.filter(
-                **{f"{report.date_field}__lte": filters.end_date}
-            )
+        if report.date_field == "timestamp_utc":
+            if filters.start_date:
+                start = timezone.make_aware(
+                    datetime.combine(filters.start_date, time.min)
+                )
+                queryset = queryset.filter(
+                    **{f"{report.date_field}__gte": start}
+                )
+            if filters.end_date:
+                end = timezone.make_aware(
+                    datetime.combine(filters.end_date + timedelta(days=1), time.min)
+                )
+                queryset = queryset.filter(
+                    **{f"{report.date_field}__lt": end}
+                )
+        else:
+            if filters.start_date:
+                queryset = queryset.filter(
+                    **{f"{report.date_field}__gte": filters.start_date}
+                )
+            if filters.end_date:
+                queryset = queryset.filter(
+                    **{f"{report.date_field}__lte": filters.end_date}
+                )
     if report.status_field and filters.status:
         queryset = queryset.filter(**{report.status_field: filters.status})
     if report.center_field and filters.center_id:
@@ -734,6 +751,93 @@ def _collection_variances(request, filters):
     )
 
 
+def _access_review(request, filters):
+    from core.accounts.models import UserRole
+
+    queryset = UserRole.objects.filter(
+        user__branch_id__in=filters.branch_ids,
+    )
+    if filters.status == "active":
+        queryset = queryset.filter(user__is_active=True)
+    elif filters.status == "inactive":
+        queryset = queryset.filter(user__is_active=False)
+    return queryset.select_related("user", "user__branch", "role").values(
+        "user__username", "user__first_name", "user__last_name",
+        "user__branch__name", "role__name",
+    ).order_by("user__branch__name", "user__username")
+
+
+def _role_permission_history(request, filters):
+    from core.audit.models import AuditLog
+
+    return AuditLog.objects.filter(
+        branch_id__in=filters.branch_ids,
+        entity_name__in=("Role", "Permission", "RolePermission", "UserRole"),
+    ).select_related("branch").order_by("-timestamp_utc")
+
+
+def _privileged_actions(request, filters):
+    from core.audit.models import AuditLog
+
+    return AuditLog.objects.filter(
+        branch_id__in=filters.branch_ids,
+    ).filter(
+        Q(action__in=(
+            "Approve", "Disburse", "WriteOff", "Reverse", "ReopenBusinessDay",
+            "Export", "Download", "ViewSensitiveData", "Lockout",
+        ))
+        | Q(entity_name="HTTPMutation", action="RequestMutation")
+    ).order_by("-timestamp_utc")
+
+
+def _failed_logins(request, filters):
+    from core.audit.models import AuditLog
+
+    return AuditLog.objects.filter(
+        branch_id__in=filters.branch_ids,
+        action__in=("LoginFailed", "Lockout"),
+    ).order_by("-timestamp_utc")
+
+
+def _reopened_and_reversed(request, filters):
+    from core.audit.models import AuditLog
+
+    return AuditLog.objects.filter(
+        branch_id__in=filters.branch_ids,
+    ).filter(
+        Q(action="ReopenBusinessDay", entity_name="BranchClosedDay")
+        | Q(action__icontains="revers", entity_name__icontains="reversal")
+        | Q(action__icontains="revers", entity_name__icontains="payment")
+    ).order_by("-timestamp_utc")
+
+
+def _kyc_completeness(request, filters):
+    from django.db.models import Exists, OuterRef
+
+    from core.branch.models import Member, MemberKYC
+
+    verified = MemberKYC.objects.filter(
+        member_id=OuterRef("pk"),
+        status=MemberKYC.STATUS_VERIFIED,
+        document_type=MemberKYC.DOC_TYPE_NATIONAL_ID,
+    )
+    members = Member.objects.filter(
+        branch_id__in=filters.branch_ids
+    ).select_related("branch").annotate(
+        has_verified_kyc=Exists(verified)
+    )
+    if filters.status:
+        members = members.filter(status=filters.status)
+    if filters.start_date:
+        members = members.filter(created_at__date__gte=filters.start_date)
+    members = members.filter(created_at__date__lte=filters.end_date)
+    return members.values("branch__name").annotate(
+        member_count=Count("pk"),
+        complete_count=Count("pk", filter=Q(has_verified_kyc=True)),
+        incomplete_count=Count("pk", filter=Q(has_verified_kyc=False)),
+    ).order_by("branch__name")
+
+
 def _columns(*items):
     return tuple(ReportColumn(*item) for item in items)
 
@@ -1173,6 +1277,81 @@ REPORTS = (
         _collection_variances, ("cash_received", "shortage", "excess"),
         center_field="center_id", officer_field="field_officer_id",
         date_field="collection_date", status_field="status",
+    ),
+    ReportDefinition(
+        "user-access-review", "User access review", "Compliance",
+        "Module_Reports_user_access_review",
+        _columns(
+            ("username", "Username", "user__username"),
+            ("first_name", "First name", "user__first_name"),
+            ("last_name", "Last name", "user__last_name"),
+            ("branch", "Branch", "user__branch__name"),
+            ("role", "Role", "role__name"),
+        ),
+        _access_review,
+    ),
+    ReportDefinition(
+        "role-permission-history", "Role and permission change history", "Compliance",
+        "Module_Reports_role_permission_history",
+        _columns(
+            ("date", "Changed at", "timestamp_utc"),
+            ("user", "Changed by", "user_name"),
+            ("action", "Action"),
+            ("entity", "Entity", "entity_name"),
+            ("entity_id", "Record", "entity_id"),
+            ("old_values", "Before", "old_values"),
+            ("new_values", "After", "new_values"),
+        ),
+        _role_permission_history, date_field="timestamp_utc",
+    ),
+    ReportDefinition(
+        "privileged-actions", "Privileged actions", "Compliance",
+        "Module_Reports_privileged_actions",
+        _columns(
+            ("date", "Time", "timestamp_utc"),
+            ("user", "User", "user_name"),
+            ("action", "Action"),
+            ("entity", "Entity", "entity_name"),
+            ("entity_id", "Record", "entity_id"),
+            ("branch", "Branch", "branch__name"),
+        ),
+        _privileged_actions, date_field="timestamp_utc",
+    ),
+    ReportDefinition(
+        "failed-logins", "Failed logins and lockouts", "Compliance",
+        "Module_Reports_failed_logins",
+        _columns(
+            ("date", "Time", "timestamp_utc"),
+            ("user", "Username", "user_name"),
+            ("action", "Event"),
+            ("ip", "IP address", "ip_address"),
+            ("branch", "Branch", "branch__name"),
+        ),
+        _failed_logins, date_field="timestamp_utc",
+    ),
+    ReportDefinition(
+        "day-reopen-reversals", "Reopened days and reversals", "Compliance",
+        "Module_Reports_day_reopen_reversals",
+        _columns(
+            ("date", "Time", "timestamp_utc"),
+            ("user", "User", "user_name"),
+            ("action", "Action"),
+            ("entity", "Entity", "entity_name"),
+            ("entity_id", "Record", "entity_id"),
+            ("reason", "Reason", "remarks"),
+        ),
+        _reopened_and_reversed, date_field="timestamp_utc",
+    ),
+    ReportDefinition(
+        "kyc-completeness", "KYC completeness", "Compliance",
+        "Module_Reports_kyc_completeness",
+        _columns(
+            ("branch", "Branch", "branch__name"),
+            ("member_count", "Members"),
+            ("complete_count", "Verified identity"),
+            ("incomplete_count", "Missing verified identity"),
+        ),
+        _kyc_completeness, ("member_count", "complete_count", "incomplete_count"),
     ),
 )
 

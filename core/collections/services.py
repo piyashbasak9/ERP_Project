@@ -10,6 +10,7 @@ from core.accounting.models import SystemAccountMapping
 from core.accounting.services import JournalService
 from core.audit.services import log_action
 from core.branch.models import Branch, Center, Group, Member, Staff
+from core.configuration.services import get_business_rules
 from core.loans.models import Loan, LoanInstallment
 from core.loans.services import LoanService
 from core.savings.models import SavingsAccount, SavingsTransaction
@@ -544,7 +545,9 @@ class CollectionService:
                     amount=amount,
                     payment_date=sheet.collection_date,
                     idempotency_key=payment_key,
-                    include_future=True,
+                    include_future=get_business_rules().collection_rules.get(
+                        "allow_advance_collection", True
+                    ),
                 )
                 posting = CollectionPosting(
                     branch_id=sheet.branch_id,

@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div><span class="eyebrow">SETTINGS</span><h1 class="h3 mb-0">{{ title }}</h1></div>
+        <a class="btn btn-outline-secondary" href="{{ cancel_url }}" data-popup-close>Cancel</a>
+    </div>
+    <form method="post" action="{{ save_url }}{% if request.GET.popup == '1' %}?popup=1{% endif %}" class="card card-body mb-4">
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+        {% for field in form %}
+        <div class="mb-3">
+            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+            {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+        </div>
+        {% endfor %}
+        <button class="btn btn-primary align-self-end" type="submit">Save business rules</button>
+    </form>
+    <div class="row g-3">
+        <div class="col-lg-6"><div class="card card-body">
+            <h2 class="h5">Loan products: limits and penalties</h2>
+            <a href="{{ loan_product_url }}" class="btn btn-sm btn-outline-primary align-self-start mb-2">Manage loan products</a>
+            <ul>{% for product in loan_products %}<li>{{ product.name }} — {{ product.min_amount }}–{{ product.max_amount }}, penalty {{ product.late_penalty_rate }}%</li>{% empty %}<li>No products configured.</li>{% endfor %}</ul>
+        </div></div>
+        <div class="col-lg-6"><div class="card card-body">
+            <h2 class="h5">Savings products and limits</h2>
+            <a href="{{ savings_product_url }}" class="btn btn-sm btn-outline-primary align-self-start mb-2">Manage savings products</a>
+            <ul>{% for product in savings_products %}<li>{{ product.name }} — minimum {{ product.minimum_balance }}, withdrawal threshold {{ product.withdrawal_approval_threshold|default:"Not set" }}</li>{% empty %}<li>No products configured.</li>{% endfor %}</ul>
+        </div></div>
+        <div class="col-lg-6"><div class="card card-body">
+            <h2 class="h5">Approval limits</h2><a href="{{ approval_tier_url }}" class="btn btn-sm btn-outline-primary align-self-start mb-2">Manage approval tiers</a>
+            <ul>{% for tier in approval_tiers %}<li>{{ tier.role.name }} — {{ tier.amount_limit }} ({{ tier.get_branch_type_display }})</li>{% empty %}<li>No approval tiers configured.</li>{% endfor %}</ul>
+        </div></div>
+        <div class="col-lg-6"><div class="card card-body">
+            <h2 class="h5">PAR thresholds and provisioning</h2><a href="{{ par_bucket_url }}" class="btn btn-sm btn-outline-primary align-self-start mb-2">Manage PAR buckets</a>
+            <ul>{% for bucket in par_buckets %}<li>{{ bucket.name }} — {{ bucket.minimum_days }} to {{ bucket.maximum_days|default:"above" }} days, provision {{ bucket.provision_rate }}%</li>{% empty %}<li>No PAR buckets configured.</li>{% endfor %}</ul>
+        </div></div>
+    </div>
+</div>
+{% endblock %}

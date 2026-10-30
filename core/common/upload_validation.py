@@ -1,5 +1,6 @@
-from django.conf import settings
 from django.core.exceptions import ValidationError
+
+from core.configuration.services import get_system_configuration
 
 ALLOWED_KYC_SIGNATURES = {
     'image/jpeg': (b'\xff\xd8\xff',),
@@ -9,7 +10,7 @@ ALLOWED_KYC_SIGNATURES = {
 
 
 def max_upload_bytes():
-    return int(getattr(settings, 'MAX_UPLOAD_MB', 2)) * 1024 * 1024
+    return get_system_configuration().upload_limit_mb * 1024 * 1024
 
 
 def detect_upload_mime(uploaded_file):
@@ -23,7 +24,9 @@ def detect_upload_mime(uploaded_file):
 
 def validate_upload_size(uploaded_file):
     if uploaded_file.size > max_upload_bytes():
-        raise ValidationError(f'File size must not exceed {settings.MAX_UPLOAD_MB} MB.')
+        raise ValidationError(
+            f'File size must not exceed {get_system_configuration().upload_limit_mb} MB.'
+        )
 
 
 def validate_kyc_file(uploaded_file):

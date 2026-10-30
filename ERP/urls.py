@@ -31,4 +31,5 @@ urlpatterns = [
     path("loans/", include("core.loans.urls")),
     path("collections/", include("core.collections.urls")),
     path("reports/", include("core.reports.urls")),
+    path("settings/", include("core.configuration.urls")),
 ]

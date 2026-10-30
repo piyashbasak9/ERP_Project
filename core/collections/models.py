@@ -272,6 +272,11 @@ class CollectionSheetItem(BranchScopedModel):
     updated_at = models.DateTimeField(auto_now=True)
 
     def clean(self):
+        from core.configuration.services import (
+            get_business_rules,
+            member_status_allowed,
+        )
+
         if self.sheet_id and self.sheet.branch_id != self.branch_id:
             raise ValidationError({"branch": "The item must match its sheet branch."})
         if self.member_id and self.member.branch_id != self.branch_id:
@@ -297,10 +302,15 @@ class CollectionSheetItem(BranchScopedModel):
             self.collected_amount
             < self.expected_installment + self.expected_overdue + self.expected_penalty
             and not self.reason.strip()
+            and get_business_rules().collection_rules.get(
+                "require_short_collection_reason", True
+            )
         ):
             raise ValidationError({"reason": "A reason is required when the loan collection is below the amount due."})
-        if self.savings_amount and self.member.status not in {"active", "inactive"}:
-            raise ValidationError({"savings_amount": "Savings deposits are blocked for pending or suspended members."})
+        if self.savings_amount and not member_status_allowed(
+            "savings_deposit", self.member.status
+        ):
+            raise ValidationError({"savings_amount": "This member status cannot make savings deposits."})
 
     def save(self, *args, **kwargs):
         if self.sheet_id and CollectionSheet.unscoped.filter(

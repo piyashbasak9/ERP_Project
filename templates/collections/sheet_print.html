@@ -1,16 +1,21 @@
 {% extends 'base.html' %}
+{% load user_formatting %}
 {% block title %}Print collection sheet #{{ sheet.pk }}{% endblock %}
 {% block content %}
 <div class="container-fluid py-3">
+    <div class="d-flex align-items-center gap-2 mb-3">
+        {% if organization_configuration.logo and can_view_organization_logo %}<img src="{% url 'configuration:Module_Settings_organization_logo' %}" alt="" style="max-height:3rem;max-width:3rem">{% endif %}
+        <h2 class="h5 mb-0">{{ organization_configuration.legal_name }}</h2>
+    </div>
     <div class="d-flex justify-content-between align-items-center mb-3 no-print">
         <h1 class="h3">Collection sheet #{{ sheet.pk }}</h1>
         <button class="btn btn-outline-secondary" type="button" onclick="window.print()">Print</button>
     </div>
-    <p>{{ sheet.collection_date }} · {{ sheet.center.name }}{% if sheet.group %} · {{ sheet.group.name }}{% endif %} · {{ sheet.field_officer.full_name }}</p>
+    <p>{{ sheet.collection_date|user_date:user_preference }} · {{ sheet.center.name }}{% if sheet.group %} · {{ sheet.group.name }}{% endif %} · {{ sheet.field_officer.full_name }}</p>
     <table class="table table-sm table-bordered">
         <thead><tr><th>Member</th><th>Due</th><th>Overdue</th><th>Penalty</th><th>Savings due</th><th>Loan collected</th><th>Savings</th><th>Reason</th></tr></thead>
-        <tbody>{% for item in items %}<tr><td>{{ item.member.member_code }} — {{ item.member.first_name }} {{ item.member.last_name }}</td><td>{{ item.expected_installment|floatformat:2 }}</td><td>{{ item.expected_overdue|floatformat:2 }}</td><td>{{ item.expected_penalty|floatformat:2 }}</td><td>{{ item.expected_savings|floatformat:2 }}</td><td>{{ item.collected_amount|floatformat:2 }}</td><td>{{ item.savings_amount|floatformat:2 }}</td><td>{{ item.reason }}</td></tr>{% endfor %}</tbody>
-        <tfoot><tr><th colspan="5">Sheet total</th><th colspan="3">{{ total_collected|floatformat:2 }}</th></tr></tfoot>
+        <tbody>{% for item in items %}<tr><td>{{ item.member.member_code }} — {{ item.member.first_name }} {{ item.member.last_name }}</td><td>{{ item.expected_installment|config_money:system_configuration }}</td><td>{{ item.expected_overdue|config_money:system_configuration }}</td><td>{{ item.expected_penalty|config_money:system_configuration }}</td><td>{{ item.expected_savings|config_money:system_configuration }}</td><td>{{ item.collected_amount|config_money:system_configuration }}</td><td>{{ item.savings_amount|config_money:system_configuration }}</td><td>{{ item.reason }}</td></tr>{% endfor %}</tbody>
+        <tfoot><tr><th colspan="5">Sheet total</th><th colspan="3">{{ total_collected|config_money:system_configuration }}</th></tr></tfoot>
     </table>
 </div>
 <style>@media print { .no-print, nav, footer { display: none !important; } .container-fluid { width: 100%; } }</style>

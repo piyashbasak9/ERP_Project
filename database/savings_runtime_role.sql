@@ -2,6 +2,9 @@
 -- The runtime role must not own these tables, inherit a broader writer role, or
 -- be a superuser; PostgreSQL owners and superusers can bypass these grants.
 
+GRANT SELECT, INSERT ON TABLE audit_logs TO erp_runtime;
+REVOKE UPDATE, DELETE ON TABLE audit_logs FROM erp_runtime;
+
 REVOKE UPDATE, DELETE ON TABLE savings_transactions FROM erp_runtime;
 REVOKE UPDATE (
     id, branch_id, account_id, transaction_type, status, transaction_date, amount,

@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     'core.savings',
     'core.loans',
     'core.collections',
+    'core.configuration',
 ]
 
 MIDDLEWARE = [
@@ -44,6 +45,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'core.configuration.middleware.UserConfigurationMiddleware',
     'core.branch.middleware.BranchContextMiddleware',
     'core.audit.middleware.AuditContextMiddleware',
     'axes.middleware.AxesMiddleware',
@@ -68,7 +70,11 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'core.branch.context_processors.branch_context',
+                'core.configuration.context_processors.organization_context',
             ],
+            'libraries': {
+                'user_formatting': 'core.common.templatetags.user_formatting',
+            },
         },
     },
 ]
@@ -93,7 +99,7 @@ AUTH_USER_MODEL = 'accounts.CustomUser'
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', 'OPTIONS': {'min_length': 12}},
+    {'NAME': 'core.configuration.validators.ConfiguredMinimumLengthValidator'},
     {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
@@ -153,6 +159,8 @@ AXES_COOLOFF_TIME = timedelta(minutes=15)
 AXES_RESET_ON_SUCCESS = True
 
 from django.contrib.messages import constants as messages
+
+PASSWORD_MIN_LENGTH = 12
 
 MESSAGE_TAGS = {
     messages.DEBUG: 'secondary',

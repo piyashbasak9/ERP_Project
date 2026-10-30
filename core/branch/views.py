@@ -260,6 +260,17 @@ def member_list(request):
     })
 
 
+def _audit_member_sensitive_read(member):
+    if member.national_id or member.other_id_numbers:
+        log_action(
+            'ViewSensitiveData',
+            'Member',
+            member.pk,
+            new_values={'fields': ['national_id', 'other_id_numbers']},
+            branch_id=member.branch_id,
+        )
+
+
 @require_GET
 def member_detail(request, pk):
     member = get_object_or_404(
@@ -268,6 +279,7 @@ def member_detail(request, pk):
         ),
         pk=pk,
     )
+    _audit_member_sensitive_read(member)
     return render(request, 'members/detail.html', {
         'member': member,
         'statuses': Member.STATUS_CHOICES,
@@ -314,6 +326,7 @@ def member_add(request):
 
 def member_edit(request, pk):
     member = get_object_or_404(Member.objects, pk=pk)
+    _audit_member_sensitive_read(member)
     form = MemberForm(request.POST or None, request.FILES or None, instance=member, request=request)
     if request.method == 'POST' and form.is_valid():
         updated_form_member = form.save(commit=False)
