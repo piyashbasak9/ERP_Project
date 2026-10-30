@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div><span class="eyebrow">COLLECTION REPORT</span><h1 class="h3 mb-0">{{ title }}</h1></div>
+        <div class="d-flex gap-2"><a class="btn btn-outline-primary" href="{% url 'collections:Module_Collections_report_excel' %}?date={{ selected_date|date:'Y-m-d' }}">Excel</a><a class="btn btn-outline-primary" href="{% url 'collections:Module_Collections_report_pdf' %}?date={{ selected_date|date:'Y-m-d' }}">PDF</a></div>
+    </div>
+    <form method="get" class="row g-2 mb-3"><div class="col-auto"><label class="form-label" for="report-date">Date</label><input class="form-control" id="report-date" type="date" name="date" value="{{ selected_date|date:'Y-m-d' }}"></div><div class="col-auto align-self-end"><button class="btn btn-primary">Run report</button></div></form>
+    {% if report_type == 'daily' %}
+    <div class="row g-2 mb-3"><div class="col-md-3"><div class="card card-body">Due <strong>{{ total_due|floatformat:2 }}</strong></div></div><div class="col-md-3"><div class="card card-body">Collected <strong>{{ total_collected|floatformat:2 }}</strong></div></div><div class="col-md-3"><div class="card card-body">Shortage <strong>{{ total_shortage|floatformat:2 }}</strong></div></div><div class="col-md-3"><div class="card card-body">Excess <strong>{{ total_excess|floatformat:2 }}</strong></div></div></div>
+    {% endif %}
+    <div class="table-responsive card"><table class="table table-striped mb-0">
+        {% if report_type == 'performance' %}
+        <thead class="table-dark"><tr><th>Field officer</th><th>Sheets</th><th>Collected</th></tr></thead>
+        <tbody>{% for row in rows %}<tr><td>{{ row.officer }}</td><td>{{ row.sheets }}</td><td>{{ row.collected|floatformat:2 }}</td></tr>{% empty %}<tr><td colspan="3" class="text-center py-4">No posted sheets found.</td></tr>{% endfor %}</tbody>
+        {% else %}
+        <thead class="table-dark"><tr><th>Center</th><th>Collector</th><th>Due</th><th>Collected</th>{% if report_type == 'efficiency' %}<th>Efficiency</th>{% endif %}{% if report_type == 'variances' %}<th>Shortage</th><th>Excess</th>{% endif %}</tr></thead>
+        <tbody>{% for row in rows %}<tr><td>{{ row.sheet.center.name }}</td><td>{{ row.sheet.field_officer.full_name }}</td><td>{{ row.due|floatformat:2 }}</td><td>{{ row.collected|floatformat:2 }}</td>{% if report_type == 'efficiency' %}<td>{{ row.efficiency|floatformat:2 }}%</td>{% endif %}{% if report_type == 'variances' %}<td>{{ row.sheet.cash_shortage|floatformat:2 }}</td><td>{{ row.sheet.cash_excess|floatformat:2 }}</td>{% endif %}</tr>{% empty %}<tr><td colspan="6" class="text-center py-4">No posted sheets found.</td></tr>{% endfor %}</tbody>
+        {% endif %}
+    </table></div>
+</div>
+{% endblock %}

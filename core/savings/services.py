@@ -207,7 +207,7 @@ class SavingsService:
         narration,
     ):
         account = self._get_account_for_update(account_id)
-        amount = self._validate_money(amount, allow_zero=False, field='amount')
+        self._validate_money(amount, allow_zero=False, field='amount')
         key = self._uuid_key(idempotency_key)
         existing = SavingsTransaction.objects.filter(
             account=account, idempotency_key=key

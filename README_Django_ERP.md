@@ -9,7 +9,7 @@
 | **Database** | PostgreSQL |
 | **Frontend** | Django templates, Bootstrap 5, jQuery, Free jqGrid, Bootstrap Icons |
 | **Theme** | White and dark blue |
-| **Last updated** | 2026-10-29 |
+| **Last updated** | 2026-10-30 |
 
 > **Placeholders to replace:** repository URL, license, maintainers and contact details are marked with `TODO`.
 
@@ -75,14 +75,14 @@ The goal is to grow this platform into a **complete microfinance ERP**. An MFI r
 | User management | Implemented | Create, list, edit, delete, assign a role |
 | Role and permission management | Implemented | Role create, edit, list; URL checklist built from the Django URL resolver |
 | Branch management | Partial | Create, list, search, edit, soft delete, jqGrid listing, hierarchy, branch switcher and explicit user branch grants |
-| Popup (modal) create and edit | Partial | Shared AJAX-fragment Bootstrap modal replaces iframe/window popup behavior; current PostgreSQL verification is pending |
+| Popup (modal) create and edit | Done | Shared AJAX-fragment Bootstrap modal preserves frame denial; PostgreSQL tests cover fragments, login/permission checks and the save envelope |
 | Success and error toasts (top middle, 5 seconds) | Implemented | Shared Django message partial and notification script; verify in browser before production |
 | Security hardening | Partial | Phase 1 hardening is in place: env-based secrets, PostgreSQL config, middleware protections, default-deny routing, private media root, and Django-only ORM migrations |
 | Organization hierarchy (head office, region, area, branch) | Partial | Hierarchy, branch scoping and organization screens exist; full isolation coverage and controls remain |
 | Members | Partial | Member profiles, branch-prefixed codes, status history, photo/KYC handling, verification and scoped downloads |
-| Savings | Partial | Product CRUD, status controls and term snapshots are implemented; current PostgreSQL verification is pending; see [section 7.4](#74-savings) |
-| Loans | Partial | Phase 5 workflows and reports have implementation and test coverage in progress; current PostgreSQL verification is pending; see [section 7.5](#75-loans) |
-| Collections | Planned | [Section 7.6](#76-collections) |
+| Savings | Partial | Product management, status controls and account term snapshots are PostgreSQL-verified; broader savings scope remains in progress; see [section 7.4](#74-savings) |
+| Loans | Done | Requested Phase 5 workflows and reports pass the full PostgreSQL suite; see [section 7.5](#75-loans) |
+| Collections | Partial | Collection sheets, posting, reconciliation, reports and permissions pass PostgreSQL tests; a sheet-level reversal workflow remains |
 | Accounting | Partial | Chart of accounts, fiscal periods, typed system mappings, balanced journals, approval, posting/reversal, account reconciliation and trial balance |
 | Reports | Planned | [Section 7](#7-functional-modules) |
 | Audit log | Partial | Append-only application audit foundation and log screen exist; database-level immutability and full event coverage remain |
@@ -314,7 +314,7 @@ ERP_Project/
 │   ├── members/               # (planned)
 │   ├── savings/               # savings products, accounts, ledger transactions and interest
 │   ├── loans/                 # (planned)
-│   ├── collections_app/       # (planned)
+│   ├── collections/           # sheets, field entries, reconciliation and reports
 │   ├── accounting/            # chart of accounts, journal engine and reconciliation
 │   ├── reports/               # (planned)
 │   ├── audit/                 # append-only ORM audit log
@@ -497,24 +497,24 @@ python manage.py post_savings_interest \
 
 ### 7.5 Loans
 
-**Status: Partial.** Phase 5 screens, policies, accounting paths and test cases have been added. The required current PostgreSQL run has not completed in this environment because `TEST_DB_PASSWORD` is unavailable to workspace commands; do not treat these test names as passing evidence until the suite is rerun.
+**Status: Done for the requested Phase 5 scope.** Verified on PostgreSQL with `pytest -vv`: 102 passed, 192 subtests passed, zero failures, zero errors and zero skips (2026-10-30).
 
-| Phase 5 requirement | Status | Test evidence (added; PostgreSQL run pending) |
+| Phase 5 requirement | Status | Passing PostgreSQL test evidence |
 |---|---|---|
-| Loan statement/history: versioned schedules, payments, penalties, balances, PAR, status history, printable and branch-scoped | Partial | `test_statement_history_and_classification_exports_render`; `test_branch_scope_blocks_forged_ids_for_loan_lifecycle_routes`; `test_every_loan_route_is_denied_without_its_permission` |
-| Guarantors/collateral, product-required validation and audit | Partial | `test_guarantor_and_collateral_requirements_are_validated_and_audited` |
-| Approval tiers by role and branch level; maker cannot approve | Partial | `test_approval_tier_limits_are_applied_by_role_and_branch_level`; `test_maker_checker_disbursement_posts_once_with_balanced_ledger` |
-| Refund or savings-transfer overpayment handling, atomic/idempotent and ledger-posted | Partial | `test_overpayment_refund_is_atomic_idempotent_and_ledger_posted`; `test_overpayment_savings_transfer_posts_once_to_member_account` |
-| Per-product full, pro-rata and waived-interest settlement; waiver permission, reason and audit | Partial | `test_full_and_pro_rata_settlement_policies_are_distinct`; `test_early_settlement_waives_unearned_interest_and_posts_fee`; `test_early_settlement_waiver_requires_permission_and_reason` |
-| Separate insurance-fee accounting mapping | Partial | `test_disbursement_fees_are_deducted_and_credited_separately` |
-| Configurable PAR classification/provisioning with Excel and PDF export | Partial | `test_classification_report_uses_configured_par_buckets`; `test_statement_history_and_classification_exports_render` |
-| Branch A cannot list/open/approve/disburse/repay/reschedule/settle/write off/recover/view branch B loans with forged IDs | Partial | `test_branch_scope_blocks_forged_ids_for_loan_lifecycle_routes` |
-| Golden flat and declining schedules balance principal plus interest | Partial | `test_flat_golden_schedule_rounds_last_installment_and_balances`; `test_declining_golden_schedule_has_expected_first_installment_and_totals` |
-| Concurrent repayment retry, idempotency and ledger balance | Partial | `test_concurrent_retries_of_full_repayment_create_one_payment`; `test_repayment_is_locked_atomic_idempotent_and_posts` |
-| Penalty assessment/cap/allocation and reschedule version integrity | Partial | `test_late_penalty_is_assessed_capped_and_allocated_before_interest`; `test_reschedule_preserves_old_version_and_is_idempotent` |
-| Disbursement/repayment fee ledger balance and rollback on missing mapping | Partial | `test_disbursement_fees_are_deducted_and_credited_separately`; `test_missing_mapping_rolls_back_disbursement_and_draft_journal` |
-| Runtime-role immutability for posted loan payments/history | Partial | `test_runtime_role_cannot_update_or_delete_posted_loan_payments` |
-| All loan routes permission-checked; state-changing actions reject GET | Partial | `test_every_loan_route_is_denied_without_its_permission`; `test_get_is_not_allowed_on_state_transition_routes` |
+| Loan statement/history: versioned schedules, payments, penalties, balances, PAR, status history, printable and branch-scoped | Done | `test_statement_history_and_classification_exports_render`; `test_branch_scope_blocks_forged_ids_for_loan_lifecycle_routes`; `test_every_loan_route_is_denied_without_its_permission` |
+| Guarantors/collateral, product-required validation and audit | Done | `test_guarantor_and_collateral_requirements_are_validated_and_audited` |
+| Approval tiers by role and branch level; maker cannot approve | Done | `test_approval_tier_limits_are_applied_by_role_and_branch_level`; `test_maker_checker_disbursement_posts_once_with_balanced_ledger` |
+| Refund or savings-transfer overpayment handling, atomic/idempotent and ledger-posted | Done | `test_overpayment_refund_is_atomic_idempotent_and_ledger_posted`; `test_overpayment_savings_transfer_posts_once_to_member_account` |
+| Per-product full, pro-rata and waived-interest settlement; waiver permission, reason and audit | Done | `test_full_and_pro_rata_settlement_policies_are_distinct`; `test_early_settlement_waives_unearned_interest_and_posts_fee`; `test_early_settlement_waiver_requires_permission_and_reason` |
+| Separate insurance-fee accounting mapping | Done | `test_disbursement_fees_are_deducted_and_credited_separately` |
+| Configurable PAR classification/provisioning with Excel and PDF export | Done | `test_classification_report_uses_configured_par_buckets`; `test_statement_history_and_classification_exports_render` |
+| Branch A cannot list/open/approve/disburse/repay/reschedule/settle/write off/recover/view branch B loans with forged IDs | Done | `test_branch_scope_blocks_forged_ids_for_loan_lifecycle_routes` |
+| Golden flat and declining schedules balance principal plus interest | Done | `test_flat_golden_schedule_rounds_last_installment_and_balances`; `test_declining_golden_schedule_has_expected_first_installment_and_totals` |
+| Concurrent repayment retry, idempotency and ledger balance | Done | `test_concurrent_retries_of_full_repayment_create_one_payment`; `test_repayment_is_locked_atomic_idempotent_and_posts` |
+| Penalty assessment/cap/allocation and reschedule version integrity | Done | `test_late_penalty_is_assessed_capped_and_allocated_before_interest`; `test_reschedule_preserves_old_version_and_is_idempotent` |
+| Disbursement/repayment fee ledger balance and rollback on missing mapping | Done | `test_disbursement_fees_are_deducted_and_credited_separately`; `test_missing_mapping_rolls_back_disbursement_and_draft_journal` |
+| Runtime-role immutability for posted loan payments/history | Done | `test_runtime_role_cannot_update_or_delete_posted_loan_payments` |
+| All loan routes permission-checked; state-changing actions reject GET | Done | `test_every_loan_route_is_denied_without_its_permission`; `test_get_is_not_allowed_on_state_transition_routes` |
 
 **Features**
 
@@ -526,12 +526,12 @@ python manage.py post_savings_interest \
 
 **Loan products** define: name, code, interest method (flat or declining balance), annual interest rate, min and max amount, min and max term, installment frequency (weekly, bi-weekly, monthly), processing and insurance fees, grace period, penalty rules, required compulsory savings, loan cycle limits, maximum concurrent loans, guarantor/collateral requirements, overpayment policy and settlement policy. New loans snapshot product terms at disbursement.
 
-| Earlier delivery requirement | Status | Test evidence (added; PostgreSQL run pending) |
+| Earlier delivery requirement | Status | Passing PostgreSQL test evidence |
 |---|---|---|
-| One AJAX-fragment Bootstrap modal for Branch, Users, Roles, Members, Savings, Loans and Accounting | Partial | `test_ajax_popup_routes_return_fragments_and_keep_frame_denial`; `test_popup_routes_require_login_and_route_permission`; `test_popup_save_uses_standard_json_envelope_for_success_and_validation` |
-| Savings Product list/create/edit/status actions, validation, audit and role permissions | Partial | `test_savings_product_crud_status_filter_and_audit`; `test_savings_routes_are_denied_without_explicit_permission` |
-| Loan Product list/create/edit/status actions, validation, audit and role permissions | Partial | `test_loan_product_crud_status_filter_and_audit`; `test_every_loan_route_is_denied_without_its_permission` |
-| Existing savings accounts and loans retain copied product terms after product edits | Partial | `test_existing_account_keeps_product_terms_after_product_change`; `test_disbursed_loan_keeps_the_product_terms_copied_at_creation` |
+| One AJAX-fragment Bootstrap modal for Branch, Users, Roles, Members, Savings, Loans and Accounting | Done | `test_ajax_popup_routes_return_fragments_and_keep_frame_denial`; `test_popup_routes_require_login_and_route_permission`; `test_popup_save_uses_standard_json_envelope_for_success_and_validation` |
+| Savings Product list/create/edit/status actions, validation, audit and role permissions | Done | `test_savings_product_crud_status_filter_and_audit`; `test_savings_routes_are_denied_without_explicit_permission` |
+| Loan Product list/create/edit/status actions, validation, audit and role permissions | Done | `test_loan_product_crud_status_filter_and_audit`; `test_every_loan_route_is_denied_without_its_permission` |
+| Existing savings accounts and loans retain copied product terms after product edits | Done | `test_existing_account_keeps_product_terms_after_product_change`; `test_disbursed_loan_keeps_the_product_terms_copied_at_creation` |
 
 **Application**
 
@@ -570,7 +570,7 @@ python manage.py post_savings_interest \
 
 ### 7.6 Collections
 
-**Status:** Planned.
+**Status:** Partial. Generation, field entry, lifecycle, reconciliation, atomic posting, reports, exports, permissions, branch isolation and runtime-role immutability pass the PostgreSQL suite. A sheet-level reversal workflow for correcting posted collections remains.
 
 **Features**
 
@@ -585,7 +585,7 @@ python manage.py post_savings_interest \
 2. The field officer collects money at the meeting and records the **amount actually collected** per member (full, partial, or none, with a reason).
 3. The sheet is **submitted**. The cashier receives the cash and enters the **cash received**.
 4. The system compares collected against received and records any **shortage or excess**.
-5. The accountant or branch manager **verifies** the sheet. On verification, repayments and savings deposits are posted and the ledger entry is created.
+5. The accountant or branch manager **verifies** the sheet. The reconciled sheet is then posted atomically; repayments and savings deposits reuse the loan and savings posting services, and any cash variance is journaled.
 
 **Sheet statuses**: Generated, InProgress, Submitted, Reconciled, Posted, Cancelled.
 
@@ -593,9 +593,11 @@ python manage.py post_savings_interest \
 
 - A payment allocation follows the configured order (default: penalty, fees, interest, principal). See [section 8.4](#84-repayment-allocation).
 - Double submission is prevented with an idempotency key, so a slow network or double click cannot post a payment twice.
-- A posted sheet is locked. Corrections use reversal entries.
+- A posted sheet and its rows are locked by the ORM and PostgreSQL runtime-role triggers. Collection-level reversal and correction workflow remains incomplete.
 
 **Screens**: `/collections/sheets/`, `/collections/reconciliation/`
+
+**Verification:** Full PostgreSQL run on 2026-10-30: 115 passed, 223 subtests passed, zero failures, zero errors and zero skips. Collection-specific tests include `test_generation_is_idempotent_and_includes_expected_installment`, `test_partial_collection_requires_reason_and_posts_allocation`, `test_full_and_advance_payments_use_existing_loan_allocation`, `test_two_verifiers_and_same_key_post_a_sheet_only_once`, `test_savings_deposit_and_loan_journals_equal_the_sheet_total`, `test_failed_row_rolls_back_every_sheet_posting`, `test_runtime_role_cannot_mutate_posted_sheets_or_rows`, `test_lifecycle_rejects_bad_transitions_and_collector_cannot_verify`, `test_reconciliation_variances_post_to_mapped_accounts`, `test_every_collection_route_requires_its_explicit_permission`, `test_state_changing_routes_reject_get`, `test_collection_entry_screen_renders_live_total_and_unsaved_warning`, and `test_forged_branch_ids_cannot_open_enter_submit_reconcile_post_or_export`.
 
 ### 7.7 Accounting
 
@@ -849,10 +851,11 @@ Account names are system-mapped in Settings, so each institution can use its own
 | Loan write-off | Loan Loss Provision (or Bad Debt Expense) | Loans to Members |
 | Recovery of written-off loan | Cash in Hand | Recovery of Written-off Loans |
 | Cash shortage found at reconciliation | Cash Shortage (expense or receivable from staff) | Cash in Hand |
+| Cash excess found at reconciliation | Cash in Hand | Collection Cash Excess (income) |
 
 Interest income recognition is configurable. **Default: when collected.** Accrual is available as an option.
 
-The configured mappings also include **Loan Loss Provision** (an asset with credit normal balance) for write-offs and **Recovery of Written-off Loans** (income) for recoveries. Both mappings must be configured before those actions can post.
+The configured mappings also include **Loan Loss Provision** (an asset with credit normal balance) for write-offs and **Recovery of Written-off Loans** (income) for recoveries. Collections also require **Cash Shortage** (expense) for shortages and **Collection Cash Excess** (income) for excess cash. Configure the relevant mappings before posting.
 
 ### 9.3 Example entries
 
@@ -1472,7 +1475,7 @@ The former iframe/window flow conflicted with the production `X-Frame-Options: D
 | Members | `/members/`, `/members/add/`, `/members/edit/<id>/`, `/members/<id>/`, `/members/status/<id>/`, `/members/photo/<id>/`, `/members/kyc/`, `/members/kyc/verify/<id>/` |
 | Savings | `/savings/products/`, `/savings/accounts/`, `/savings/transactions/`, `/savings/transactions/reverse/<id>/`, `/savings/statement/<id>/` |
 | Loans | `/loans/products/`, `/loans/products/add/`, `/loans/products/edit/<id>/`, `/loans/applications/`, `/loans/applications/add/`, `/loans/applications/<id>/submit/`, `/loans/applications/<id>/review/`, `/loans/applications/<id>/cancel/`, `/loans/applications/<id>/disburse/`, `/loans/disbursements/`, `/loans/portfolio/`, `/loans/repayments/`, `/loans/<id>/repay/`, `/loans/<id>/schedule/`, `/loans/<id>/reschedule/`, `/loans/<id>/settle/`, `/loans/<id>/write-off/`, `/loans/<id>/recovery/` |
-| Collections | `/collections/sheets/`, `/collections/sheets/generate/`, `/collections/sheets/submit/<id>/`, `/collections/sheets/reconcile/<id>/`, `/collections/sheets/post/<id>/` |
+| Collections | `/collections/sheets/`, `/collections/sheets/generate/`, `/collections/sheets/<id>/`, `/collections/sheets/<id>/start/`, `/collections/sheets/<id>/items/<item-id>/`, `/collections/sheets/<id>/submit/`, `/collections/sheets/<id>/cancel/`, `/collections/sheets/<id>/print/`, `/collections/reconciliation/`, `/collections/reconciliation/<id>/reconcile/`, `/collections/reconciliation/<id>/post/`, `/collections/reports/daily/`, `/collections/reports/performance/`, `/collections/reports/efficiency/`, `/collections/reports/variances/`, `/collections/reports/export/excel/`, `/collections/reports/export/pdf/` |
 | Accounting | `/accounting/chart-of-accounts/`, `/accounting/journal-entries/`, `/accounting/journal-entries/post/<id>/`, `/accounting/reconciliation/`, `/accounting/trial-balance/`, `/accounting/fiscal-years/` |
 | Reports | `/reports/members/`, `/reports/savings/`, `/reports/loans/`, `/reports/collections/`, `/reports/financial/` (each with `?format=xlsx` or `?format=pdf`) |
 | Audit | `/audit/logs/`, `/audit/events/`, `/audit/trail/<entity>/<id>/`, `/audit/compliance/`, `/audit/dashboard/` |
@@ -1515,7 +1518,7 @@ The current schema is managed by Django migrations. Any legacy SQL scripts are h
 | Members | Member, MemberNominee, MemberKycDocument, MemberStatusHistory |
 | Savings | SavingsProduct, SavingsAccount, SavingsAccountMember (group contributions), SavingsTransaction, SavingsInterestPosting |
 | Loans | LoanProduct, LoanApplication, LoanGuarantor, LoanCollateral, LoanApproval, Loan, LoanSchedule (versioned), LoanTransaction, LoanPenalty, LoanWriteOff |
-| Collections | CollectionSheet, CollectionSheetItem, CashReceipt |
+| Collections | CollectionSheet, CollectionSheetItem, CollectionPosting |
 | Accounting | Account, AccountMapping, FiscalYear, FiscalPeriod, JournalEntry, JournalLine, VoucherSequence, Reconciliation |
 | Approvals | ApprovalRequest, ApprovalStep |
 | Audit | AuditLog, SystemEvent |
@@ -2027,14 +2030,14 @@ Run the full suite and the security checks in [`.github/workflows/quality.yml`](
 
 ### PostgreSQL test database
 
-The test settings use PostgreSQL only. No SQLite fallback is allowed: the test suite covers row locks, PostgreSQL triggers, and runtime-role grants. Set `TEST_DB_NAME`, `TEST_DB_USER`, `TEST_DB_PASSWORD`, and optionally `TEST_DB_HOST` / `TEST_DB_PORT`; the test login must have `CREATEDB` so Django can create and drop its disposable `test_<TEST_DB_NAME>` database.
+The test settings use PostgreSQL only. No SQLite fallback is allowed: the test suite covers row locks, PostgreSQL triggers, and runtime-role grants. Set `TEST_DB_NAME`, `TEST_DB_USER`, `TEST_DB_PASSWORD`, and optionally `TEST_DB_HOST` / `TEST_DB_PORT`; the test login must have `CREATEDB` and `CREATEROLE` so Django can create and drop its disposable `test_<TEST_DB_NAME>` database and the suite can configure its isolated runtime role.
 
 The security-fix pins are Django `6.0.9` (within the 6.0 series), Pillow `13.0.0`, sqlparse `0.6.0`, and pip `26.2.2`. The pip pin is for the build/install toolchain; Pillow was moved to 13.0.0 because the audited 12.x release had no fixed version for its reported advisories.
 
 For a local test instance, create the dedicated test and runtime roles as a database administrator (do not reuse production credentials):
 
 ```sql
-CREATE ROLE erp_test_runner LOGIN CREATEDB PASSWORD '<test-only-password>';
+CREATE ROLE erp_test_runner LOGIN CREATEDB CREATEROLE PASSWORD '<test-only-password>';
 CREATE ROLE erp_runtime LOGIN PASSWORD '<runtime-test-password>';
 GRANT erp_runtime TO erp_test_runner;
 ```
@@ -2157,8 +2160,8 @@ Targets are **suggested starting points**; confirm them with load tests and with
 | **2. Organization and members** | Branch hierarchy and isolation, centers and groups, staff, members with photo and KYC, audit module | Partial |
 | **3. Accounting core** | Chart of accounts, fiscal years and periods, journal engine with double entry, voucher numbering, trial balance, system account mappings | Partial |
 | **4. Savings** | Products, individual and group accounts, transactions, reversals, interest, statements, automatic postings | Partial |
-| **5. Loans** | Products, applications, eligibility, approvals, disbursement, schedules, repayments, penalties, rescheduling, settlement, write-off, recovery, PAR, statements, classification | Partial — Phase 5 tests are added but the current PostgreSQL run is pending test-role credentials; see [section 7.5](#75-loans) |
-| **6. Collections** | Sheet generation, collection entry, cash reconciliation, posting, collector performance | Planned |
+| **5. Loans** | Products, applications, eligibility, approvals, disbursement, schedules, repayments, penalties, rescheduling, settlement, write-off, recovery, PAR, statements, classification | Done — requested Phase 5 scope verified on PostgreSQL; see [section 7.5](#75-loans) |
+| **6. Collections** | Sheet generation, collection entry, cash reconciliation, atomic posting, collector performance and reports | Partial — sheet-level reversal and correction workflow remains |
 | **7. Reporting and control** | All report groups with Excel and PDF export, dashboards, day-end closing, notifications, bulk import, compliance reports | Planned |
 | **8. Hardening and go-live** | Independent security review and penetration test, load testing, user acceptance testing, data migration from the old system, training, production rollout | Planned |
 

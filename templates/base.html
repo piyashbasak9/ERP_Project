@@ -126,6 +126,9 @@
                     {% can 'Module_Loans_classification' as can_loan_classification %}
                     {% can 'Module_Loans_approval_tiers' as can_loan_approval_tiers %}
                     {% can 'Module_Loans_par_buckets' as can_loan_par_buckets %}
+                    {% can 'Module_Collections_sheet_list' as can_collection_sheets %}
+                    {% can 'Module_Collections_reconciliation_list' as can_collection_reconciliation %}
+                    {% can 'Module_Collections_report_daily' as can_collection_reports %}
                     {% if can_loan_products or can_loan_applications or can_loan_disbursements or can_loan_portfolio or can_loan_classification or can_loan_approval_tiers or can_loan_par_buckets %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown" aria-expanded="false">
@@ -139,6 +142,18 @@
                             {% if can_loan_classification %}<li><a class="dropdown-item" href="{% url 'loans:Module_Loans_classification' %}">Classification report</a></li>{% endif %}
                             {% if can_loan_approval_tiers %}<li><a class="dropdown-item" href="{% url 'loans:Module_Loans_approval_tiers' %}">Approval tiers</a></li>{% endif %}
                             {% if can_loan_par_buckets %}<li><a class="dropdown-item" href="{% url 'loans:Module_Loans_par_buckets' %}">PAR buckets</a></li>{% endif %}
+                        </ul>
+                    </li>
+                    {% endif %}
+                    {% if can_collection_sheets or can_collection_reconciliation or can_collection_reports %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-clipboard-data me-1" aria-hidden="true"></i>Collections
+                        </a>
+                        <ul class="dropdown-menu">
+                            {% if can_collection_sheets %}<li><a class="dropdown-item" href="{% url 'collections:Module_Collections_sheet_list' %}">Collection sheets</a></li>{% endif %}
+                            {% if can_collection_reconciliation %}<li><a class="dropdown-item" href="{% url 'collections:Module_Collections_reconciliation_list' %}">Reconciliation</a></li>{% endif %}
+                            {% if can_collection_reports %}<li><a class="dropdown-item" href="{% url 'collections:Module_Collections_report_daily' %}">Collection reports</a></li>{% endif %}
                         </ul>
                     </li>
                     {% endif %}

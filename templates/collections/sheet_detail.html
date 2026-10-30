@@ -1,0 +1,127 @@
+{% extends 'base.html' %}
+{% block title %}Collection sheet #{{ sheet.pk }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div><span class="eyebrow">COLLECTIONS</span><h1 class="h3 mb-0">Collection sheet #{{ sheet.pk }}</h1></div>
+        <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-outline-secondary" href="{% url 'collections:Module_Collections_sheet_print' sheet.pk %}">Print</a>
+            {% if sheet.status == 'generated' and can_enter %}
+            <form method="post" action="{% url 'collections:Module_Collections_sheet_start' sheet.pk %}" data-sheet-action>{% csrf_token %}<button class="btn btn-primary" type="submit">Start collection</button></form>
+            {% endif %}
+            {% if sheet.status == 'in_progress' and can_enter %}
+            <form method="post" action="{% url 'collections:Module_Collections_sheet_submit' sheet.pk %}" data-sheet-action>{% csrf_token %}<button class="btn btn-primary" type="submit">Submit sheet</button></form>
+            {% endif %}
+            {% if sheet.status == 'in_progress' %}
+            <form method="post" action="{% url 'collections:Module_Collections_sheet_cancel' sheet.pk %}" data-sheet-action>{% csrf_token %}<input class="form-control form-control-sm" name="reason" maxlength="255" placeholder="Reason required" required><button class="btn btn-outline-danger mt-1" type="submit">Cancel</button></form>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card card-body mb-3">
+        <div class="row g-3">
+            <div class="col-sm-6 col-lg-2"><span class="text-muted">Date</span><div>{{ sheet.collection_date }}</div></div>
+            <div class="col-sm-6 col-lg-2"><span class="text-muted">Center</span><div>{{ sheet.center.name }}</div></div>
+            <div class="col-sm-6 col-lg-2"><span class="text-muted">Group</span><div>{{ sheet.group.name|default:"All center members" }}</div></div>
+            <div class="col-sm-6 col-lg-2"><span class="text-muted">Field officer</span><div>{{ sheet.field_officer.full_name }}</div></div>
+            <div class="col-sm-6 col-lg-2"><span class="text-muted">Status</span><div>{{ sheet.get_status_display }}</div></div>
+            <div class="col-sm-6 col-lg-2"><span class="text-muted">Collected total</span><div id="live-total">{{ total_collected|floatformat:2 }}</div></div>
+        </div>
+    </div>
+    <p class="alert alert-warning d-none" id="unsaved-warning" role="status">You have unsaved collection changes.</p>
+    <div class="table-responsive">
+        <table class="table table-sm table-striped align-middle collection-entry-table">
+            <thead class="table-dark"><tr><th>Member</th><th>Due</th><th>Overdue</th><th>Penalty</th><th>Expected savings</th><th>Loan collected</th><th>Savings deposit</th><th>Reason</th>{% if sheet.status == 'in_progress' and can_enter %}<th>Save</th>{% endif %}</tr></thead>
+            <tbody>
+            {% for item in items %}
+                <tr data-collection-row>
+                    <td>{{ item.member.member_code }} — {{ item.member.first_name }} {{ item.member.last_name }}<div class="small text-muted">{{ item.member.get_status_display }}</div></td>
+                    <td>{{ item.expected_installment|floatformat:2 }}</td>
+                    <td>{{ item.expected_overdue|floatformat:2 }}</td>
+                    <td>{{ item.expected_penalty|floatformat:2 }}</td>
+                    <td>{{ item.expected_savings|floatformat:2 }}</td>
+                    <td>
+                        {% if sheet.status == 'in_progress' and can_enter %}
+                        <input form="entry-{{ item.pk }}" class="form-control form-control-sm" name="collected_amount" type="number" min="0" step="0.01" value="{{ item.collected_amount }}" data-original="{{ item.collected_amount }}" aria-label="Loan amount for {{ item.member.member_code }}">
+                        {% else %}{{ item.collected_amount|floatformat:2 }}{% endif %}
+                    </td>
+                    <td>{% if sheet.status == 'in_progress' and can_enter %}<input form="entry-{{ item.pk }}" class="form-control form-control-sm" name="savings_amount" type="number" min="0" step="0.01" value="{{ item.savings_amount }}" data-original="{{ item.savings_amount }}" aria-label="Savings amount for {{ item.member.member_code }}">{% else %}{{ item.savings_amount|floatformat:2 }}{% endif %}</td>
+                    <td>{% if sheet.status == 'in_progress' and can_enter %}<input form="entry-{{ item.pk }}" class="form-control form-control-sm" name="reason" maxlength="255" value="{{ item.reason }}" data-original="{{ item.reason }}" aria-label="Reason for {{ item.member.member_code }}">{% else %}{{ item.reason|default:"—" }}{% endif %}</td>
+                    {% if sheet.status == 'in_progress' and can_enter %}<td><form id="entry-{{ item.pk }}" method="post" action="{% url 'collections:Module_Collections_sheet_entry' sheet.pk item.pk %}" data-entry-form>{% csrf_token %}<button class="btn btn-sm btn-outline-primary" type="submit">Save</button></form></td>{% endif %}
+                </tr>
+            {% empty %}<tr><td colspan="9" class="text-center text-muted py-4">No members are assigned to this center or group.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if sheet.status == 'reconciled' %}
+    <div class="alert alert-info">Cash received: {{ sheet.cash_received|floatformat:2 }} · Shortage: {{ sheet.cash_shortage|floatformat:2 }} · Excess: {{ sheet.cash_excess|floatformat:2 }}</div>
+    <form method="post" action="{% url 'collections:Module_Collections_sheet_post' sheet.pk %}" data-sheet-action class="d-inline">
+        {% csrf_token %}<input type="hidden" name="idempotency_key" value="{{ sheet.posting_key|default:sheet.idempotency_key }}">
+        <button class="btn btn-success" type="submit">Post collections</button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+(() => {
+    const csrf = () => document.querySelector("[name=csrfmiddlewaretoken]")?.value || "";
+    const warning = document.getElementById("unsaved-warning");
+    let dirty = false;
+    const updateDirty = () => {
+        dirty = [...document.querySelectorAll("[data-collection-row] [data-original]")]
+            .some(input => input.value !== input.dataset.original);
+        warning?.classList.toggle("d-none", !dirty);
+    };
+    const updateTotal = () => {
+        let total = 0;
+        document.querySelectorAll("[data-collection-row]").forEach(row => {
+            total += Number(row.querySelector('[name="collected_amount"]')?.value || 0);
+            total += Number(row.querySelector('[name="savings_amount"]')?.value || 0);
+        });
+        const totalNode = document.getElementById("live-total");
+        if (totalNode) totalNode.textContent = total.toFixed(2);
+    };
+    document.addEventListener("input", event => {
+        if (event.target.matches("[data-original]")) {
+            updateDirty();
+            updateTotal();
+        }
+    });
+    window.addEventListener("beforeunload", event => {
+        if (dirty) {
+            event.preventDefault();
+            event.returnValue = "";
+        }
+    });
+    document.addEventListener("submit", async event => {
+        const form = event.target;
+        if (!form.matches("[data-entry-form], [data-sheet-action]")) return;
+        event.preventDefault();
+        if (form.matches("[data-sheet-action]") && dirty) {
+            window.notify.error("Save all collection changes before changing the sheet status.");
+            return;
+        }
+        const response = await fetch(form.action, {
+            method: "POST",
+            body: new FormData(form),
+            headers: {"X-CSRFToken": csrf(), "Accept": "application/json"}
+        });
+        const body = await response.json();
+        if (!response.ok || !body.success) {
+            window.notify.error(body.message || "The collection change could not be saved.");
+            return;
+        }
+        if (form.matches("[data-entry-form]")) {
+            form.closest("[data-collection-row]")
+                ?.querySelectorAll("[data-original]")
+                .forEach(input => { input.dataset.original = input.value; });
+            updateDirty();
+            form.querySelector("button[type=submit]")?.blur();
+        } else {
+            window.location.reload();
+        }
+        window.notify.success(body.message);
+    });
+})();
+</script>
+{% endblock %}

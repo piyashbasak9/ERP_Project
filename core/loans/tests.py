@@ -170,6 +170,22 @@ class LoanWorkflowTests(TransactionTestCase):
             end_date=date(2026, 12, 31),
         )
         self._create_mappings()
+        for name, minimum, maximum, provision_rate in (
+            ("Regular", 0, 0, "1.0000"),
+            ("Watchlist", 1, 29, "5.0000"),
+            ("Substandard", 30, 59, "25.0000"),
+            ("Doubtful", 60, 89, "50.0000"),
+            ("Bad / Loss", 90, None, "100.0000"),
+        ):
+            LoanPARBucket.objects.get_or_create(
+                name=name,
+                defaults={
+                    "minimum_days": minimum,
+                    "maximum_days": maximum,
+                    "provision_rate": Decimal(provision_rate),
+                    "is_active": True,
+                },
+            )
         self.product = LoanProduct.objects.create(
             code="GOLD",
             name="Golden example",
@@ -671,6 +687,7 @@ class LoanWorkflowTests(TransactionTestCase):
             purpose="Pro-rata settlement",
             idempotency_key=uuid.uuid4(),
         )
+        self.service_as(self.maker).submit(application_id=second_application.pk)
         self.approve_application(second_application)
         pro_rata_loan = self.disburse(second_application)
         self.grant_waiver_permission(self.checker)
@@ -1341,7 +1358,23 @@ class LoanRouteTests(TestCase):
             "min_term": "1",
             "max_term": "24",
             "installment_frequency": LoanProduct.FREQUENCY_MONTHLY,
+            "processing_fee": "0.00",
+            "processing_fee_rate": "0.0000",
+            "insurance_fee": "0.00",
+            "insurance_fee_rate": "0.0000",
+            "grace_period_days": "0",
+            "late_penalty_rate": "0.0000",
+            "penalty_grace_days": "0",
+            "penalty_type": LoanProduct.PENALTY_PERCENT,
+            "penalty_frequency": LoanProduct.PENALTY_DAILY,
+            "penalty_cap_rate": "25.0000",
+            "required_savings_rate": "0.0000",
+            "max_concurrent_loans": "1",
             "cycle_limits": "{}",
+            "early_settlement_fee": "0.00",
+            "early_settlement_policy": LoanProduct.SETTLEMENT_WAIVE_UNEARNED,
+            "overpayment_policy": LoanProduct.OVERPAYMENT_REFUND,
+            "holiday_convention": LoanProduct.HOLIDAY_NEXT,
             "is_active": "on",
         }
         created = self.client.post(

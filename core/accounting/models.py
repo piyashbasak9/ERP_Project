@@ -191,6 +191,8 @@ class SystemAccountMapping(models.Model):
         ('loan_overpayment_payable', 'Loan Overpayment Payable'),
         ('recovery_income', 'Recovery of Written-off Loans'),
         ('withholding_tax_payable', 'Withholding Tax Payable'),
+        ('cash_shortage', 'Cash Shortage'),
+        ('collection_excess_income', 'Collection Cash Excess'),
     ]
     EXPECTED_ACCOUNT_TYPES = {
         'cash_in_hand': Account.ASSET,
@@ -206,6 +208,8 @@ class SystemAccountMapping(models.Model):
         'loan_overpayment_payable': Account.LIABILITY,
         'recovery_income': Account.INCOME,
         'withholding_tax_payable': Account.LIABILITY,
+        'cash_shortage': Account.EXPENSE,
+        'collection_excess_income': Account.INCOME,
     }
 
     class Meta:

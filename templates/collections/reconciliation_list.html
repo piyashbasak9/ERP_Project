@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block title %}Collection reconciliation{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="mb-3"><span class="eyebrow">COLLECTIONS</span><h1 class="h3 mb-0">Cash reconciliation</h1></div>
+    <div class="table-responsive card">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-dark"><tr><th>Date</th><th>Center</th><th>Field officer</th><th>Status</th><th>Collected</th><th>Cash received / posting</th></tr></thead>
+            <tbody>
+            {% for record in sheets %}
+                {% with sheet=record.sheet %}
+                <tr>
+                    <td>{{ sheet.collection_date }}</td><td>{{ sheet.center.name }}</td><td>{{ sheet.field_officer.full_name }}</td><td>{{ sheet.get_status_display }}</td>
+                    <td>{{ record.collected|floatformat:2 }}</td>
+                    <td>
+                        {% if sheet.status == 'submitted' %}
+                        <form method="post" action="{% url 'collections:Module_Collections_sheet_reconcile' sheet.pk %}" data-reconcile-form class="d-flex gap-2 align-items-center">
+                            {% csrf_token %}<input class="form-control form-control-sm" name="cash_received" type="number" min="0" step="0.01" required aria-label="Cash received">
+                            <button class="btn btn-sm btn-primary" type="submit">Reconcile</button>
+                        </form>
+                        {% elif sheet.status == 'reconciled' %}
+                        <span class="small me-2">Cash {{ sheet.cash_received|floatformat:2 }}, shortage {{ sheet.cash_shortage|floatformat:2 }}, excess {{ sheet.cash_excess|floatformat:2 }}</span>
+                        <form method="post" action="{% url 'collections:Module_Collections_sheet_post' sheet.pk %}" data-reconcile-form class="d-inline">
+                            {% csrf_token %}<input type="hidden" name="idempotency_key" value="{{ sheet.idempotency_key }}"><button class="btn btn-sm btn-success" type="submit">Post</button>
+                        </form>
+                        {% else %}<a class="btn btn-sm btn-outline-primary" href="{% url 'collections:Module_Collections_sheet_detail' sheet.pk %}">View</a>{% endif %}
+                    </td>
+                </tr>
+                {% endwith %}
+            {% empty %}<tr><td colspan="6" class="text-center py-4 text-muted">No sheets are awaiting reconciliation.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+document.addEventListener("submit", async event => {
+    const form = event.target;
+    if (!form.matches("[data-reconcile-form]")) return;
+    event.preventDefault();
+    const response = await fetch(form.action, {
+        method: "POST",
+        body: new FormData(form),
+        headers: {
+            "X-CSRFToken": form.querySelector("[name=csrfmiddlewaretoken]").value,
+            "Accept": "application/json"
+        }
+    });
+    const body = await response.json();
+    if (!response.ok || !body.success) {
+        window.notify.error(body.message || "The sheet could not be reconciled.");
+        return;
+    }
+    window.notify.success(body.message);
+    window.location.reload();
+});
+</script>
+{% endblock %}

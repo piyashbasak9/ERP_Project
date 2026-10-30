@@ -72,4 +72,21 @@ REVOKE UPDATE, DELETE ON TABLE loan_recoveries FROM erp_runtime;
 REVOKE UPDATE, DELETE ON TABLE loan_penalties FROM erp_runtime;
 GRANT UPDATE (amount, paid) ON TABLE loan_penalties TO erp_runtime;
 
+GRANT SELECT, INSERT ON TABLE collection_sheets TO erp_runtime;
+REVOKE UPDATE, DELETE ON TABLE collection_sheets FROM erp_runtime;
+GRANT UPDATE (
+    status, submitted_at, submitted_by_id, cash_received, cash_shortage,
+    cash_excess, reconciled_by_id, reconciled_at, variance_journal_id,
+    posting_key, posted_by_id, posted_at, cancellation_reason, version
+) ON TABLE collection_sheets TO erp_runtime;
+
+GRANT SELECT, INSERT ON TABLE collection_sheet_items TO erp_runtime;
+REVOKE UPDATE, DELETE ON TABLE collection_sheet_items FROM erp_runtime;
+GRANT UPDATE (
+    collected_amount, savings_amount, reason, updated_by_id, updated_at, version
+) ON TABLE collection_sheet_items TO erp_runtime;
+
+GRANT SELECT, INSERT ON TABLE collection_postings TO erp_runtime;
+REVOKE UPDATE, DELETE ON TABLE collection_postings FROM erp_runtime;
+
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO erp_runtime;

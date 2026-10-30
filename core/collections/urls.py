@@ -1,0 +1,89 @@
+from django.urls import path
+
+from . import views
+
+app_name = "collections"
+
+urlpatterns = [
+    path("sheets/", views.sheet_list, name="Module_Collections_sheet_list"),
+    path(
+        "sheets/generate/",
+        views.sheet_generate,
+        name="Module_Collections_sheet_generate",
+    ),
+    path(
+        "sheets/<int:pk>/",
+        views.sheet_detail,
+        name="Module_Collections_sheet_detail",
+    ),
+    path(
+        "sheets/<int:pk>/start/",
+        views.sheet_start,
+        name="Module_Collections_sheet_start",
+    ),
+    path(
+        "sheets/<int:pk>/items/<int:item_pk>/",
+        views.sheet_entry,
+        name="Module_Collections_sheet_entry",
+    ),
+    path(
+        "sheets/<int:pk>/submit/",
+        views.sheet_submit,
+        name="Module_Collections_sheet_submit",
+    ),
+    path(
+        "sheets/<int:pk>/cancel/",
+        views.sheet_cancel,
+        name="Module_Collections_sheet_cancel",
+    ),
+    path(
+        "sheets/<int:pk>/print/",
+        views.sheet_print,
+        name="Module_Collections_sheet_print",
+    ),
+    path(
+        "reconciliation/",
+        views.reconciliation_list,
+        name="Module_Collections_reconciliation_list",
+    ),
+    path(
+        "reconciliation/<int:pk>/reconcile/",
+        views.sheet_reconcile,
+        name="Module_Collections_sheet_reconcile",
+    ),
+    path(
+        "reconciliation/<int:pk>/post/",
+        views.sheet_post,
+        name="Module_Collections_sheet_post",
+    ),
+    path(
+        "reports/daily/",
+        views.report_daily,
+        name="Module_Collections_report_daily",
+    ),
+    path(
+        "reports/performance/",
+        views.report_performance,
+        name="Module_Collections_report_performance",
+    ),
+    path(
+        "reports/efficiency/",
+        views.report_efficiency,
+        name="Module_Collections_report_efficiency",
+    ),
+    path(
+        "reports/variances/",
+        views.report_variances,
+        name="Module_Collections_report_variances",
+    ),
+    path(
+        "reports/export/excel/",
+        views.report_excel,
+        name="Module_Collections_report_excel",
+    ),
+    path(
+        "reports/export/pdf/",
+        views.report_pdf,
+        name="Module_Collections_report_pdf",
+    ),
+]

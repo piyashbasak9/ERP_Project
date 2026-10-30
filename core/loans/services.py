@@ -235,6 +235,38 @@ class LoanService:
         return cycle_number
 
     @transaction.atomic
+    def collection_due(self, *, loan_id, as_of_date):
+        loan = Loan.unscoped.select_for_update().filter(
+            pk=loan_id, status=Loan.STATUS_ACTIVE
+        ).first()
+        if loan is None:
+            return {
+                "installment": ZERO,
+                "overdue": ZERO,
+                "penalty": ZERO,
+            }
+        self._ensure_access(loan.branch_id)
+        installments = list(
+            LoanInstallment.objects.select_for_update()
+            .filter(loan=loan, schedule_version=loan.schedule_version)
+            .order_by("due_date", "number")
+        )
+        penalty = self._assess_penalties(loan, installments, as_of_date)
+        installment_due = sum(
+            (row.total_due for row in installments if row.due_date == as_of_date),
+            ZERO,
+        )
+        overdue = sum(
+            (row.total_due for row in installments if row.due_date < as_of_date),
+            ZERO,
+        )
+        return {
+            "installment": installment_due,
+            "overdue": overdue,
+            "penalty": penalty,
+        }
+
+    @transaction.atomic
     def create_application(
         self,
         *,
@@ -602,7 +634,6 @@ class LoanService:
             remaining,
             "fee",
             as_of_date=payment_date,
-            include_future=include_future,
         )
         remaining -= fee_paid
         interest_paid = self._apply_to_installments(
@@ -610,7 +641,6 @@ class LoanService:
             remaining,
             "interest",
             as_of_date=payment_date,
-            include_future=include_future,
         )
         remaining -= interest_paid
         principal_paid = self._apply_to_installments(
@@ -618,9 +648,30 @@ class LoanService:
             remaining,
             "principal",
             as_of_date=payment_date,
-            include_future=include_future,
         )
         remaining -= principal_paid
+        advance_amount = ZERO
+        if include_future:
+            for row in installments:
+                if row.due_date <= payment_date:
+                    continue
+                for component in ("fee", "interest", "principal"):
+                    remaining_field = f"{component}_remaining"
+                    paid_field = f"{component}_paid"
+                    applied = min(remaining, getattr(row, remaining_field))
+                    setattr(row, paid_field, getattr(row, paid_field) + applied)
+                    if component == "fee":
+                        fee_paid += applied
+                    elif component == "interest":
+                        interest_paid += applied
+                    else:
+                        principal_paid += applied
+                    remaining -= applied
+                    advance_amount += applied
+                    if remaining <= ZERO:
+                        break
+                if remaining <= ZERO:
+                    break
         if remaining:
             raise ValidationError("The payment could not be allocated to loan obligations.")
         for row in installments:
@@ -657,7 +708,14 @@ class LoanService:
                     ]
                 )
                 + (
-                    [("loan_overpayment_payable", overpayment, "Overpayment received")]
+                    [
+                        (
+                            "loan_overpayment_payable",
+                            ZERO,
+                            overpayment,
+                            "Overpayment received",
+                        )
+                    ]
                     if overpayment
                     else []
                 ),
@@ -724,7 +782,7 @@ class LoanService:
             fee_paid=fee_paid,
             interest_paid=interest_paid,
             principal_paid=principal_paid,
-            advance_amount=ZERO,
+            advance_amount=advance_amount,
             overpayment_amount=overpayment,
             payment_date=payment_date,
             idempotency_key=key,
@@ -1312,12 +1370,12 @@ class LoanService:
             raise ValidationError("Penalty allocation does not match the assessed balance.")
 
     def _apply_to_installments(
-        self, installments, amount, component, *, include_future=False, as_of_date
+        self, installments, amount, component, *, as_of_date
     ):
         remaining = amount
         applied = ZERO
         for row in installments:
-            if not include_future and row.due_date > as_of_date:
+            if row.due_date > as_of_date:
                 continue
             field = f"{component}_remaining"
             paid_field = f"{component}_paid"

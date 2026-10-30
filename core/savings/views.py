@@ -126,14 +126,15 @@ def product_form(request, pk=None):
 def _savings_product_values(product):
     if product is None:
         return None
-    return {
-        field.name: (
-            str(getattr(product, field.attname))
-            if getattr(product, field.attname) is not None
-            else None
+    values = {}
+    for field in product._meta.concrete_fields:
+        value = getattr(product, field.attname)
+        values[field.name] = (
+            str(value)
+            if value is not None and field.get_internal_type() == "DecimalField"
+            else value
         )
-        for field in product._meta.concrete_fields
-    }
+    return values
 
 
 @require_POST

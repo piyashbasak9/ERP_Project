@@ -121,7 +121,11 @@ def _product_values(product):
     values = {}
     for field in product._meta.concrete_fields:
         value = getattr(product, field.attname)
-        values[field.name] = str(value) if value is not None else None
+        values[field.name] = (
+            str(value)
+            if value is not None and field.get_internal_type() == "DecimalField"
+            else value
+        )
     return values
 
 
