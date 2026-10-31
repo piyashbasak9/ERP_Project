@@ -71,6 +71,7 @@ def index(request):
         ("Organization settings", "Module_Settings_organization"),
         ("User preferences", "Module_Settings_preferences"),
         ("Business rules", "Module_Settings_business_rules"),
+        ("Notification templates", "Module_Settings_notification_templates"),
     ]
     return render(
         request,

@@ -4,6 +4,8 @@ import os
 
 from django.core.exceptions import ImproperlyConfigured
 
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+
 from .settings import *
 
 SECURE_SSL_REDIRECT = False
@@ -33,6 +35,13 @@ DATABASES = {
         "HOST": os.environ.get("TEST_DB_HOST", "localhost"),
         "PORT": os.environ.get("TEST_DB_PORT", "5432"),
         "CONN_MAX_AGE": 0,
+    }
+}
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "erp-test-cache",
     }
 }
 

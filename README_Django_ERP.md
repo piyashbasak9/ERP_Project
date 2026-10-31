@@ -4,12 +4,12 @@
 
 | | |
 |---|---|
-| **Status** | In development: platform and core financial modules implemented in part |
+| **Status** | In development: Phase 7 part 2B is implemented and PostgreSQL-tested; other roadmap gaps remain |
 | **Backend** | Python 3.12, Django 6.0.9 |
 | **Database** | PostgreSQL |
 | **Frontend** | Django templates, Bootstrap 5, jQuery, Free jqGrid, Bootstrap Icons |
 | **Theme** | White and dark blue |
-| **Last updated** | 2026-10-30 |
+| **Last updated** | 2026-10-31 |
 
 > **Placeholders to replace:** repository URL, license, maintainers and contact details are marked with `TODO`.
 
@@ -685,22 +685,24 @@ Details are in [section 13](#13-audit-and-compliance).
 
 | Group | What it controls |
 |---|---|
-| **System configuration** | Application name and logo, currency and number format, date format, time zone, fiscal year start, password policy, session timeout and file upload limits. Mail/SMS credentials remain in environment variables and are not stored in the database. |
+| **System configuration** | Application name and logo, currency and number format, date format, time zone, fiscal year start, password policy, session timeout and file upload limits. Notification schedule and templates are separately editable under Settings. Mail/SMS credentials remain in environment variables and are not stored in the database. |
 | **Organization settings** | Legal name, registration number, address, phone, email, website and logo in report/print headers; regulator details remain future work |
 | **User preferences** | Per-user: language, default page size, default landing page, date format |
 | **Business rules configuration** | Loan and savings limits, approval limits, penalty rules, repayment allocation order, PAR thresholds, member status rules, collection rules, rounding rules |
 
 Changes to settings are audited with old and new values.
 
-**Screens**: `/settings/system/`, `/settings/organization/`, `/settings/business-rules/`, `/settings/preferences/`
+**Screens**: `/settings/system/`, `/settings/organization/`, `/settings/business-rules/`, `/settings/preferences/`, `/settings/notifications/templates/`
 
 **PostgreSQL evidence:** `ConfigurationRouteTests.test_settings_screens_and_mutations_require_their_own_permission`, `ConfigurationRouteTests.test_settings_mutation_routes_reject_get`, `ConfigurationRouteTests.test_settings_index_lists_only_screens_the_user_can_open`, `ConfigurationRouteTests.test_system_configuration_is_validated_audited_and_effective_immediately`, `ConfigurationRouteTests.test_user_preferences_only_update_the_logged_in_user`, `ConfigurationRouteTests.test_every_settings_mutation_route_writes_a_request_audit`, and `ConfigurationRouteTests.test_settings_change_rolls_back_when_its_audit_write_fails`.
 
-**Full PostgreSQL validation:** `pytest -q` — 257 passed, 256 subtests passed, zero failures, zero errors and zero skips (2026-10-30).
+**Full PostgreSQL validation:** `pytest -q` — 1,689 passed, 278 subtests passed, zero failures, zero errors and zero skips (2026-10-31).
+
+**Phase 7 part 2B PostgreSQL evidence:** `test_every_route_audits_successful_state_changing_requests`, `test_authentication_audit_exemptions_have_documented_producers`, `RoutePermissionTests.test_permission_revocation_is_immediate_across_clients_with_shared_cache_config`, `ConfigurationRouteTests.test_settings_are_read_from_database_when_shared_cache_is_unavailable`; notification coverage includes `test_daily_job_generates_all_four_event_types`, `test_notification_generation_is_idempotent_per_recipient_event_and_day`, `test_notification_opt_out_is_respected`, `test_delivery_respects_opt_out_changed_after_notification_creation`, `test_sms_uses_console_provider_without_logging_recipient_data`, `test_provider_failure_retries_and_records_job_and_integration_events`, `test_unexpected_job_failure_is_recorded_and_propagated`, `test_recipients_are_limited_to_the_event_branch`, `test_template_placeholders_are_validated`, `test_every_notification_route_requires_its_permission`, and `test_notification_mutation_routes_reject_get`; import coverage includes `test_validation_reports_row_level_errors`, `test_validated_import_rolls_back_every_row_on_late_failure`, `test_upload_is_idempotent_by_file_hash`, `test_branch_isolation_rejects_foreign_savings_accounts`, `test_savings_opening_import_is_maker_checker_and_posts_balanced_journal`, `test_gl_opening_import_posts_one_balanced_journal_after_checker_approval`, `test_unbalanced_gl_opening_is_rejected_before_approval`, `test_malicious_uploads_are_rejected`, `test_row_limit_is_enforced`, `test_validation_error_download_neutralizes_formula_cells`, `test_every_import_route_requires_its_permission`, and `test_every_import_mutation_route_rejects_get`.
 
 ### 7.11 Additional recommended modules
 
-**Status:** Dashboard cards are permission-aware and branch-scoped; seeded tests verify known values and cross-branch exclusion for all nine cards. Day-end closing, reopening, branch holidays and closed-business-date posting guards are implemented. `test_day_close_locks_business_date_before_concurrent_journal_posting` proves a concurrent posting waits on the branch business-date row lock and is rejected after close. Centers, groups, staff and field-officer foundations are partial; other additions remain planned.
+**Status:** Dashboard cards are permission-aware and branch-scoped; seeded tests verify known values and cross-branch exclusion for all nine cards. Day-end closing, reopening, branch holidays and closed-business-date posting guards are implemented. `test_day_close_locks_business_date_before_concurrent_journal_posting` proves a concurrent posting waits on the branch business-date row lock and is rejected after close. Notifications and bulk import are implemented; centers, groups, staff and field-officer foundations remain partial.
 
 These were not in the original list but a working MFI needs them.
 
@@ -713,8 +715,8 @@ These were not in the original list but a working MFI needs them.
 | **Day-end closing** | Branch business date, checklist, holiday skipping, audited reopen and closed-date posting guards; PostgreSQL row-lock race test proves concurrent close/post safety |
 | **Maker-checker approvals** | A generic approval queue for sensitive actions (large withdrawals, manual journals, write-offs, reversals) |
 | **Holiday calendar** | Skips non-working days when generating repayment schedules and collection sheets |
-| **Notifications** | Email and SMS reminders for upcoming installments, overdue loans, and approvals waiting |
-| **Bulk import** | Excel import for members and opening balances, with a validation report |
+| **Notifications** | Implemented: branch-scoped in-app and SMTP delivery, configurable installment reminders, overdue, approval and KYC expiry events, editable validated templates, opt-out, idempotency, retries and audited job/integration events. SMS is a console-backed provider interface only. |
+| **Bulk import** | Implemented: private .xlsx upload, template download, dry-run/error report, confirmation, atomic member import, maker-checker savings and GL opening balances, balanced journals and file-hash idempotency. Loan opening balances are **Planned** and out of scope. |
 | **Cash and bank management** | Cash book, bank accounts, cash transfers between branch and head office |
 | **Backup and restore** | Scheduled database backup with retention, documented restore procedure |
 
@@ -1042,6 +1044,7 @@ flowchart TD
 4. **Destructive and state-changing routes accept POST only** (`@require_POST`) and are CSRF-protected. Deleting or approving through a link (GET) is never allowed.
 5. **Object-level checks are separate.** A permission says "may use this page". Branch scope and ownership still decide *which records* ([section 12](#12-branch-data-isolation)).
 6. Route permissions are checked against active role assignments on every request, so role and permission changes take effect on the next request.
+7. Permission decisions are read from PostgreSQL on each request; they are not cached, so a revocation cannot remain stale across Gunicorn workers. Settings are likewise read from PostgreSQL. Production configures the shared Redis cache using `REDIS_URL`, but database-backed authorization and settings continue to work when Redis is unavailable.
 
 ### 11.4 Permission registry and role screen
 
@@ -1254,7 +1257,7 @@ The snippet is illustrative; model and helper names will follow the real apps.
 
 A user must never see or change another branch's data unless their role and branch access allow it. Django has no built-in global query filter, so isolation is built from a **branch-scoped manager that fails closed**.
 
-**Status**: Partial. Hierarchy moves, branch scoping and soft delete are implemented; broader module-wide isolation coverage remains. Every shared report and compliance report validates requested branches against the user's accessible branches and scopes its queryset accordingly; parameterized tests reject forged branch ids on every report page and export. Audit screens are branch-scoped, user preferences are constrained to the authenticated user, and head-office users receive consolidation only across branches they can access.
+**Status**: Partial. Hierarchy moves, branch scoping and soft delete are implemented; broader module-wide isolation coverage remains. Every shared report and compliance report validates requested branches against the user's accessible branches and scopes its queryset accordingly; parameterized tests reject forged branch ids on every report page and export. Audit screens and notifications are branch-scoped, imports validate accessible branches and use the selected branch for all rows, and user preferences are constrained to the authenticated user.
 
 ### 12.1 Hierarchy
 
@@ -1324,7 +1327,7 @@ class BranchScopedModel(models.Model):
 
 ## 13. Audit and Compliance
 
-**Status**: Partial. Audit events are written for successful state-changing requests inside the request transaction, with authentication, role/permission, configuration, KYC download, sensitive member reads and report exports covered. Failed state-changing requests roll back. PostgreSQL append-only protection is installed by migration and documented in the runtime-role SQL. Job and integration producers, exhaustive event-specific audit assertions and retention/archival operations remain.
+**Status**: Partial. Every successful non-GET/HEAD/OPTIONS request writes a `RequestMutation` audit record inside the same request transaction; login and logout are the only explicit exemptions and are recorded by authentication signals. Failed state-changing requests roll back. A PostgreSQL-parametrized route audit test covers all registered application routes and state-changing HTTP methods. PostgreSQL append-only protection is installed by migration and documented in the runtime-role SQL. Notification job runs and failed integrations also produce system events. Retention/archival operations remain.
 
 ### 13.1 What is recorded
 
@@ -1402,6 +1405,8 @@ The application is **server-rendered**: Django returns HTML pages, and AJAX is u
   "request_id": "7f3c2a1e9b"
 }
 ```
+
+`CACHES["default"]` uses Django's Redis backend at `REDIS_URL` in production. `REDIS_URL` is required with `DEBUG=False`. Permission grants and settings are deliberately not served from a cache: they are read from PostgreSQL so cache outages do not block access checks or produce stale grants.
 
 **Validation error** (HTTP 400)
 
@@ -1497,7 +1502,9 @@ The former iframe/window flow conflicted with the production `X-Frame-Options: D
 | Accounting | `/accounting/chart-of-accounts/`, `/accounting/journal-entries/`, `/accounting/journal-entries/post/<id>/`, `/accounting/reconciliation/`, `/accounting/trial-balance/`, `/accounting/fiscal-years/` |
 | Reports | `/reports/` permission-filtered index; `/reports/<report-slug>/`, `/reports/<report-slug>/data/`, and separate `/export/excel/` and `/export/pdf/` routes for each registered report |
 | Audit | `/audit/logs/`, `/audit/events/`, `/audit/trail/<entity>/<id>/`, `/audit/compliance/`, `/audit/dashboard/` |
-| Settings | `/settings/system/`, `/settings/organization/`, `/settings/business-rules/`, `/settings/preferences/` |
+| Settings | `/settings/system/`, `/settings/organization/`, `/settings/business-rules/`, `/settings/preferences/`, `/settings/notifications/templates/` and POST save/schedule routes |
+| Notifications | `/notifications/`, `/notifications/preferences/`, POST preference save and mark-read routes |
+| Bulk import | `/imports/`, POST upload, validate, confirm and approve; GET error report and type-specific template routes |
 
 ---
 
@@ -1540,7 +1547,8 @@ The current schema is managed by Django migrations. Any legacy SQL scripts are h
 | Accounting | Account, AccountMapping, FiscalYear, FiscalPeriod, JournalEntry, JournalLine, VoucherSequence, Reconciliation |
 | Approvals | ApprovalRequest, ApprovalStep |
 | Audit | AuditLog, SystemEvent |
-| Settings | SystemSetting, OrganizationProfile, BusinessRule, UserPreference, Notification, NotificationTemplate |
+| Settings and notifications | SystemConfiguration, OrganizationConfiguration, BusinessRules, UserPreference, NotificationPreference, NotificationConfiguration, NotificationTemplate, Notification |
+| Imports | ImportBatch (private workbook, hash, validation results, maker-checker state) |
 
 ### 15.4 Core relationships
 
@@ -1607,9 +1615,20 @@ static/
 ```
 
 - **Header** is white with the branch switcher, the user menu, and a logout **button inside a POST form**.
+- The permission-aware bell opens the authenticated user's branch-scoped in-app notifications; each item can be marked read with POST.
 - **Sidebar** is dark blue. Its items come from a context processor that lists only the pages the user's role may open; empty module groups are hidden.
 - **Content** is white cards on a very light background. Breadcrumbs show the current location.
 - Vendor files are **self-hosted** so a strict Content Security Policy can be enforced.
+
+Notification events are generated and delivered outside web requests by `python manage.py dispatch_notifications`. Run it every five minutes (generation is idempotent by recipient, event reference, channel and day) to send due reminders and retry transient delivery failures:
+
+```cron
+*/5 * * * * /path/to/venv/bin/python /path/to/project/manage.py dispatch_notifications
+```
+
+Email uses `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `EMAIL_USE_SSL`, and `DEFAULT_FROM_EMAIL`. SMS has a provider interface and console-only implementation; no SMS gateway is configured.
+
+Bulk imports are limited to private `.xlsx` files (10 MB, 5,000 rows), validated with `openpyxl` read-only and `data_only`, and reject macros and external links. Error workbooks neutralize formula-leading cells. Member files import atomically on confirmation; savings and GL opening balances require a different checker. Loan opening balances remain **Planned**.
 
 ### 16.2 Browser-side setup: CSRF, session expiry, errors
 
@@ -1730,6 +1749,8 @@ document.querySelectorAll("#toastContainer .toast").forEach((el) => {
 - At most 3 are stacked. Identical messages are not repeated.
 - Never use `alert()` or a browser dialog for feedback.
 
+The notification bell is a separate, permissioned in-app inbox with per-user read state and branch filtering. Scheduled business notifications (installment due, overdue, approval waiting and KYC expiry) use validated Settings templates; email is asynchronous SMTP delivery, while SMS remains console-only.
+
 ### 16.5 Theme: white and dark blue
 
 | Token | Value | Use |
@@ -1840,6 +1861,8 @@ The details users notice every day. These apply to every screen.
 | Accessibility | Labels on all inputs, ARIA roles on custom components, WCAG 2.1 AA contrast |
 | Safety | No double submits; unsaved-changes warning; optimistic locking message when two users edit the same record |
 | Language | The selected language is applied through Django's translation context; complete translation catalogs and removal of hard-coded strings remain |
+| Notifications | Inbox and preferences are per user; delivery is outside the request, branch-scoped and idempotent |
+| Imports | Download a template, upload a private `.xlsx`, validate before confirmation, and require a different checker for opening balances |
 
 ---
 
@@ -1852,7 +1875,7 @@ The details users notice every day. These apply to every screen.
 | Python | 3.12 |
 | PostgreSQL | Local install, or run it in Docker |
 | Git | |
-| Redis | Only when background jobs are enabled (planned) |
+| Redis | Shared production cache configured through `REDIS_URL`; notifications run through the management command and cron |
 
 ### 18.2 Steps
 
@@ -2046,6 +2069,9 @@ def test_every_route_is_classified(db):
 12. **Concurrency.** Two simultaneous withdrawals cannot overdraw an account; two editors get a 409 for the second save.
 13. **Idempotency.** Sending the same payment twice posts it once.
 14. **Audit.** Every create, update, delete and approval writes an audit record in the same transaction; the audit table rejects updates.
+15. **State-changing route audit.** A parameterized PostgreSQL test checks every registered app route against non-safe request methods; only login/logout are exempt because authentication signals record them.
+16. **Notifications.** Re-running generation produces no duplicates; opt-out, branch scope, placeholder validation, retry/backoff, job events and integration failures are tested.
+17. **Imports.** Row errors, all-or-nothing rollback, file-hash idempotency, balanced GL and savings opening journals, maker-checker, branch isolation, permissions, malicious workbooks and formula-safe reports are tested.
 
 Run the full suite and the security checks in [`.github/workflows/quality.yml`](./.github/workflows/quality.yml) on every pull request.
 
@@ -2063,7 +2089,7 @@ CREATE ROLE erp_runtime LOGIN PASSWORD '<runtime-test-password>';
 GRANT erp_runtime TO erp_test_runner;
 ```
 
-Set `TEST_DB_NAME=erp_test`, `TEST_DB_USER=erp_test_runner`, and `TEST_DB_PASSWORD` in the environment, along with the required normal Django settings, then run `pytest`. The runtime immutability test applies [`database/savings_runtime_role.sql`](./database/savings_runtime_role.sql) against its migrated disposable database and attempts protected changes under `SET ROLE erp_runtime`. CI provisions these test-only roles in its PostgreSQL service. The test-only settings in `ERP/test_settings.py` disable HTTPS redirects solely for deterministic client tests; production settings remain in `ERP/settings.py`.
+Set `TEST_DB_NAME=erp_test`, `TEST_DB_USER=erp_test_runner`, and `TEST_DB_PASSWORD` in the environment, along with the required normal Django settings, then run `pytest`. The runtime immutability test applies [`database/savings_runtime_role.sql`](./database/savings_runtime_role.sql) against its migrated disposable database and attempts protected changes under `SET ROLE erp_runtime`. CI provisions these test-only roles in its PostgreSQL service. The test-only settings in `ERP/test_settings.py` disable HTTPS redirects and use an isolated in-process cache solely for deterministic client tests; production settings require the shared Redis URL in `ERP/settings.py`. Permission grants and settings are read from PostgreSQL even if Redis is unavailable.
 
 ---
 
@@ -2092,6 +2118,7 @@ Internet ── HTTPS ──► Nginx (TLS, rate limits, static, private media v
 - TLS terminates at Nginx; HTTP redirects to HTTPS; HSTS enabled.
 - The database is **not** reachable from the internet; only the application and workers can connect, over TLS.
 - Private media sits on a volume that Nginx can read only through an internal location.
+- All Gunicorn workers use the same Redis service via `REDIS_URL`; permission and settings decisions remain database-authoritative and do not depend on Redis availability.
 
 ### 21.3 Example `docker-compose.yml` (adapt to your setup)
 
@@ -2106,12 +2133,19 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+
   web:
     build: .
     command: gunicorn ERP.wsgi:application --bind 0.0.0.0:8000 --workers 3
     env_file: .env
     depends_on:
       - db
+      - redis
     volumes:
       - private_media:/app/private_media
     ports:
@@ -2119,10 +2153,11 @@ services:
 
 volumes:
   pgdata:
+  redisdata:
   private_media:
 ```
 
-Keep `.env` out of Git, and put Nginx or Caddy in front for TLS.
+For Compose, set `REDIS_URL=redis://redis:6379/0`. Keep `.env` out of Git, and put Nginx or Caddy in front for TLS.
 
 ### 21.4 CI/CD pipeline
 
@@ -2183,7 +2218,7 @@ Targets are **suggested starting points**; confirm them with load tests and with
 | **4. Savings** | Products, individual and group accounts, transactions, reversals, interest, statements, automatic postings | Partial |
 | **5. Loans** | Products, applications, eligibility, approvals, disbursement, schedules, repayments, penalties, rescheduling, settlement, write-off, recovery, PAR, statements, classification | Done — requested Phase 5 scope verified on PostgreSQL; see [section 7.5](#75-loans) |
 | **6. Collections** | Sheet generation, collection entry, cash reconciliation, atomic posting, collector performance, reports and maker-checker sheet reversal | Done — reversal and collection workflow tests pass on PostgreSQL |
-| **7. Reporting and control** | All report groups with Excel and PDF export, dashboards, day-end closing, notifications, bulk import, compliance reports, settings and audit screens | Partial — 36 reports, dashboard metrics, day-close/post race control, settings, audit screens and compliance reports are implemented; notifications, bulk import and full audit producer coverage remain |
+| **7. Reporting and control** | All report groups with Excel and PDF export, dashboards, day-end closing, notifications, bulk import, compliance reports, settings and audit screens | Done — reports, dashboards, day-end controls, notifications, bulk imports, compliance reports, settings, audit screens and request/job/integration audit producers are implemented and covered by PostgreSQL tests |
 | **8. Hardening and go-live** | Independent security review and penetration test, load testing, user acceptance testing, data migration from the old system, training, production rollout | Planned |
 
 **Future ideas**: Django REST Framework API, mobile app for field officers with offline collection, mobile wallet and payment gateway integration, SMS gateway automation, credit bureau checks, fixed deposit and DPS products, micro-insurance, HR and payroll, fixed assets, multi-currency, member self-service portal, MFA for all staff.

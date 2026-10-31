@@ -1,5 +1,7 @@
 from django.urls import path
 
+from core.notifications import views as notification_views
+
 from . import views
 
 app_name = "configuration"
@@ -47,5 +49,20 @@ urlpatterns = [
         "business-rules/save/",
         views.save_business_rules,
         name="Module_Settings_business_rules_save",
+    ),
+    path(
+        "notifications/templates/",
+        notification_views.settings_templates,
+        name="Module_Settings_notification_templates",
+    ),
+    path(
+        "notifications/templates/save/",
+        notification_views.save_settings_template,
+        name="Module_Settings_notification_template_save",
+    ),
+    path(
+        "notifications/schedule/save/",
+        notification_views.save_settings_configuration,
+        name="Module_Settings_notification_schedule_save",
     ),
 ]

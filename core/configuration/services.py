@@ -1,14 +1,9 @@
 from decimal import ROUND_DOWN, ROUND_HALF_EVEN, ROUND_HALF_UP
 
-from django.core.cache import cache
-
 from core.audit.services import log_action
 
 from .models import BusinessRules, OrganizationConfiguration, SystemConfiguration
 
-SYSTEM_CACHE_KEY = "erp:configuration:system"
-ORGANIZATION_CACHE_KEY = "erp:configuration:organization"
-BUSINESS_RULES_CACHE_KEY = "erp:configuration:business-rules"
 ROUNDING_MODES = {
     "ROUND_HALF_UP": ROUND_HALF_UP,
     "ROUND_HALF_EVEN": ROUND_HALF_EVEN,
@@ -16,24 +11,20 @@ ROUNDING_MODES = {
 }
 
 
-def _cached_singleton(key, model):
-    value = cache.get(key)
-    if value is None:
-        value = model.objects.order_by("pk").first() or model()
-        cache.set(key, value, timeout=None)
-    return value
+def _configuration_singleton(model):
+    return model.objects.order_by("pk").first() or model()
 
 
 def get_system_configuration():
-    return _cached_singleton(SYSTEM_CACHE_KEY, SystemConfiguration)
+    return _configuration_singleton(SystemConfiguration)
 
 
 def get_organization_configuration():
-    return _cached_singleton(ORGANIZATION_CACHE_KEY, OrganizationConfiguration)
+    return _configuration_singleton(OrganizationConfiguration)
 
 
 def get_business_rules():
-    return _cached_singleton(BUSINESS_RULES_CACHE_KEY, BusinessRules)
+    return _configuration_singleton(BusinessRules)
 
 
 def configuration_values(instance, fields):
@@ -55,12 +46,6 @@ def save_configuration(*, instance, fields, user, entity_name):
     old_values = configuration_values(persisted, fields) if persisted else None
     instance.full_clean()
     instance.save()
-    cache_key = {
-        "SystemConfiguration": SYSTEM_CACHE_KEY,
-        "OrganizationConfiguration": ORGANIZATION_CACHE_KEY,
-        "BusinessRules": BUSINESS_RULES_CACHE_KEY,
-    }[entity_name]
-    cache.delete(cache_key)
     new_values = configuration_values(instance, fields)
     log_action(
         "Update" if old_values else "Create",

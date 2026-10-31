@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Bulk import</h1>
+<p>Templates:
+  <a href="{% url 'bulk_imports:Module_Import_template' 'members' %}">Members</a> |
+  <a href="{% url 'bulk_imports:Module_Import_template' 'savings_opening' %}">Savings opening balances</a> |
+  <a href="{% url 'bulk_imports:Module_Import_template' 'gl_opening' %}">GL opening balances</a>
+</p>
+<form method="post" enctype="multipart/form-data" action="{% url 'bulk_imports:Module_Import_upload' %}">
+  {% csrf_token %}
+  <label for="import-type">Import type</label>
+  <select id="import-type" name="import_type" required>
+    <option value="members">Members</option>
+    <option value="savings_opening">Savings opening balances</option>
+    <option value="gl_opening">GL opening balances</option>
+  </select>
+  <label for="branch">Branch</label>
+  <select id="branch" name="branch" required>
+    {% for branch in branches %}<option value="{{ branch.pk }}">{{ branch.name }}</option>{% endfor %}
+  </select>
+  <input type="file" name="file" accept=".xlsx" required>
+  <button class="btn btn-primary" type="submit">Upload workbook</button>
+</form>
+<h2>Recent batches</h2>
+<table class="table">
+  <thead><tr><th>Type</th><th>Branch</th><th>Status</th><th>Rows</th><th>Actions</th></tr></thead>
+  <tbody>
+  {% for batch in batches %}
+    <tr>
+      <td>{{ batch.get_import_type_display }}</td>
+      <td>{{ batch.branch.name }}</td>
+      <td>{{ batch.get_status_display }}</td>
+      <td>{{ batch.row_count }}</td>
+      <td>
+        {% if batch.status == "uploaded" %}
+          <form method="post" action="{% url 'bulk_imports:Module_Import_validate' batch.pk %}">{% csrf_token %}<button type="submit">Dry-run validate</button></form>
+        {% elif batch.status == "validated" %}
+          <a href="{% url 'bulk_imports:Module_Import_errors' batch.pk %}">Errors</a>
+          <form method="post" action="{% url 'bulk_imports:Module_Import_confirm' batch.pk %}">{% csrf_token %}<button type="submit">Confirm</button></form>
+        {% elif batch.status == "invalid" %}
+          <a href="{% url 'bulk_imports:Module_Import_errors' batch.pk %}">Download errors</a>
+        {% elif batch.status == "awaiting_approval" %}
+          <form method="post" action="{% url 'bulk_imports:Module_Import_approve' batch.pk %}">{% csrf_token %}<button type="submit">Approve</button></form>
+        {% endif %}
+      </td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="5">No import batches.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,15 +1,75 @@
+import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
 from django.db import DatabaseError, connection, transaction
-from django.test import Client, TestCase
-from django.urls import reverse
+from django.http import HttpResponse
+from django.test import Client, RequestFactory, TestCase
+from django.urls import URLPattern, URLResolver, get_resolver, reverse
 
 from core.accounts.models import Permission, Role, RolePermission, UserRole
 from core.accounts.permission_utils import sync_permissions
 from core.branch.models import Branch, Member, UserBranchAccess
 
 from .context import audit_context_var
+from .middleware import (
+    STATE_CHANGING_AUDIT_EXEMPTIONS,
+    AuditContextMiddleware,
+)
 from .models import AuditLog
 from .services import log_action
+
+
+def state_changing_route_cases():
+    cases = []
+
+    def collect(patterns, prefix=""):
+        for pattern in patterns:
+            if isinstance(pattern, URLResolver):
+                collect(pattern.url_patterns, prefix + str(pattern.pattern))
+            elif isinstance(pattern, URLPattern):
+                route_name = pattern.name or ""
+                if route_name in STATE_CHANGING_AUDIT_EXEMPTIONS:
+                    continue
+                for method in ("POST", "PUT", "PATCH", "DELETE"):
+                    cases.append(
+                        (prefix + str(pattern.pattern), route_name, method)
+                    )
+
+    collect(get_resolver().url_patterns)
+    return cases
+
+
+@pytest.mark.parametrize(
+    ("route", "route_name", "method"),
+    state_changing_route_cases(),
+    ids=lambda value: str(value),
+)
+@pytest.mark.django_db
+def test_every_route_audits_successful_state_changing_requests(
+    route, route_name, method
+):
+    request = RequestFactory().generic(method, f"/{route.lstrip('/')}")
+    request.user = AnonymousUser()
+    request.resolver_match = type("ResolverMatch", (), {"url_name": route_name})()
+    existing_audits = AuditLog.objects.count()
+    response = AuditContextMiddleware(lambda _request: HttpResponse(status=204))(request)
+
+    assert response.status_code == 204
+    assert AuditLog.objects.count() == existing_audits + 1
+    assert AuditLog.objects.filter(
+        action="RequestMutation",
+        entity_name="HTTPMutation",
+        entity_id=route_name,
+        new_values__route_name=route_name,
+    ).exists()
+
+
+def test_authentication_audit_exemptions_have_documented_producers():
+    assert set(STATE_CHANGING_AUDIT_EXEMPTIONS) == {
+        "Module_Auth_login",
+        "Module_Auth_logout",
+    }
+    assert all(STATE_CHANGING_AUDIT_EXEMPTIONS.values())
 
 
 class AuditLogTests(TestCase):

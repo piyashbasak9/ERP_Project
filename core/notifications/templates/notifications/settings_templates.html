@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Notification templates</h1>
+<ul>
+  {% for template in templates %}
+    <li><a href="?event_key={{ template.event_key }}">{{ template.get_event_key_display }} — {{ template.subject }}</a>{% if not template.enabled %} (disabled){% endif %}</li>
+  {% empty %}
+    <li>No templates configured yet.</li>
+  {% endfor %}
+</ul>
+<form method="post" action="{% url 'configuration:Module_Settings_notification_template_save' %}">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button class="btn btn-primary" type="submit">Save template</button>
+</form>
+<h2>Schedule</h2>
+<form method="post" action="{% url 'configuration:Module_Settings_notification_schedule_save' %}">
+  {% csrf_token %}
+  {{ configuration_form.as_p }}
+  <button class="btn btn-primary" type="submit">Save schedule</button>
+</form>
+{% endblock %}

@@ -4,10 +4,37 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
 DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
+REDIS_URL = os.environ.get("REDIS_URL")
+if not DEBUG and not REDIS_URL:
+    raise ImproperlyConfigured("REDIS_URL is required when DEBUG is disabled.")
+
+CACHES = {
+    "default": (
+        {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+        }
+        if REDIS_URL
+        else {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "erp-local-cache",
+        }
+    )
+}
+
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "localhost")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "25"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "0") == "1"
+EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "0") == "1"
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@example.invalid")
 
 ALLOWED_HOSTS = [
     host.strip()
@@ -37,6 +64,8 @@ INSTALLED_APPS = [
     'core.loans',
     'core.collections',
     'core.configuration',
+    'core.notifications',
+    'core.bulk_imports',
 ]
 
 MIDDLEWARE = [
@@ -71,6 +100,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'core.branch.context_processors.branch_context',
                 'core.configuration.context_processors.organization_context',
+                'core.notifications.context_processors.notification_context',
             ],
             'libraries': {
                 'user_formatting': 'core.common.templatetags.user_formatting',

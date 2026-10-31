@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import get_resolver, reverse
 from django.utils import timezone
 
@@ -73,6 +73,31 @@ class RoutePermissionTests(TestCase):
         response = self.client.get('/accounts/users/')
 
         self.assertEqual(response.status_code, 403)
+
+    @override_settings(
+        CACHES={
+            "default": {
+                "BACKEND": "django.core.cache.backends.redis.RedisCache",
+                "LOCATION": "redis://127.0.0.1:1/0",
+            }
+        }
+    )
+    def test_permission_revocation_is_immediate_across_clients_with_shared_cache_config(self):
+        self.grant_routes('Module_Auth_list_users')
+        permission = Permission.objects.get(route_name='Module_Auth_list_users')
+        role = UserRole.objects.get(user=self.user).role
+        worker_one = Client()
+        worker_two = Client()
+        worker_one.force_login(self.user)
+        worker_two.force_login(self.user)
+        path = reverse('accounts:Module_Auth_list_users')
+
+        self.assertEqual(worker_one.get(path).status_code, 200)
+        self.assertEqual(worker_two.get(path).status_code, 200)
+
+        RolePermission.objects.filter(role=role, permission=permission).delete()
+
+        self.assertEqual(worker_two.get(path).status_code, 403)
 
     def test_existing_dashboard_renders_for_authenticated_user(self):
         response = self.client.get('/')

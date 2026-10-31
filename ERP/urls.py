@@ -32,4 +32,6 @@ urlpatterns = [
     path("collections/", include("core.collections.urls")),
     path("reports/", include("core.reports.urls")),
     path("settings/", include("core.configuration.urls")),
+    path("notifications/", include("core.notifications.urls")),
+    path("imports/", include("core.bulk_imports.urls")),
 ]

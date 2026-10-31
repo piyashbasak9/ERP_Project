@@ -170,6 +170,15 @@
                 </ul>
                 <ul class="navbar-nav align-items-lg-center">
                     {% if user.is_authenticated %}
+                    {% can 'Module_Notifications_list' as can_view_notifications %}
+                    {% if can_view_notifications %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'notifications:Module_Notifications_list' %}" aria-label="Notifications">
+                            <i class="bi bi-bell" aria-hidden="true"></i>
+                            {% if unread_notification_count %}<span class="badge bg-danger">{{ unread_notification_count }}</span>{% endif %}
+                        </a>
+                    </li>
+                    {% endif %}
                     {% if accessible_branches %}
                     <li class="nav-item me-lg-3 my-2 my-lg-0">
                         <form method="post" action="{% url 'branch:Module_Branch_switch' %}" class="d-flex gap-1 align-items-center">
@@ -190,6 +199,10 @@
                             <span class="user-avatar me-2">{{ user.username|first|upper }}</span>{{ user.username }}
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
+                            {% can 'Module_Notifications_preferences' as can_notification_preferences %}
+                            {% if can_notification_preferences %}
+                            <li><a class="dropdown-item" href="{% url 'notifications:Module_Notifications_preferences' %}">Notification preferences</a></li>
+                            {% endif %}
                             <li>
                                 <form method="post" action="{% url 'accounts:Module_Auth_logout' %}">
                                     {% csrf_token %}

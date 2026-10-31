@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from core.accounts.models import Permission, Role, RolePermission, UserRole
@@ -134,6 +134,28 @@ class ConfigurationRouteTests(TestCase):
         )
         self.assertEqual(update.old_values["application_name"], "Updated ERP")
         self.assertEqual(update.new_values["application_name"], "Updated ERP Two")
+
+    @override_settings(
+        CACHES={
+            "default": {
+                "BACKEND": "django.core.cache.backends.redis.RedisCache",
+                "LOCATION": "redis://127.0.0.1:1/0",
+            }
+        }
+    )
+    def test_settings_are_read_from_database_when_shared_cache_is_unavailable(self):
+        persisted = SystemConfiguration.objects.create(
+            application_name="Database authoritative"
+        )
+
+        self.assertEqual(
+            get_system_configuration().pk,
+            persisted.pk,
+        )
+        self.assertEqual(
+            get_system_configuration().application_name,
+            "Database authoritative",
+        )
 
     def test_invalid_system_configuration_does_not_change_persisted_settings(self):
         self.grant_routes("Module_Settings_system", "Module_Settings_system_save")

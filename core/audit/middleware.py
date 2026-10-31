@@ -3,6 +3,11 @@ from django.db import transaction
 from .context import audit_context_var, build_audit_context
 from .services import log_action, record_system_event
 
+STATE_CHANGING_AUDIT_EXEMPTIONS = {
+    "Module_Auth_login": "Login success and failure are recorded by authentication signals.",
+    "Module_Auth_logout": "Logout is recorded by the authentication signal.",
+}
+
 
 class AuditContextMiddleware:
     def __init__(self, get_response):
@@ -18,7 +23,11 @@ class AuditContextMiddleware:
                     route_name = getattr(
                         getattr(request, "resolver_match", None), "url_name", ""
                     )
-                    if request.method == "POST" and response.status_code < 400:
+                    if (
+                        request.method not in {"GET", "HEAD", "OPTIONS"}
+                        and response.status_code < 400
+                        and route_name not in STATE_CHANGING_AUDIT_EXEMPTIONS
+                    ):
                         log_action(
                             "RequestMutation",
                             "HTTPMutation",
