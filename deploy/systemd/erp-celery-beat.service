@@ -1,0 +1,35 @@
+[Unit]
+Description=ERP Celery beat scheduler
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+Requires=postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=erpapp
+Group=erpmedia
+WorkingDirectory=/srv/erp/current
+EnvironmentFile=/etc/erp/erp.env
+ExecStart=/srv/erp/venv/bin/celery -A ERP beat --loglevel=INFO --schedule=/srv/erp/shared/celerybeat/celerybeat-schedule
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+UMask=0027
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+PrivateDevices=yes
+ReadWritePaths=/srv/erp/shared/celerybeat
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

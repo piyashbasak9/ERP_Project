@@ -1269,6 +1269,13 @@ class LoanService:
         latest_payment_date = loan.payments.order_by("-payment_date").values_list(
             "payment_date", flat=True
         ).first()
+        imported_payment_date = loan.terms_snapshot.get(
+            "opening_balance_import", {}
+        ).get("last_payment_date")
+        if imported_payment_date:
+            imported_payment_date = date.fromisoformat(imported_payment_date)
+            if latest_payment_date is None or imported_payment_date > latest_payment_date:
+                latest_payment_date = imported_payment_date
         if latest_payment_date and payment_date < latest_payment_date:
             raise ValidationError("A loan transaction cannot be backdated before a payment.")
 
@@ -1463,21 +1470,21 @@ class LoanService:
         for installment in installments:
             overdue = installment.principal_remaining + installment.interest_remaining + installment.fee_remaining
             overdue_days = (payment_date - installment.due_date).days - grace_days
-            if overdue <= ZERO or overdue_days <= 0 or penalty_value <= 0:
-                continue
-            period_days = (
-                7
-                if penalty_frequency == LoanProduct.PENALTY_WEEKLY
-                else 1
-            )
-            periods = Decimal((overdue_days + period_days - 1) // period_days)
-            if penalty_type == LoanProduct.PENALTY_FIXED:
-                target = money(penalty_value * periods)
-            else:
-                target = money(overdue * penalty_value / 100 * periods)
-            cap = money(installment.principal_due * cap_rate / 100)
-            target = min(target, cap)
             previous = LoanPenalty.objects.filter(installment=installment).aggregate(total=Sum("amount"))["total"] or ZERO
+            target = previous
+            if overdue > ZERO and overdue_days > 0 and penalty_value > 0:
+                period_days = (
+                    7
+                    if penalty_frequency == LoanProduct.PENALTY_WEEKLY
+                    else 1
+                )
+                periods = Decimal((overdue_days + period_days - 1) // period_days)
+                if penalty_type == LoanProduct.PENALTY_FIXED:
+                    calculated_target = money(penalty_value * periods)
+                else:
+                    calculated_target = money(overdue * penalty_value / 100 * periods)
+                cap = money(installment.principal_due * cap_rate / 100)
+                target = max(previous, min(calculated_target, cap))
             if target > previous:
                 increment = target - previous
                 penalty, created = LoanPenalty.objects.get_or_create(

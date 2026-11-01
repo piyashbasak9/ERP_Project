@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily encrypted ERP backup schedule
+
+[Timer]
+OnCalendar=*-*-* 02:15:00
+RandomizedDelaySec=30m
+Persistent=true
+Unit=erp-backup.service
+
+[Install]
+WantedBy=timers.target

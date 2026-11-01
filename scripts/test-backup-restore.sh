@@ -5,18 +5,44 @@ set -euo pipefail
 : "${DB_PASSWORD:?Set DB_PASSWORD}"
 
 temp_dir=$(mktemp -d)
-source_db="erp_backup_source"
-target_db="erp_backup_target"
+source_db="erp_backup_source_${BASHPID}"
+target_db="erp_backup_target_${BASHPID}"
 source_media="$temp_dir/source-media"
 target_media="$temp_dir/target-media"
+source_created=0
+target_created=0
 mkdir -p "$source_media" "$target_media"
-trap 'dropdb --if-exists --no-password --host="${DB_HOST:-localhost}" --port="${DB_PORT:-5432}" --username="$DB_USER" "$source_db" >/dev/null 2>&1 || true; dropdb --if-exists --no-password --host="${DB_HOST:-localhost}" --port="${DB_PORT:-5432}" --username="$DB_USER" "$target_db" >/dev/null 2>&1 || true; rm -rf "$temp_dir"' EXIT
+
+cleanup() {
+    local exit_status=$?
+    trap - EXIT
+    if [[ "$target_created" -eq 1 ]] && ! dropdb --no-password \
+        --host="${DB_HOST:-localhost}" --port="${DB_PORT:-5432}" \
+        --username="$DB_USER" "$target_db"; then
+        printf 'Could not remove scratch database %s\n' "$target_db" >&2
+        exit_status=1
+    fi
+    if [[ "$source_created" -eq 1 ]] && ! dropdb --no-password \
+        --host="${DB_HOST:-localhost}" --port="${DB_PORT:-5432}" \
+        --username="$DB_USER" "$source_db"; then
+        printf 'Could not remove scratch database %s\n' "$source_db" >&2
+        exit_status=1
+    fi
+    if ! rm -rf -- "$temp_dir"; then
+        printf 'Could not remove temporary backup-test files.\n' >&2
+        exit_status=1
+    fi
+    exit "$exit_status"
+}
+trap cleanup EXIT
 
 export PGPASSWORD="$DB_PASSWORD"
 createdb --no-password --host="${DB_HOST:-localhost}" --port="${DB_PORT:-5432}" \
     --username="$DB_USER" --owner="$DB_USER" "$source_db"
+source_created=1
 createdb --no-password --host="${DB_HOST:-localhost}" --port="${DB_PORT:-5432}" \
     --username="$DB_USER" --owner="$DB_USER" "$target_db"
+target_created=1
 psql --no-password --host="${DB_HOST:-localhost}" --port="${DB_PORT:-5432}" \
     --username="$DB_USER" --dbname="$source_db" --set=ON_ERROR_STOP=1 \
     --command="CREATE TABLE restore_probe (value text NOT NULL); INSERT INTO restore_probe VALUES ('restored');"

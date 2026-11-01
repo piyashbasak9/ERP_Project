@@ -4,7 +4,8 @@
 <p>Templates:
   <a href="{% url 'bulk_imports:Module_Import_template' 'members' %}">Members</a> |
   <a href="{% url 'bulk_imports:Module_Import_template' 'savings_opening' %}">Savings opening balances</a> |
-  <a href="{% url 'bulk_imports:Module_Import_template' 'gl_opening' %}">GL opening balances</a>
+  <a href="{% url 'bulk_imports:Module_Import_template' 'gl_opening' %}">GL opening balances</a> |
+  <a href="{% url 'bulk_imports:Module_Import_template' 'loan_opening' %}">Loan opening balances</a>
 </p>
 <form method="post" enctype="multipart/form-data" action="{% url 'bulk_imports:Module_Import_upload' %}">
   {% csrf_token %}
@@ -13,6 +14,7 @@
     <option value="members">Members</option>
     <option value="savings_opening">Savings opening balances</option>
     <option value="gl_opening">GL opening balances</option>
+    <option value="loan_opening">Loan opening balances</option>
   </select>
   <label for="branch">Branch</label>
   <select id="branch" name="branch" required>

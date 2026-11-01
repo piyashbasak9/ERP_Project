@@ -12,10 +12,12 @@ class ImportBatch(models.Model):
     TYPE_MEMBERS = "members"
     TYPE_SAVINGS_OPENING = "savings_opening"
     TYPE_GL_OPENING = "gl_opening"
+    TYPE_LOAN_OPENING = "loan_opening"
     TYPE_CHOICES = [
         (TYPE_MEMBERS, "Members"),
         (TYPE_SAVINGS_OPENING, "Savings opening balances"),
         (TYPE_GL_OPENING, "GL opening balances"),
+        (TYPE_LOAN_OPENING, "Loan opening balances"),
     ]
     STATUS_UPLOADED = "uploaded"
     STATUS_VALIDATED = "validated"
@@ -58,4 +60,3 @@ class ImportBatch(models.Model):
     class Meta:
         db_table = "import_batches"
         ordering = ["-created_at", "-pk"]
-

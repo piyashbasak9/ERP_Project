@@ -1,0 +1,13 @@
+/var/log/nginx/erp_access.log /var/log/nginx/erp_error.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 www-data adm
+    sharedscripts
+    postrotate
+        systemctl kill --signal=USR1 nginx.service >/dev/null 2>&1 || true
+    endscript
+}

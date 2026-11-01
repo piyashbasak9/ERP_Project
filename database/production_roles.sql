@@ -1,6 +1,5 @@
 \set ON_ERROR_STOP on
 \getenv database_name DB_NAME
-\getenv admin_role DB_ADMIN_USER
 \getenv owner_role DB_OWNER_USER
 \getenv owner_password DB_OWNER_PASSWORD
 \getenv runtime_password DB_PASSWORD
@@ -30,13 +29,6 @@ WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'erp_runtime')
 SELECT format(
     'ALTER ROLE erp_runtime LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD %L',
     :'runtime_password'
-)
-\gexec
-
-SELECT format(
-    'REASSIGN OWNED BY %I, erp_runtime TO %I',
-    :'admin_role',
-    :'owner_role'
 )
 \gexec
 

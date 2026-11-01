@@ -449,6 +449,12 @@ class Loan(BranchScopedModel):
     class Meta:
         db_table = "loans"
         ordering = ["-disbursed_at"]
+        indexes = [
+            models.Index(
+                fields=["branch", "status"],
+                name="loan_branch_status_idx",
+            ),
+        ]
         constraints = [
             models.CheckConstraint(condition=Q(principal__gt=0), name="loan_principal_positive"),
             models.CheckConstraint(condition=Q(outstanding_principal__gte=0), name="loan_principal_nonnegative"),
@@ -511,6 +517,12 @@ class LoanInstallment(models.Model):
     class Meta:
         db_table = "loan_installments"
         ordering = ["schedule_version", "number"]
+        indexes = [
+            models.Index(
+                fields=["loan", "due_date"],
+                name="loaninst_loan_due_idx",
+            ),
+        ]
         constraints = [
             models.UniqueConstraint(fields=["loan", "schedule_version", "number"], name="uniq_loan_schedule_row"),
             models.CheckConstraint(condition=Q(principal_due__gte=0) & Q(interest_due__gte=0) & Q(fee_due__gte=0), name="loan_installment_amounts_nonnegative"),

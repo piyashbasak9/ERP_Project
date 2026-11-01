@@ -1,4 +1,8 @@
 \set ON_ERROR_STOP on
+\getenv test_role TEST_DB_USER
+\getenv test_password TEST_DB_PASSWORD
+\getenv runtime_role RUNTIME_DB_USER
+\getenv runtime_password RUNTIME_DB_PASSWORD
 
 SELECT format(
     'CREATE ROLE %I LOGIN CREATEDB PASSWORD %L',

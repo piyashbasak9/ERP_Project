@@ -2,7 +2,7 @@
 
 **Review date:** 2026-11-01  
 **Scope:** README sections 1–26, all current `Partial`, `Planned`, and `Not done` items, and the Phase 8 security/deployment continuation.  
-**Method:** Repository/code and test inspection, the full PostgreSQL pytest suite, empty-scratch-database migration, `makemigrations --check --dry-run`, Ruff, Bandit, pip-audit, Django deployment checks, JavaScript and shell syntax checks, and review of PostgreSQL CI/deployment definitions. The PostgreSQL suite and migration history were exercised locally; container validation, encrypted restore execution, hosted CI and live deployment were not available. A requirement is `Done` only where code/configuration and relevant current test or direct operational evidence exists.
+**Method:** Repository/code and test inspection, PostgreSQL pytest and fresh-database migration checks, Ruff, Bandit, pip-audit, Django deployment checks, shell syntax checks, and review of PostgreSQL CI and Ubuntu/systemd deployment definitions. Local PostgreSQL tests, migrations and static checks were exercised; Nginx validation, encrypted restore execution, hosted CI and live deployment still require operational validation. A requirement is `Done` only where code/configuration and relevant current test or direct operational evidence exists.
 
 ## Phase 8 continuation status
 
@@ -12,12 +12,48 @@
 | TOTP MFA for superusers/admin roles, recovery codes, lockout, audited reset, sensitive-action re-verification and bypass tests | Done | The full PostgreSQL suite passes enforcement, enrollment, hashed/single-use recovery, replay rejection, direct/AJAX/JSON bypass, sensitive-action re-verification, lockout, admin reset and server-command reset/audit tests. Deployment enrollment procedures remain operational work. |
 | Absolute session deadline | Done | The full PostgreSQL suite passes controlled-clock absolute-deadline tests alongside idle expiry and JSON-client behavior; the default is 12 hours and configurable. |
 | XSS audit and stored-payload coverage across editable fields, pages and grids | Partial | Source regressions cover template/Python unsafe-marking, first-party JS markup sinks and jqGrid auto-encoding. Stored `<script>`/quote tests pass for branch/member/address/KYC, loan and savings products, collection reasons, and member-report page/grid/popup/XLSX/PDF paths. This is representative rather than an exhaustive field-by-field browser matrix. |
-| Production container, Compose, Nginx, health and request-ID JSON logging | Partial | Artifacts exist and include non-root Gunicorn runtime, TLS, redirects/HSTS, rate limits, static/private-media routing and health/logging code. Docker/Compose/Nginx syntax and runtime smoke tests were not run. |
-| Runtime/owner database roles and append-only table grants | Partial | Role provisioning is separated from migration and post-migration runtime grants reuse `database/savings_runtime_role.sql`; CI execution and production privilege verification remain pending. |
-| Encrypted DB/private-media backup, restore and CI scratch restore test | Partial | age-based scripts and a disposable-database CI round trip exist; neither the CI workflow nor the restore test ran in this checkout. |
-| Complete production environment example | Done | `.env.production.example` is present with empty secret/host fields; it contains no deployed hostname or real secret. |
-| PostgreSQL CI, Ruff/Bandit/pip-audit/Gitleaks/deploy check/image build and approval-gated test deployment | Partial | Local PostgreSQL, Ruff, Bandit, pip-audit and `check --deploy` pass. Gitleaks and Docker are unavailable locally; no current hosted run is evidenced, and repository environment reviewers and the self-hosted test runner must be configured externally. |
-| Deployment runbook, README status and conformance report | Partial | `docs/DEPLOYMENT.md` and status updates are present. Operational steps have not been exercised; some baseline matrix entries below remain historical. |
+| Ubuntu systemd, Nginx, health and request-ID JSON logging | Partial | Non-root Gunicorn/Celery units, systemd hardening, TLS redirects/HSTS, rate limits, static/private-media routing, release/rollback scripts and host backup timers are checked in. `systemd-analyze verify` returned nonzero because host executables are not installed; Nginx is unavailable locally, and live service smoke tests remain pending. |
+| Runtime/owner database roles and append-only table grants | Partial | Provisioning applies to the application database, avoids cluster-wide ownership reassignment, and post-migration runtime grants reuse `database/savings_runtime_role.sql`. Fresh production-role execution and privilege verification remain pending. |
+| Encrypted DB/private-media backup, restore and CI scratch restore test | Partial | age-based scripts and a collision-safe disposable-database CI round trip are configured. Local execution was unavailable because `age` and `age-keygen` are not installed; no hosted workflow run is evidenced. |
+| Protected runtime, role and backup environment templates | Done | `.env.production.example` contains runtime settings, while separate role/backup templates are installed under `/etc/erp`; all example secrets and deployment-specific values are blank. |
+| PostgreSQL CI, Ruff/Bandit/pip-audit/Gitleaks/deploy check and approval-gated Linux test deployment | Partial | The workflow provisions PostgreSQL directly on the Ubuntu runner, runs the encrypted scratch restore test and required scans, and gates a Linux release on the `test` environment. No current hosted run is evidenced; environment reviewers and the self-hosted Linux runner remain external configuration. |
+| Deployment runbook, README status and conformance report | Partial | `docs/DEPLOYMENT.md` and status updates are present. Host installation and operational steps have not been exercised; some baseline matrix entries below remain historical. |
+
+## Version-one close-out
+
+| Deliverable | Status | Evidence |
+|---|---|---|
+| Secure active-loan opening-balance Excel import | Done | Implemented in `core/bulk_imports/`; PostgreSQL tests cover a golden remaining schedule, accrued interest and penalties, PAR, balanced principal-only opening journal, subledger/ledger equality, branch isolation, maker-checker audit, repeat approval and atomic rollback after a late failure. |
+| Role-specific daily workflow guide | Done | `docs/USER_GUIDE.md` gives role steps, menu/direct paths and expected results. |
+| End-to-end UAT plan | Done | `docs/UAT_PLAN.md` has 16 acceptance scenarios and pass/fail fields. |
+| Data migration guide | Done | `docs/DATA_MIGRATION.md` defines workbook columns, order, reconciliations, cut-over and rollback. |
+| PostgreSQL full suite and local quality gates | Done | The final close-out run passed 1,762 tests and 284 subtests with zero failures, errors or skips; Ruff, CI-configured Bandit, pip-audit, `makemigrations --check --dry-run` and `check --deploy` passed. Detailed output is in Validation results below. |
+
+### Remaining work
+
+**Needs infrastructure or a person**
+
+- Validate the Ubuntu/systemd/Nginx deployment on a provisioned host, including
+  live HTTPS, startup, private-media, health and rollback smoke tests.
+- Run the age-encrypted backup and restore round trip with configured keys and
+  verify the restored database and private media together.
+- Configure and observe hosted CI, including GitHub Environment reviewers and
+  a runner with the required labels; retain the workflow run URL as evidence.
+- Obtain an independent security review/penetration test and remediate its
+  findings.
+- Have local regulatory/accounting owners approve jurisdiction-specific
+  privacy, retention, tax, AML/KYC and financial-report settings.
+- Complete staff UAT, training, cut-over approval, staging performance
+  repetition and production incident/monitoring setup.
+- Assign the repository license, maintainers, support contact and private
+  vulnerability-reporting contact before external distribution.
+
+**Optional future features**
+
+- Public API and field-officer mobile/offline application.
+- Payment/mobile-wallet and SMS gateway integrations.
+- Credit-bureau checks, fixed deposits/DPS, micro-insurance, HR/payroll,
+  fixed assets, multi-currency and member self-service.
 
 The `Risk` column estimates the impact of a conformance gap; it is not the security-review severity classification. Security vulnerability severities are listed separately below.
 
@@ -43,8 +79,8 @@ The `Risk` column estimates the impact of a conformance gap; it is not the secur
 | 5.2.c | django-axes brute-force protection | Partial | Axes configured in `ERP/settings.py`; lockout audit test exists, but lockout enforcement is not proven | Medium | Add threshold, cooldown and reset-on-success tests. |
 | 5.2.d | Content Security Policy | Done | `core/common/middleware.py`; `ContentSecurityPolicyTests.test_policy_blocks_inline_and_external_scripts` and `test_templates_have_no_inline_scripts_external_assets_or_event_handlers` | Medium | Keep policy tests and dependency pins current. |
 | 5.2.e | MFA for administrators | Done | `django-otp`, privileged enforcement, hashed recovery codes, lockout and audited reset paths; the complete PostgreSQL suite passes MFA enrollment, enforcement, recovery, replay, bypass, re-verification and reset tests | Medium | Keep privileged enrollment and emergency recovery procedures restricted and audited. |
-| 5.2.f | WhiteNoise or Nginx static-file serving | Partial | `docker-compose.prod.yml` and `deploy/nginx.conf` configure Nginx static serving; syntax/runtime validation is pending | Low | Validate the deployment configuration and static smoke test. |
-| 5.2.g | Gunicorn behind Nginx/TLS | Partial | `Dockerfile`, Compose, Nginx TLS and internal private-media routing exist; deployment is not validated | Medium | Validate Compose/Nginx and run an HTTPS/private-media smoke test. |
+| 5.2.f | WhiteNoise or Nginx static-file serving | Partial | `deploy/nginx.conf` serves release static files; Nginx syntax/runtime validation is pending | Low | Validate the site configuration and static-file smoke test on Ubuntu. |
+| 5.2.g | Gunicorn behind Nginx/TLS | Partial | Hardened systemd Gunicorn/Celery units, TLS proxying and internal private-media routing exist; host deployment is not validated | Medium | Validate systemd/Nginx and run an HTTPS/private-media smoke test. |
 | 5.2.h | Celery background jobs | Partial | Celery worker/beat services are configured; existing management-command jobs have not been migrated or verified as Celery tasks | Low | Keep actual scheduled-job implementation/status explicit. |
 | 5.2.i | Shared Redis cache for production configuration | Done | `ERP/settings.py` reads `REDIS_URL`; permission/settings decisions remain DB-authoritative | Low | Keep Redis optionality/failure behavior documented. |
 | 5.2.j | Excel export/import with openpyxl | Done | `openpyxl` imports/exports and tests in `core/reports/` and `core/bulk_imports/` | Low | Keep dependency pins and malicious-file tests. |
@@ -54,7 +90,7 @@ The `Risk` column estimates the impact of a conformance gap; it is not the secur
 | 5.2.n | Playwright end-to-end testing | Missing | No Playwright suite/workflow found | Medium | Add browser tests for critical user flows. |
 | 5.2.o | Ruff, Black, Bandit, pip-audit and optional typing | Partial | Ruff, Bandit and pip-audit pass locally; Black/type-check gates remain absent from CI | Medium | Add approved Black/type-check gates if required by project policy. |
 | 5.2.p | Structured logging, monitoring/Sentry | Partial | JSON request-ID logs and redaction exist; monitoring, alerting and Sentry integration are absent | Medium | Configure and exercise monitoring and alert delivery. |
-| 5.2.q | CI/CD | Partial | `.github/workflows/quality.yml` defines PostgreSQL tests/scans/image build and gated test deploy; no current run or external environment configuration is evidenced | Medium | Run the workflow and configure required reviewers plus the test runner. |
+| 5.2.q | CI/CD | Partial | `.github/workflows/quality.yml` defines PostgreSQL tests/scans, scratch restore and approval-gated Linux release; no current hosted run or external environment configuration is evidenced | Medium | Run the workflow and configure required reviewers plus the Linux test runner. |
 | 5.4 | One ORM and migration framework | Done | `ERP/settings.py`, Django models and migrations; no SQLAlchemy production connection | Medium | Convert/retire any remaining historical schema instructions before deployment. |
 | 6.1 | Browser → middleware → views/forms → services → ORM → PostgreSQL flow | Partial | Apps use Django views, services, models and managers; architecture diagram in README is target-state and does not fully match deployment | Medium | Reconcile the architecture diagram with the actual cron runner, cache, database and file-storage configuration. |
 | 6.2 | Security middleware, validation, atomic money services, database constraints, escaped templates | Partial | Implemented across apps; see security matrix and financial controls below | High | Close the reported security and integrity gaps and add coverage where marked Partial. |
@@ -91,7 +127,7 @@ The `Risk` column estimates the impact of a conformance gap; it is not the secur
 | 7.11.b | Dashboard cards are seeded, permission-aware and branch-scoped | Done | `core/accounts/`; `test_dashboard_has_seeded_metrics_for_every_card` | Low | None. |
 | 7.11.c | Day-end close/reopen, holidays and closed-date posting guards (covered workflow) | Done | `core/branch/day_end_service.py`; `test_day_close_locks_business_date_before_concurrent_journal_posting` | Low | Keep concurrency and reopen audit tests. |
 | 7.11.d | Notification inbox, templates, opt-out, branch scope, async email, idempotency and retries (implemented channels/events) | Done | `core/notifications/`; `test_notification_generation_is_idempotent_per_recipient_event_and_day`, `test_delivery_respects_opt_out_changed_after_notification_creation`, `test_template_placeholders_are_validated` | Medium | Keep retry/job-event coverage; SMS gateway automation remains excluded. |
-| 7.11.e | Secure member/savings/GL opening-balance Excel import, all-or-nothing, maker-checker, balanced journals and idempotency (implemented import types) | Done | `core/bulk_imports/`; row-error, rollback, idempotency, balanced GL, branch and malicious-upload tests in `core/bulk_imports/tests.py` | Medium | Loan opening balances remain explicitly Planned/out of scope. |
+| 7.11.e | Secure member/savings/GL/loan opening-balance Excel imports, all-or-nothing, maker-checker, balanced journals and idempotency | Done | `core/bulk_imports/`; import service tests cover row validation, idempotency, branch checks, malicious uploads, balanced entries, loan schedule/PAR/accounting, maker-checker and late rollback | Medium | Retain the PostgreSQL regressions and reconcile each batch after import. |
 | 8.1 | Flat/declining loan math, rounding and golden examples | Done | `core/loans/tests.py`: `test_flat_golden_schedule_rounds_last_installment_and_balances`, `test_declining_golden_schedule_has_expected_first_installment_and_totals` | Low | Preserve worked examples as golden tests. |
 | 8.2 | Savings daily/minimum balance interest, periodic posting and withholding tax (implemented methods) | Done | `core/savings/tests.py`: `test_interest_uses_daily_balances_and_posts_tax_in_the_same_ledger_entry` | Low | Provision external scheduling when operationally approved. |
 | 8.3 | Penalty caps, processing/insurance fees, settlement and reasoned waiver (covered loan scope) | Done | Loan penalty, fee and settlement tests cited in section 7.5 | Low | Maintain product-specific boundary tests. |
@@ -141,7 +177,7 @@ The `Risk` column estimates the impact of a conformance gap; it is not the secur
 | 11.8.5 | POST-only delete routes with CSRF and audit | Partial | POST-only and audit tests exist; CSRF enforcement test is missing | High | Add CSRF rejection tests to the route matrix. |
 | 11.8.6 | Retire SQLAlchemy/Alembic and use Django migrations | Done | `ERP/` and `core/` use Django ORM/migrations; no production raw SQL/SQLAlchemy use found | Low | Keep historical artifacts clearly marked retired. |
 | 11.8.7 | Brute-force protection | Partial | Axes configured; lockout audit test exists, but enforcement test and rate limits for reset/export are absent | Medium | Add lockout and abuse-limit enforcement coverage. |
-| 11.8.8 | Production configuration baseline | Partial | Secure production-like `check --deploy` passed; local mode reports W009 and development-mode warnings; DB TLS defaults to `prefer` | High | Fail closed on weak production settings and verified TLS. |
+| 11.8.8 | Production configuration baseline | Partial | Production-like `check --deploy` passes with a temporary validation key; production DB TLS defaults to `require`, while development/test settings remain relaxed. A live TLS handshake and host environment validation remain open. | High | Verify deployed host configuration and PostgreSQL TLS. |
 | 11.8.9 | Password policy and forced change | Partial | Argon2/validators exist; forced password change and password history/expiry are absent | Medium | Implement and test the missing policy controls. |
 | 11.8.10 | Ignore database files, virtual environments and secrets (reviewed history) | Partial | `.gitignore` excludes local environment/database files and `.env` is not tracked; no current Gitleaks history scan is available | Low | Run the configured history scan in CI. |
 | 11.8.11 | Self-host scripts, remove inline scripts and enforce CSP | Done | Vendors are pinned and self-hosted; page scripts moved to `static/js/`; CSP is active and enforced by `core/common/tests.py` | Medium | Preserve the CSP and template regression tests. |
@@ -202,7 +238,7 @@ The `Risk` column estimates the impact of a conformance gap; it is not the secur
 | 17.20 | Selected language changes UI and translation catalogs are complete | Partial | Language context applies; catalogs and hard-coded strings remain incomplete | Low | Complete catalogs and translation coverage. |
 | 17.21 | Notification inbox and imports follow per-user/branch/maker-checker standards for implemented workflows | Done | Notification/import tests cited under 7.11.d–e | Low | Maintain route, scope and checker tests. |
 | 18.1 | Python/PostgreSQL/Git/Redis prerequisites (documentation-only requirement) | Done | README section 18.1 | Low | None. |
-| 18.2 | Clone/install/db/env/migrate/superuser/seed/run steps are executable and accurate | Partial | README section 18.2; repository URL and license are TODO, and `seed_defaults` is marked planned | Medium | Replace placeholders and provide only commands that exist and have been validated. |
+| 18.2 | Clone/install/db/env/migrate/superuser/seed/run steps are executable and accurate | Partial | README section 18.2; repository hosting and license ownership are unassigned, and `seed_defaults` is marked planned | Medium | Have the project owner supply repository/license details and validate only the documented setup commands. |
 | 18.3 | Default URL listing covers current routes | Partial | README route table is explicitly a short subset; section 14.5 catalog is stale | Low | Generate complete current route listing. |
 | 18.4 | Documented commands exist and are reproducible | Partial | Several commands are configured; production `check --deploy` passes with production-like settings, but `black` and some planned commands are not established | Low | Verify every listed command in CI or label it optional/planned. |
 | 19.1 | Secrets/configuration supplied through environment and documented variables | Partial | `ERP/settings.py` enforces TLS modes and `.env.production.example` lists deployment inputs; no live CA-verified PostgreSQL handshake | High | Validate TLS against the deployed PostgreSQL certificate and secret store. |
@@ -213,16 +249,16 @@ The `Risk` column estimates the impact of a conformance gap; it is not the secur
 | 20.4 | Password, session, loan, allocation, ledger, immutability, concurrency, idempotency and audit tests | Partial | MFA/recovery/replay/lockout/reset and controlled-clock session tests are authored; current PostgreSQL execution and exhaustive event coverage are absent | Medium | Run new tests and close remaining coverage gaps. |
 | 20.5 | Notification and import tests for implemented scope | Done | `core/notifications/tests.py`, `core/bulk_imports/tests.py`; all included in final suite | Low | Keep malicious-file and retry tests on PostgreSQL CI. |
 | 20.6 | Playwright end-to-end coverage | Missing | No Playwright suite/workflow found | Medium | Add browser-level smoke tests for login, popup, reports and notification workflows. |
-| 20.7 | CI runs full suite and requested scans | Partial | Local full PostgreSQL pytest, Ruff, Bandit, pip-audit and deploy check pass; Gitleaks/image/restore and hosted workflow execution remain unverified | Medium | Run hosted CI and address any failures before approval. |
+| 20.7 | CI runs full suite and requested scans | Partial | Local full PostgreSQL pytest, Ruff, Bandit, pip-audit and deploy check pass; Gitleaks/restore and hosted workflow execution remain unverified | Medium | Run hosted CI and address any failures before approval. |
 | 21.1 | Development/UAT/production environment separation | Partial | Environment-based settings exist; no UAT deployment evidence | Medium | Define and test environment promotion and secret separation. |
-| 21.2 | HTTPS proxy, Gunicorn, PostgreSQL, shared Redis and private media topology | Partial | Compose/Nginx/Docker artifacts configure the target topology; no syntax/runtime or live acceptance evidence | High | Validate deployment configuration and smoke-test topology. |
-| 21.3 | Docker Compose reference deployment | Partial | `docker-compose.prod.yml` implements services and dependencies; Docker Compose validation has not run | Low | Validate Compose config and test startup in CI. |
-| 21.4 | CI/CD gates and deployment approval/migration process | Partial | Workflow gates image publication and test deployment behind GitHub Environment; actual required reviewers and runner are external, and production deploy is intentionally absent | Medium | Configure the environment and exercise approval-gated test deployment. |
-| 21.5.a | Public health endpoint for liveness/readiness | Partial | `/health/` checks database and cache and returns status only; health dependency tests pass in the full PostgreSQL run, but container health behavior is unverified | Medium | Validate health behavior in the built deployment. |
+| 21.2 | HTTPS proxy, Gunicorn, PostgreSQL, shared Redis and private media topology | Partial | systemd, Nginx and host runbook configure the target topology; no host syntax/runtime or live acceptance evidence | High | Validate deployment configuration and smoke-test topology on Ubuntu. |
+| 21.3 | Linux systemd reference deployment | Partial | Gunicorn/Celery/backup units, Nginx site, release/rollback scripts and encrypted-backup timer are present; systemd unit parsing completed but host paths, Nginx, release/rollback and startup remain unvalidated | Low | Validate systemd/Nginx config and exercise first deploy and rollback on test. |
+| 21.4 | CI/CD gates and deployment approval/migration process | Partial | Workflow gates Linux test deployment behind the GitHub Environment; actual reviewers and runner are external, and production deploy is intentionally absent | Medium | Configure the environment and exercise approval-gated test deployment. |
+| 21.5.a | Public health endpoint for liveness/readiness | Partial | `/health/` checks database and cache and returns status only; health dependency tests pass in the full PostgreSQL run, but Ubuntu service health behavior is unverified | Medium | Validate health behavior in the installed deployment. |
 | 21.5.b | Structured logs include request ID and exclude secrets/personal identifiers | Partial | JSON formatter, request IDs and redaction tests pass in the full PostgreSQL run; deployed log review remains pending | Medium | Validate deployed logs do not expose sensitive values. |
 | 21.5.c | Monitoring and alerts cover failures, jobs, lockouts, disk and certificates | Missing | No operational monitoring/alert configuration found | Medium | Define alerts and verify delivery in staging. |
-| 21.5.d | Encrypted backups, frequent log backups and regular restore tests | Partial | age-encrypted `pg_dump` and private-media scripts plus a scratch restore CI test are configured; no execution evidence, WAL/PITR automation or cadence exists | High | Run the restore workflow; define backup cadence and point-in-time recovery requirements. |
-| 21.5.e | Secret rotation | Partial | Environment-based configuration is used; no rotation runbook or evidence | Medium | Define and exercise rotation procedures. |
+| 21.5.d | Encrypted backups, frequent log backups and regular restore tests | Partial | age-encrypted `pg_dump` and private-media scripts, a systemd timer and a scratch restore CI test are configured; no current CI execution evidence or WAL/PITR automation exists | High | Run the restore workflow and define point-in-time recovery requirements. |
+| 21.5.e | Secret rotation | Partial | `docs/DEPLOYMENT.md` documents the rotation sequence; no rotation exercise or host evidence exists | Medium | Exercise the documented rotation procedure. |
 | 21.5.f | Dependency/security updates are applied promptly | Partial | Pinned dependencies and pip-audit exist; update cadence/process not evidenced | Medium | Define update ownership and cadence. |
 | 21.5.g | Production server/database access is named, restricted and logged | Missing | No production access-control evidence found | High | Establish named least-privilege access and audit it. |
 | 21.5.h | Table-specific retention periods are defined | Missing | Retention is described as configurable but no policy or archival process exists | Medium | Approve jurisdictional retention schedule and implement it. |
@@ -247,12 +283,12 @@ The `Risk` column estimates the impact of a conformance gap; it is not the secur
 | 23.5 | Phase 5 loans | Done | README section 7.5 lists PostgreSQL evidence for approved Phase 5 scope | Low | None for approved scope. |
 | 23.6 | Phase 6 collections | Done | `core/collections/tests.py` covers workflow, reports, isolation and checker reversal | Low | None for tested phase scope. |
 | 23.7 | Phase 7 reporting and control | Done | Reports, dashboards, day-end, notifications, imports, settings and audit tests are cited in section 7 | Low | None for implemented scope; keep known partials visible. |
-| 23.8 | Phase 8 hardening and go-live | Partial | Hardening/deployment artifacts are present; current PostgreSQL, image/Compose, backup-restore and operational acceptance are unverified; independent penetration/load tests, UAT, training and rollout remain | High | Complete all technical and operational gates before go-live approval. |
+| 23.8 | Phase 8 hardening and go-live | Partial | Hardening/deployment artifacts are present; Linux deployment, backup-restore and operational acceptance are unverified; independent penetration/load tests, UAT, training and rollout remain | High | Complete all technical and operational gates before go-live approval. |
 | 24.1 | Branching, commits, reviews, Ruff/Black, typing, thin views, explicit forms, Decimal and migrations conventions | Partial | Ruff passes; existing code has documented legacy/style gaps and Black/type-check gates are not in quality workflow | Medium | Adopt the convention gates incrementally without unrelated cleanup. |
 | 24.2 | Secrets hygiene and documentation updates for this review | Partial | `.env` is ignored and not tracked; README and report updated. Gitleaks is unavailable locally, so this continuation has no current history-scan result | Low | Run the configured history scan in CI. |
 | 24.3 | Definition of done: routes, CSRF, branch isolation, UX, transaction, audit, tests and docs | Partial | Some requirements have strong tests; outstanding coverage is itemized above | High | Use this matrix as the release checklist and close every High-risk Partial/Missing row. |
 | 25.1 | Glossary defines domain terms (documentation-only requirement) | Done | README section 25 | Low | Keep terminology aligned with actual domain models. |
-| 26.1 | License, maintainers, support and private security-report contact are set | Missing | README section 26 contains TODO placeholders | Medium | Set license, owner and private vulnerability-reporting contact before public distribution. |
+| 26.1 | License, maintainers, support and private security-report contact are set | Missing | README section 26 records these project-owner details as unassigned | Medium | Set license, owner and private vulnerability-reporting contact before public distribution. |
 
 ## Security control review: sections 11.7–11.8
 
@@ -265,7 +301,7 @@ The detailed review used ASVS Level 2-style checks and the same status values as
 | CSP, self-hosted vendors, inline scripts, security headers | Done | `core/common/middleware.py`, `ERP/settings.py`, `package.json` and local `static/vendor/`; inline page scripts moved to `static/js/`; template/CSP regression tests. `style-src` still permits inline styles for legacy attributes. | Resolved for scripts and external assets; migrate inline styles later to remove the remaining style exception. |
 | Password reset, forced change, lockout and MFA | Partial | Argon2/Axes and privileged `django-otp` MFA, recovery codes, lockout and audited reset are implemented; full PostgreSQL MFA tests pass. Password reset/forced change remain absent. | Medium — implement the separately planned password flows. |
 | Idle and absolute session lifetime | Done | Middleware and login signal enforce idle and absolute expiry; controlled-clock tests pass in the full PostgreSQL run. | Low — retain the timeout regressions. |
-| Private media and upload validation | Partial | `core/common/private_media.py` uses internal X-Accel; branch and configuration views use it; production Compose mounts the private volume internally; authorization/download tests remain incomplete. | High — run anonymous, permission and branch-denial tests. |
+| Private media and upload validation | Partial | `core/common/private_media.py` uses internal X-Accel; branch and configuration views use it; Nginx has an internal media location; authorization/download tests remain incomplete. | High — run anonymous, permission and branch-denial tests. |
 | Template escaping and jqGrid cell encoding | Partial | Source regressions scan templates/Python and JavaScript markup sinks; every first-party jqGrid is checked for `autoencode: true`. PostgreSQL stored-payload tests cover branch/member/KYC/product/collection/report examples including grids, popups and exports. The full field-by-field browser matrix remains open. | Medium — complete remaining field-specific browser coverage before claiming exhaustive XSS verification. |
 | Raw SQL usage | Done | Reviewer found no production cursor/raw-SQL execution in `core/` or `ERP/`; cursor use is in tests. | Low — continue bound-parameter review for any future raw SQL. |
 | Secrets in repository history | Partial | `.env` is ignored and not tracked; Gitleaks is unavailable in this local environment, so no current history scan is claimed. | Low — run the configured Gitleaks gate in CI. |
@@ -274,7 +310,7 @@ The detailed review used ASVS Level 2-style checks and the same status values as
 | Clickjacking, open redirect, brute force and host header | Partial | Security headers and Axes are configured; safe redirect use exists in code, but no complete control test matrix was found. | Medium — add negative tests for hostile `next`, unexpected hosts, and rate limits. |
 | Mass assignment and IDOR | Partial | Explicit forms and branch-scoped queries/tests exist; no comprehensive form-field and object-lookup audit evidence. | Medium — verify every form allowlist and forged-ID route. |
 | Database runtime privilege and TLS | Partial | PostgreSQL tests verify production TLS downgrade rejection and relaxed test settings; a fresh scratch database migrated successfully. Production TLS handshake and owner/runtime/grant privilege verification remain unperformed. | Medium — validate TLS handshake and runtime grants in deployment CI. |
-| Dependencies and supply chain | Partial | Current `pip-audit` reports no known vulnerable dependencies; Bandit scans `core` and `ERP` with no identified issues. Hosted image/supply-chain checks remain pending. | Medium — retain CI gates and validate the built image. |
+| Dependencies and supply chain | Partial | Current local `pip-audit` reports no known vulnerable dependencies and Bandit found no issues in `core` and `ERP`; Gitleaks and hosted CI remain unverified. | Medium — retain CI gates and verify a hosted run. |
 | Backups, restore and operational monitoring | Partial | age-encrypted backup/restore scripts and CI round-trip are configured; run evidence, WAL/PITR, monitoring and alerts remain missing. | High for go-live readiness — run restore CI and define recovery/monitoring operations. |
 
 ### Section 11.8 baseline gap disposition
@@ -307,7 +343,7 @@ No Critical security findings were identified.
 
 1. **Medium — XSS coverage completeness.** The branch-grid issue and representative stored payload paths are covered; extend to every editable text field/page in browser or equivalent tests.
 2. **Medium — Private-media authorization.** X-Accel routing is implemented; complete anonymous, insufficient-permission and cross-branch download validation.
-3. **Medium — Deployment validation.** Docker/Compose/Nginx syntax, image build and startup smoke tests remain unverified; local `check --deploy` passes.
+3. **Medium — Deployment validation.** systemd/Nginx configuration, Linux release switch and startup smoke tests remain unverified; local `check --deploy` passes.
 4. **Medium — Backup/restore operations.** Run the age-encrypted scratch restore CI test; define backup cadence and point-in-time recovery requirements.
 5. **Medium — Monitoring, access, retention and incident readiness.** These remain operator/go-live requirements documented in the runbook, not configured/verified infrastructure.
 6. **Medium — CSRF, route classification, password reset/forced change and branch/object-level test gaps.** Close the remaining Partial rows in order of data sensitivity.
@@ -320,17 +356,18 @@ The following are current local validation results for the Phase 8 continuation.
 
 | Check | Result |
 |---|---|
-| PostgreSQL full suite | **PASS** — `pytest -q --tb=short`: 1,759 passed, 284 subtests passed, zero failures/errors/skips, 391.96s. Includes Phase 8 MFA, session, health, TLS, reset-command and stored-XSS regressions. |
+| PostgreSQL full suite | **PASS** — `pytest -q --tb=short --strict-config --strict-markers`: 1,762 passed, 284 subtests passed, zero failures/errors/skips, 255.10s. Includes the loan import regressions plus Phase 8 MFA, session, health, TLS, reset-command and stored-XSS regressions. |
+| Targeted loan opening import | **PASS** — 16 tests and 11 subtests passed in `core/bulk_imports/tests.py`; includes golden schedule/PAR/reconciliation, branch isolation, maker-checker audit, repeat approval and rollback on a late failure. |
 | Targeted stored collection-reason regression | **PASS** — 1 passed; the persisted `<script>`/quote payload is escaped on collection detail and print pages. |
 | Current PostgreSQL MFA/session/health/private-media tests | **PASS** — covered by the full suite above; MFA includes enrollment, recovery-code hashing/single-use, replay, direct/AJAX/JSON bypass, sensitive-action re-verification, lockout, admin reset and server-command reset/audit. |
-| Current Ruff | **PASS** — repository `ruff check .` passed; after the final regression addition, its file-specific Ruff check and `git diff --check` also passed. |
-| Current Bandit | **PASS** — scanned `core` and `ERP`; no issues identified (one existing B105 suppression was reported as unused). |
+| Current Ruff | **PASS** — `.venv/bin/ruff check .` passed. |
+| Current Bandit | **PASS** — CI command `bandit -r core ERP -x '*/tests.py,*/test_*.py'`: no issues identified; one existing B105 suppression was reported as unused. |
 | Current pip-audit | **PASS** — no known vulnerable dependencies found. |
-| Production-like `check --deploy` | **PASS** — Django reported no issues with production-like placeholder configuration; this is not a live PostgreSQL TLS handshake. |
-| Fresh migration history | **PASS** — all migrations applied to a newly created scratch PostgreSQL database; `makemigrations --check --dry-run` reported no changes. The scratch database was removed after the run. |
-| Compose configuration | **PARTIAL** — Docker/Compose CLI validation, Nginx syntax validation, image build and startup smoke tests were not run because Docker is unavailable. |
-| Encrypted restore CI test | **NOT RUN** — scratch-database CI job is configured, but no current execution is evidenced. |
-| JavaScript, shell syntax and `git diff --check` | **PASS** — first-party JavaScript and the three backup/restore scripts passed syntax checks; final diff whitespace check passed. |
+| Production-like `check --deploy` | **PASS** — Django reported no issues with production-like settings, a temporary validation-only key, and `DB_SSLMODE=require`; this is not a live PostgreSQL TLS handshake. |
+| Migration history | **PASS** — the PostgreSQL test database was created and migrations applied during the full suite; `makemigrations --check --dry-run` reported `No changes detected`. |
+| Ubuntu deployment configuration | **PARTIAL** — `systemd-analyze verify` reported missing host `ExecStart` paths and returned nonzero; Nginx is unavailable, and release/rollback execution and startup smoke tests were not run on Ubuntu. |
+| Encrypted restore CI test | **NOT RUN** — local `age`/`age-keygen` are missing; PostgreSQL client utilities are available, and the scratch-database restore step remains configured in CI with no current hosted execution evidence. |
+| Shell syntax and `git diff --check` | **PASS** — release, rollback, certificate, environment installer, backup and restore scripts passed `bash -n`; `git diff --check` passed after the close-out edits. |
 | Gitleaks | **NOT RUN** — executable is unavailable locally; the workflow gate remains configured. |
 
 ## Code present but not accurately mapped in the README
@@ -343,4 +380,4 @@ The following are current local validation results for the Phase 8 continuation.
 
 ## Recommendation
 
-The original High branch-grid stored-XSS issue remains fixed and covered by PostgreSQL regression tests. The full Phase 8 PostgreSQL suite, fresh migration history, local static/security scans and production-like deploy check now pass. This does not constitute overall approval: exhaustive field-by-field/browser XSS coverage, Docker/Nginx/image validation, encrypted restore execution, hosted CI configuration and operational acceptance remain open. No go-live approval is implied.
+The original High branch-grid stored-XSS issue remains fixed and covered by PostgreSQL regression tests. The full Phase 8 PostgreSQL suite, fresh migration history, local static/security scans and production-like deploy check now pass. This does not constitute overall approval: exhaustive field-by-field/browser XSS coverage, Linux host validation, encrypted restore execution, hosted CI configuration and operational acceptance remain open. No go-live approval is implied.

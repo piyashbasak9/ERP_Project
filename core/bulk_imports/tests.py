@@ -1,5 +1,5 @@
 import tempfile
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from io import BytesIO
 from unittest.mock import patch
@@ -22,7 +22,17 @@ from core.accounting.models import (
     SystemAccountMapping,
 )
 from core.accounts.models import Permission, Role, RolePermission, UserRole
+from core.audit.context import audit_context_var
 from core.branch.models import Branch, Member
+from core.common.context import current_user_var
+from core.loans.models import (
+    Loan,
+    LoanApplication,
+    LoanInstallment,
+    LoanPenalty,
+    LoanProduct,
+)
+from core.loans.services import LoanService
 
 from .models import ImportBatch
 from .security import (
@@ -82,6 +92,105 @@ class BulkImportServiceTests(TestCase):
             import_type=import_type,
             user=self.user,
         )[0]
+
+    def prepare_loan_opening(self, member_codes=("LOAN-IMP-1",)):
+        opening_date = timezone.localdate() - timedelta(days=10)
+        next_due_date = opening_date - timedelta(days=15)
+        fiscal_year = FiscalYear.objects.create(
+            name=f"Loan Import FY {opening_date.year}",
+            start_date=date(opening_date.year, 1, 1),
+            end_date=date(opening_date.year, 12, 31),
+        )
+        AccountingPeriod.objects.create(
+            fiscal_year=fiscal_year,
+            number=1,
+            name="Loan opening period",
+            start_date=fiscal_year.start_date,
+            end_date=fiscal_year.end_date,
+        )
+        loan_account = Account.objects.create(
+            code=f"LI-{self.branch.code}-ASSET",
+            name="Imported loans receivable",
+            account_type=Account.ASSET,
+            normal_balance=Account.DEBIT,
+        )
+        equity_account = Account.objects.create(
+            code=f"LI-{self.branch.code}-EQUITY",
+            name="Imported opening equity",
+            account_type=Account.EQUITY,
+            normal_balance=Account.CREDIT,
+        )
+        SystemAccountMapping.objects.create(
+            key="loans_to_members", account=loan_account
+        )
+        SystemAccountMapping.objects.create(
+            key="opening_balance_equity", account=equity_account
+        )
+        product = LoanProduct.objects.create(
+            code=f"LI-{self.branch.code}",
+            name="Imported loan product",
+            interest_method=LoanProduct.METHOD_FLAT,
+            annual_interest_rate=Decimal("52.0000"),
+            min_amount=Decimal(1),
+            max_amount=Decimal(10000),
+            min_term=1,
+            max_term=12,
+            installment_frequency=LoanProduct.FREQUENCY_WEEKLY,
+            holiday_convention=LoanProduct.HOLIDAY_KEEP,
+            late_penalty_rate=Decimal(0),
+        )
+        member_ids = []
+        rows = []
+        for member_code in member_codes:
+            member = Member.unscoped.create(
+                branch=self.branch,
+                member_code=member_code,
+                first_name="Opening",
+                last_name="Borrower",
+                status=Member.STATUS_ACTIVE,
+            )
+            member_ids.append(member.pk)
+            rows.append(
+                (
+                    member_code,
+                    product.code,
+                    "300.00",
+                    (opening_date - timedelta(days=120)).isoformat(),
+                    4,
+                    LoanProduct.FREQUENCY_WEEKLY,
+                    "200.00",
+                    "3.00",
+                    3,
+                    "15.00",
+                    (opening_date - timedelta(days=30)).isoformat(),
+                    opening_date.isoformat(),
+                    next_due_date.isoformat(),
+                )
+            )
+        batch = self.make_batch(ImportBatch.TYPE_LOAN_OPENING, rows)
+        checker = get_user_model().objects.create_user(
+            username=f"loan-import-checker-{self.branch.code}",
+            password="test-password",  # nosec B106 - isolated test account
+            branch=self.branch,
+        )
+        maker_request = type(
+            "Request", (), {"user": self.user, "active_branch_id": None}
+        )()
+        checker_request = type(
+            "Request", (), {"user": checker, "active_branch_id": None}
+        )()
+        return {
+            "batch": batch,
+            "opening_date": opening_date,
+            "next_due_date": next_due_date,
+            "loan_account": loan_account,
+            "equity_account": equity_account,
+            "product": product,
+            "member_ids": member_ids,
+            "checker": checker,
+            "maker_request": maker_request,
+            "checker_request": checker_request,
+        }
 
     def test_validation_reports_row_level_errors(self):
         batch = self.make_batch(
@@ -355,6 +464,207 @@ class BulkImportServiceTests(TestCase):
         )
         self.assertEqual(batch.created_by_id, self.user.pk)
         self.assertEqual(batch.approved_by_id, checker.pk)
+
+    def test_loan_opening_import_golden_schedule_par_and_balanced_ledger(self):
+        setup = self.prepare_loan_opening()
+        batch = setup["batch"]
+
+        self.assertEqual(validate_batch(batch), [])
+        confirm_batch(
+            batch=batch, user=self.user, request=setup["maker_request"]
+        )
+        approve_batch(
+            batch=batch,
+            user=setup["checker"],
+            request=setup["checker_request"],
+        )
+        with self.assertRaisesMessage(ValidationError, "not awaiting approval"):
+            approve_batch(
+                batch=batch,
+                user=setup["checker"],
+                request=setup["checker_request"],
+            )
+
+        loan = Loan.unscoped.get(member_id=setup["member_ids"][0])
+        installments = list(
+            LoanInstallment.objects.filter(loan=loan).order_by("number")
+        )
+        self.assertEqual(batch.status, ImportBatch.STATUS_IMPORTED)
+        self.assertEqual(batch.approved_by_id, setup["checker"].pk)
+        self.assertEqual(loan.principal, Decimal("300.00"))
+        self.assertEqual(loan.outstanding_principal, Decimal("200.00"))
+        self.assertEqual(loan.accrued_penalty, Decimal("15.00"))
+        self.assertEqual(
+            [row.principal_due for row in installments],
+            [Decimal("50.00")] * 4,
+        )
+        self.assertEqual(
+            [row.due_date for row in installments],
+            [
+                setup["next_due_date"] + timedelta(days=7 * index)
+                for index in range(4)
+            ],
+        )
+        self.assertEqual(
+            [row.interest_due for row in installments],
+            [
+                Decimal("5.00"),
+                Decimal("2.00"),
+                Decimal("2.00"),
+                Decimal("2.00"),
+            ],
+        )
+        self.assertEqual(
+            LoanPenalty.objects.get(installment=installments[0]).remaining,
+            Decimal("15.00"),
+        )
+
+        entry = loan.journal_entry
+        lines = list(JournalLine.objects.filter(entry=entry))
+        self.assertEqual(entry.status, JournalEntry.STATUS_POSTED)
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(
+            JournalEntry.unscoped.filter(
+                source_type="loan_opening_import"
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            sum((line.debit for line in lines), Decimal("0.00")),
+            Decimal("200.00"),
+        )
+        self.assertEqual(
+            sum((line.credit for line in lines), Decimal("0.00")),
+            Decimal("200.00"),
+        )
+        asset_balance = sum(
+            (
+                line.debit - line.credit
+                for line in JournalLine.objects.filter(
+                    account=setup["loan_account"],
+                    entry__status=JournalEntry.STATUS_POSTED,
+                )
+            ),
+            Decimal("0.00"),
+        )
+        self.assertEqual(asset_balance, loan.outstanding_principal)
+
+        user_token = current_user_var.set(setup["checker"])
+        try:
+            portfolio = LoanService(setup["checker_request"]).portfolio(
+                as_of_date=setup["opening_date"],
+                branch_ids={self.branch.pk},
+            )
+        finally:
+            current_user_var.reset(user_token)
+        self.assertEqual(portfolio["principal"], Decimal("200.00"))
+        self.assertEqual(portfolio["par"][1]["amount"], Decimal("200.00"))
+        with self.assertRaisesMessage(ValidationError, "backdated before a payment"):
+            LoanService(setup["checker_request"])._ensure_payment_date(
+                loan, setup["opening_date"] - timedelta(days=31)
+            )
+        self.assertEqual(
+            LoanService(setup["checker_request"])._assess_penalties(
+                loan, installments, setup["opening_date"]
+            ),
+            Decimal("15.00"),
+        )
+
+    def test_loan_opening_import_is_branch_scoped_and_maker_checker_audited(self):
+        setup = self.prepare_loan_opening()
+        other_member = Member.unscoped.create(
+            branch=self.other_branch,
+            member_code="OTHER-LOAN-IMPORT",
+            first_name="Other",
+            last_name="Branch",
+            status=Member.STATUS_ACTIVE,
+        )
+        foreign_batch = self.make_batch(
+            ImportBatch.TYPE_LOAN_OPENING,
+            [
+                (
+                    other_member.member_code,
+                    setup["product"].code,
+                    "300.00",
+                    (setup["opening_date"] - timedelta(days=120)).isoformat(),
+                    4,
+                    LoanProduct.FREQUENCY_WEEKLY,
+                    "200.00",
+                    "3.00",
+                    3,
+                    "15.00",
+                    (setup["opening_date"] - timedelta(days=30)).isoformat(),
+                    setup["opening_date"].isoformat(),
+                    setup["next_due_date"].isoformat(),
+                )
+            ],
+        )
+        errors = validate_batch(foreign_batch)
+        self.assertEqual(foreign_batch.status, ImportBatch.STATUS_INVALID)
+        self.assertIn("selected branch", errors[0]["message"])
+
+        self.assertEqual(validate_batch(setup["batch"]), [])
+        confirm_batch(
+            batch=setup["batch"],
+            user=self.user,
+            request=setup["maker_request"],
+        )
+        with self.assertRaisesMessage(ValidationError, "maker cannot approve"):
+            approve_batch(
+                batch=setup["batch"],
+                user=self.user,
+                request=setup["maker_request"],
+            )
+        audit_token = audit_context_var.set(
+            {"user": setup["checker"], "branch_id": self.branch.pk}
+        )
+        try:
+            approve_batch(
+                batch=setup["batch"],
+                user=setup["checker"],
+                request=setup["checker_request"],
+            )
+        finally:
+            audit_context_var.reset(audit_token)
+        from core.audit.models import AuditLog
+
+        self.assertTrue(
+            AuditLog.objects.filter(
+                action="Approve",
+                entity_name="ImportBatch",
+                entity_id=str(setup["batch"].pk),
+                user=setup["checker"],
+            ).exists()
+        )
+
+    def test_loan_opening_import_rolls_back_after_late_schedule_failure(self):
+        setup = self.prepare_loan_opening(("LOAN-ROLLBACK-1", "LOAN-ROLLBACK-2"))
+        batch = setup["batch"]
+        self.assertEqual(validate_batch(batch), [])
+        confirm_batch(
+            batch=batch, user=self.user, request=setup["maker_request"]
+        )
+
+        with patch.object(
+            LoanInstallment.objects,
+            "bulk_create",
+            side_effect=RuntimeError("late schedule failure"),
+        ), self.assertRaisesMessage(RuntimeError, "late schedule failure"):
+            approve_batch(
+                batch=batch,
+                user=setup["checker"],
+                request=setup["checker_request"],
+            )
+
+        self.assertFalse(Loan.unscoped.filter(branch=self.branch).exists())
+        self.assertFalse(
+            LoanApplication.unscoped.filter(branch=self.branch).exists()
+        )
+        self.assertFalse(
+            JournalEntry.unscoped.filter(source_type="loan_opening_import").exists()
+        )
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, ImportBatch.STATUS_AWAITING_APPROVAL)
 
 
 class BulkImportSecurityTests(TestCase):

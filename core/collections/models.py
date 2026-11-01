@@ -83,6 +83,12 @@ class CollectionSheet(BranchScopedModel):
     class Meta:
         db_table = "collection_sheets"
         ordering = ["-collection_date", "-pk"]
+        indexes = [
+            models.Index(
+                fields=["branch", "status"],
+                name="csheet_branch_status_idx",
+            ),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["center", "collection_date"],

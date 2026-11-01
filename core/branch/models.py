@@ -320,6 +320,12 @@ class Member(BranchScopedModel):
     class Meta:
         db_table = "members"
         ordering = ["first_name", "last_name"]
+        indexes = [
+            models.Index(
+                fields=["branch", "status"],
+                name="member_branch_status_idx",
+            ),
+        ]
 
     center = models.ForeignKey(
         "branch.Center",

@@ -4,14 +4,15 @@
 
 | | |
 |---|---|
-| **Status** | Phase 8 security tests pass on PostgreSQL (1,759 tests and 284 subtests); empty-database migrations, Ruff, Bandit, pip-audit and `check --deploy` pass. Container runtime, backup/restore execution and operational acceptance remain pending. See [the conformance report](./docs/conformance-report.md) |
+| **Status** | Final close-out code and guides are implemented; the full PostgreSQL suite passes (1,762 tests and 284 subtests, zero skips/errors), migrations report no changes, Ruff/Bandit/pip-audit and `check --deploy` pass. Ubuntu host validation, encrypted restore execution, independent review and operational acceptance remain pending. See [the conformance report](./docs/conformance-report.md) |
 | **Backend** | Python 3.12, Django 6.0.9 |
 | **Database** | PostgreSQL |
 | **Frontend** | Django templates, Bootstrap 5, jQuery, Free jqGrid, Bootstrap Icons |
 | **Theme** | White and dark blue |
 | **Last updated** | 2026-11-01 |
 
-> **Placeholders to replace:** repository URL, license, maintainers and contact details are marked with `TODO`.
+> Repository hosting, license ownership, maintainers and support contacts must
+> be configured by the project owner before public distribution.
 
 ### How to read this document
 
@@ -77,7 +78,7 @@ The goal is to grow this platform into a **complete microfinance ERP**. An MFI r
 | Branch management | Partial | Create, list, search, edit, soft delete, jqGrid listing, hierarchy, branch switcher and explicit user branch grants |
 | Popup (modal) create and edit | Done | Shared AJAX-fragment Bootstrap modal preserves frame denial; PostgreSQL tests cover fragments, login/permission checks and the save envelope |
 | Success and error toasts (top middle, 5 seconds) | Implemented | Shared Django message partial and notification script; verify in browser before production |
-| Security hardening | Partial | Privileged TOTP MFA, absolute session expiry, PostgreSQL TLS enforcement, private-media X-Accel handling and XSS audit checks pass the full PostgreSQL suite (1,759 tests, 284 subtests). Container, backup/restore and operational acceptance remain pending. See [the conformance report](./docs/conformance-report.md) |
+| Security hardening | Partial | Privileged TOTP MFA, absolute session expiry, PostgreSQL TLS enforcement, private-media X-Accel handling and XSS audit checks pass the full PostgreSQL suite (1,759 tests, 284 subtests). Host deployment, backup/restore and operational acceptance remain pending. See [the conformance report](./docs/conformance-report.md) |
 | Organization hierarchy (head office, region, area, branch) | Partial | Hierarchy, branch scoping and organization screens exist; full isolation coverage and controls remain |
 | Members | Partial | Member profiles, branch-prefixed codes, status history, photo/KYC handling, verification and scoped downloads |
 | Savings | Partial | Product management, status controls and account term snapshots are PostgreSQL-verified; broader savings scope remains in progress; see [section 7.4](#74-savings) |
@@ -233,9 +234,9 @@ Roles are fully configurable. The table shows the **suggested default roles** th
 | PDF export | WeasyPrint or ReportLab | Implemented for registered reports |
 | Image handling | Pillow (validate and re-encode member photos) | Implemented for tested upload paths |
 | Testing | `pytest`, `pytest-django`, `factory_boy`, Playwright for end-to-end | PostgreSQL pytest suite: 1,759 passed, 284 subtests passed; Playwright is absent |
-| Quality and security tooling | `ruff`, `black`, `bandit`, `pip-audit`, optional `mypy` | Ruff, Bandit, pip-audit and `check --deploy` pass locally; Gitleaks and Docker are unavailable; see the conformance report |
+| Quality and security tooling | `ruff`, `black`, `bandit`, `pip-audit`, optional `mypy` | Ruff, Bandit, pip-audit and `check --deploy` pass locally; Gitleaks is configured in CI; see the conformance report |
 | Logging and monitoring | Structured JSON logs with request ID and redaction | Implemented; monitoring/alerting remains open |
-| CI/CD | GitHub Actions | PostgreSQL, scans, deploy check, image build and approval-gated test deployment configured; hosted execution pending |
+| CI/CD | GitHub Actions | PostgreSQL, scans, deploy check, encrypted restore test and approval-gated Linux test deployment configured; hosted execution pending |
 
 Frontend vendor packages are pinned in `package.json`/`package-lock.json`; their self-hosted distributions and license notices are under `static/vendor/`. After changing a version, run `npm ci` and `npm run sync-vendor`.
 
@@ -528,12 +529,23 @@ python manage.py post_savings_interest \
 
 **Loan products** define: name, code, interest method (flat or declining balance), annual interest rate, min and max amount, min and max term, installment frequency (weekly, bi-weekly, monthly), processing and insurance fees, grace period, penalty rules, required compulsory savings, loan cycle limits, maximum concurrent loans, guarantor/collateral requirements, overpayment policy and settlement policy. New loans snapshot product terms at disbursement.
 
+**Existing-loan opening import:** Done. The private `.xlsx` import uses dry-run
+validation, a downloadable formula-safe error report, maker-checker approval,
+file-hash idempotency, branch checks, audit entries and one atomic opening
+journal. `term` means remaining installments; `opening_date` and `next_due_date`
+are required. The journal debits Loans to Members and credits Opening Balance
+Equity for outstanding principal only; accrued interest and penalties remain in
+the loan schedule/subledger. PostgreSQL golden, PAR/reconciliation,
+branch-isolation, maker-checker and late-rollback tests cover the import.
+Download the exact column contract from **Bulk import** at `/imports/`.
+
 | Earlier delivery requirement | Status | Passing PostgreSQL test evidence |
 |---|---|---|
 | One AJAX-fragment Bootstrap modal for Branch, Users, Roles, Members, Savings, Loans and Accounting | Done | `test_ajax_popup_routes_return_fragments_and_keep_frame_denial`; `test_popup_routes_require_login_and_route_permission`; `test_popup_save_uses_standard_json_envelope_for_success_and_validation` |
 | Savings Product list/create/edit/status actions, validation, audit and role permissions | Done | `test_savings_product_crud_status_filter_and_audit`; `test_savings_routes_are_denied_without_explicit_permission` |
 | Loan Product list/create/edit/status actions, validation, audit and role permissions | Done | `test_loan_product_crud_status_filter_and_audit`; `test_every_loan_route_is_denied_without_its_permission` |
 | Existing savings accounts and loans retain copied product terms after product edits | Done | `test_existing_account_keeps_product_terms_after_product_change`; `test_disbursed_loan_keeps_the_product_terms_copied_at_creation` |
+| Active-loan opening-balance Excel import: remaining schedule, principal-only balanced opening journal, PAR and subledger reconciliation, maker-checker, branch isolation and rollback | Done | `BulkImportServiceTests.test_loan_opening_import_golden_schedule_par_and_balanced_ledger`; `test_loan_opening_import_is_branch_scoped_and_maker_checker_audited`; `test_loan_opening_import_rolls_back_after_late_schedule_failure` |
 
 **Application**
 
@@ -720,7 +732,7 @@ These were not in the original list but a working MFI needs them.
 | **Maker-checker approvals** | A generic approval queue for sensitive actions (large withdrawals, manual journals, write-offs, reversals) |
 | **Holiday calendar** | Skips non-working days when generating repayment schedules and collection sheets |
 | **Notifications** | Implemented: branch-scoped in-app and SMTP delivery, configurable installment reminders, overdue, approval and KYC expiry events, editable validated templates, opt-out, idempotency, retries and audited job/integration events. SMS is a console-backed provider interface only. |
-| **Bulk import** | Implemented: private .xlsx upload, template download, dry-run/error report, confirmation, atomic member import, maker-checker savings and GL opening balances, balanced journals and file-hash idempotency. Loan opening balances are **Planned** and out of scope. |
+| **Bulk import** | Done: private `.xlsx` upload, template download, dry-run/error report, confirmation, atomic member import, maker-checker savings, GL and loan opening balances, balanced journals, branch isolation and file-hash idempotency. Loan imports generate the remaining schedule and carry accrued interest/penalties in the loan subledger. See the PostgreSQL tests listed in section 7.5. |
 | **Cash and bank management** | Cash book, bank accounts, cash transfers between branch and head office |
 | **Backup and restore** | Scheduled database backup with retention, documented restore procedure |
 
@@ -1642,7 +1654,7 @@ Notification events are generated and delivered outside web requests by `python 
 
 Email uses `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `EMAIL_USE_SSL`, and `DEFAULT_FROM_EMAIL`. SMS has a provider interface and console-only implementation; no SMS gateway is configured.
 
-Bulk imports are limited to private `.xlsx` files (10 MB, 5,000 rows), validated with `openpyxl` read-only and `data_only`, and reject macros and external links. Error workbooks neutralize formula-leading cells. Member files import atomically on confirmation; savings and GL opening balances require a different checker. Loan opening balances remain **Planned**.
+Bulk imports are limited to private `.xlsx` files (10 MB, 5,000 rows), validated with `openpyxl` read-only and `data_only`, and reject macros and external links. Error workbooks neutralize formula-leading cells. Member files import atomically on confirmation; savings, GL and active-loan opening balances require a different checker. Loan opening balances use the remaining installment count and required opening/next-due dates; outstanding principal alone posts to Loans to Members against Opening Balance Equity, while accrued interest and penalties remain separately due in the loan subledger. See [`docs/DATA_MIGRATION.md`](./docs/DATA_MIGRATION.md) for the reconciliation sequence.
 
 ### 16.2 Browser-side setup: CSRF, session expiry, errors
 
@@ -1887,7 +1899,7 @@ The details users notice every day. These apply to every screen.
 | Tool | Notes |
 |---|---|
 | Python | 3.12 |
-| PostgreSQL | Local install, or run it in Docker |
+| PostgreSQL | Local PostgreSQL installation |
 | Git | |
 | Redis | Shared production cache configured through `REDIS_URL`; notifications run through the management command and cron |
 
@@ -1896,7 +1908,7 @@ The details users notice every day. These apply to every screen.
 **1. Clone the project**
 
 ```bash
-git clone <TODO-repository-url> ERP_Project
+git clone <repository-url> ERP_Project
 cd ERP_Project
 ```
 
@@ -2028,7 +2040,6 @@ All environment-specific and secret values come from the environment (a local `.
 | `DJANGO_ALLOWED_HOSTS` | Allowed host names | `erp.example.com` |
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | Trusted origins for HTTPS | `https://erp.example.com` |
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD` | Application database and DML-only runtime credentials | *secret* |
-| `DB_ADMIN_USER`, `DB_ADMIN_PASSWORD` | PostgreSQL bootstrap administrator (deployment only) | *secret* |
 | `DB_OWNER_USER`, `DB_OWNER_PASSWORD` | Non-superuser schema migration/ownership role | *secret* |
 | `DB_HOST`, `DB_PORT` | Database address | `localhost`, `5432` |
 | `DB_SSLMODE`, `DB_SSL_CA_PATH` | PostgreSQL TLS mode and optional trusted CA path | Production defaults to `require`; a CA path forces `verify-full` |
@@ -2036,19 +2047,16 @@ All environment-specific and secret values come from the environment (a local `.
 | `MFA_REVERIFICATION_SECONDS`, `MFA_FAILURE_LIMIT`, `MFA_COOLOFF_SECONDS` | Sensitive-action re-verification and MFA lockout | `300`, `5`, `900` |
 | `AXES_FAILURE_LIMIT` | Failed logins before lock | `5` |
 | `AXES_COOLOFF_MINUTES` | Lock duration | `15` |
-| `PRIVATE_MEDIA_ROOT` | Folder for photos and KYC files, outside the web root | `/var/erp/private_media` |
+| `PRIVATE_MEDIA_ROOT` | Folder for photos and KYC files, outside the web root | `/srv/erp/private_media` |
 | `MAX_UPLOAD_MB` | Upload size limit | `2` |
-| `EMAIL_*` | Mail server for password reset and notifications | *secret* |
-| `REDIS_URL`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | Shared cache and Celery endpoints | Compose supplies internal Redis endpoints |
-| `DB_TLS_CERT_FILE`, `DB_TLS_KEY_FILE`, `DB_TLS_CA_FILE` | PostgreSQL server certificate/key and client trust CA host paths | Host paths; never commit private keys |
-| `TLS_CERT_FILE`, `TLS_KEY_FILE` | Nginx HTTPS certificate and key host paths | Host paths; never commit private keys |
-| `ERP_IMAGE` | Immutable application image reference | *set by release operator* |
+| `SECURE_PROXY_SSL` | Trust the configured HTTPS proxy header | `1` behind Nginx |
+| `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `EMAIL_USE_SSL`, `DEFAULT_FROM_EMAIL` | Mail transport for password resets and notifications | Host configuration and credentials |
+| `REDIS_URL`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | Shared cache and Celery endpoints | Configure loopback Redis endpoints in the protected host environment |
 | `AGE_RECIPIENT`, `AGE_IDENTITY`, `BACKUP_DIR` | Encrypted backup destination, restore identity and output directory | Recipient public key; identity protected separately |
-| `EMAIL_*`, `DEFAULT_FROM_EMAIL` | Mail transport for notifications | *secret/configuration* |
 | `TEST_DB_*` | Isolated test-database connection and TLS settings | Test-only |
 | `SENTRY_DSN` | Error reporting (optional; not currently wired) | *secret* |
 
-The complete variable inventory is in [`.env.production.example`](./.env.production.example). The database variables configure the Django connection. No SQLAlchemy connection is used.
+The runtime variables are listed in [`.env.production.example`](./.env.production.example); role and backup-specific variables are in the protected templates installed by `scripts/install-env-templates.sh`. The database variables configure the Django connection. No SQLAlchemy connection is used.
 
 ### 19.2 In-app settings (stored in the database)
 
@@ -2099,7 +2107,7 @@ def test_every_route_is_classified(db):
 
 Run the full suite and the security checks in [`.github/workflows/quality.yml`](./.github/workflows/quality.yml) on every pull request.
 
-**Phase 8 conformance and test evidence:** [docs/conformance-report.md](./docs/conformance-report.md) records requirement-by-requirement status, security findings, test totals and scan results. The pre-hardening baseline passed 1,693 tests and 278 subtests. The current PostgreSQL run passes 1,759 tests and 284 subtests; a fresh scratch database also migrated cleanly and `makemigrations --check --dry-run` reported no changes. Docker/Gitleaks are unavailable locally, and hosted CI and operational acceptance remain pending.
+**Phase 8 conformance and test evidence:** [docs/conformance-report.md](./docs/conformance-report.md) records requirement-by-requirement status, security findings, test totals and scan results. The pre-hardening baseline passed 1,693 tests and 278 subtests. The current PostgreSQL run passes 1,759 tests and 284 subtests; a fresh scratch database also migrated cleanly and `makemigrations --check --dry-run` reported no changes. Hosted CI and Ubuntu operational acceptance remain pending.
 
 ### PostgreSQL test database
 
@@ -2146,15 +2154,15 @@ Internet ── HTTPS ──► Nginx (TLS, rate limits, static, private media v
 - Private media sits on a volume that Nginx can read only through an internal location.
 - All Gunicorn workers use the same Redis service via `REDIS_URL`; permission and settings decisions remain database-authoritative and do not depend on Redis availability.
 
-### 21.3 Production Compose deployment
+### 21.3 Ubuntu systemd deployment
 
-The checked-in [Dockerfile](./Dockerfile), [production Compose stack](./docker-compose.prod.yml), [Nginx configuration](./deploy/nginx.conf), and [environment template](./.env.production.example) implement the reference topology. The image uses a build stage for compiler packages and a runtime stage with a non-root user and Gunicorn. Compose starts TLS-enabled PostgreSQL, Redis, a role-provisioning job, a migration job, post-migration runtime grants, web, Celery worker/beat, and Nginx. The database is not published to the host; static files are public and private media is available only through Nginx's internal X-Accel location. See the [deployment runbook](./docs/DEPLOYMENT.md) before adapting or using this configuration. No live deployment has been validated.
+The checked-in [systemd units](./deploy/systemd/), [Nginx site](./deploy/nginx.conf), [release and rollback scripts](./deploy/), and environment templates ([runtime](./.env.production.example), [role and backup](./deploy/)) describe a direct Ubuntu deployment. Gunicorn and Celery run as non-root service accounts with systemd hardening; PostgreSQL and Redis are loopback-only, migrations use the owner role, and the web/worker processes use the DML-only runtime role. Releases briefly stop application services while roles and migrations are applied. Nginx terminates TLS and serves public static files while private media is available only through its internal X-Accel location. The [deployment runbook](./docs/DEPLOYMENT.md) installs the templates outside the checkout with mode 0600. Host installation and live service validation remain pending.
 
 ### 21.4 CI/CD pipeline
 
 1. Start PostgreSQL, provision isolated test/runtime roles, install dependencies, and run the complete PostgreSQL pytest suite.
-2. Verify encrypted backup/restore on scratch databases; run Ruff, Bandit, pip-audit, `check --deploy`, Gitleaks, and an image build.
-3. Publish and deploy only from a manual `workflow_dispatch` on `main`; the `test` GitHub Environment must have required reviewers configured and its runner must be labelled `self-hosted,test`.
+2. Verify encrypted backup/restore on scratch PostgreSQL databases; run Ruff, Bandit, pip-audit, `check --deploy`, and Gitleaks.
+3. Deploy only from a manual `workflow_dispatch` on `main`; the `test` GitHub Environment must have required reviewers configured and its Ubuntu runner must be labelled `self-hosted,linux,test`.
 4. Production promotion is deliberately not configured. Take a verified backup before reviewed migrations; migration jobs use the non-superuser owner account.
 5. Smoke-test `/health/`, HTTPS/login, MFA, branch isolation, private media and representative financial read-only paths.
 
@@ -2165,13 +2173,34 @@ The checked-in [Dockerfile](./Dockerfile), [production Compose stack](./docker-c
 | Health check | `/health/` (public, no data) checks database and cache availability |
 | Logging | JSON logs with a request id; formatter redacts labeled secrets and long numeric strings. Central retention/alerting must be configured by the operator |
 | Monitoring and alerts | Error rate, response time, failed jobs, lockouts, repeated failed logins, disk space, certificate expiry |
-| Backups | `scripts/backup.sh` encrypts a `pg_dump` and private-media archive with age; `scripts/restore.sh` requires explicit confirmation. CI restore test is configured; no successful run is evidenced in this checkout |
+| Backups | `scripts/backup.sh` encrypts a `pg_dump` and private-media archive with age; `scripts/restore.sh` requires explicit confirmation. A systemd timer schedules backups; CI tests restore against scratch PostgreSQL databases |
 | Secrets | Rotated on a schedule and whenever someone with access leaves |
 | Updates | Apply Django security releases promptly; dependency review at least monthly |
 | Access | Production server and database access limited, named, logged; no shared accounts |
 | Data retention | Defined per table; financial and audit data kept for the legal minimum |
 | Incident response | Documented steps: contain, rotate secrets, review the audit log, notify as required |
 | Support | Users quote the `request_id` shown in an error so the log entry is found quickly |
+
+### 21.6 Version-one close-out status
+
+| Deliverable | Status | Evidence |
+|---|---|---|
+| Existing active-loan opening-balance Excel import | Done | Loan import golden schedule/PAR/accounting, maker-checker/branch and late-failure rollback tests in `core/bulk_imports/tests.py`; see section 7.5 |
+| Role-specific daily workflow guide | Done | [`docs/USER_GUIDE.md`](./docs/USER_GUIDE.md) |
+| Staff UAT scenarios and acceptance checklist | Done | [`docs/UAT_PLAN.md`](./docs/UAT_PLAN.md) |
+| Spreadsheet/legacy migration, reconciliation, cut-over and rollback guide | Done | [`docs/DATA_MIGRATION.md`](./docs/DATA_MIGRATION.md) |
+| PostgreSQL and local quality/security checks | Done | 1,762 tests and 284 subtests passed with zero skips/errors; Ruff, Bandit, pip-audit, `makemigrations --check --dry-run` and `check --deploy` passed. Full command output is summarized in [`docs/conformance-report.md`](./docs/conformance-report.md) |
+| Gitleaks history scan | Partial | Gitleaks is not installed locally; the workflow gate is configured, but no hosted run is evidenced |
+| Ubuntu host and encrypted backup/restore validation | Partial | Requires a provisioned host, encryption tooling/keys and an observed restore; see [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) |
+| Hosted CI and approval-gated test deployment | Partial | Workflow exists; GitHub Environment reviewers, runner and hosted run evidence are external |
+| Independent security review | Not done | Requires an independent reviewer and remediation of any findings |
+| Jurisdiction-specific regulatory configuration | Not done | Requires approval from the institution's regulatory/accounting owner |
+| Staff UAT, training and cut-over sign-off | Partial | Scenarios are documented in [`docs/UAT_PLAN.md`](./docs/UAT_PLAN.md); real staff execution and approval remain |
+
+**Remaining work is grouped in** [`docs/conformance-report.md`](./docs/conformance-report.md):
+hosted CI and host/staging validation, encrypted restore execution, independent
+security review, jurisdiction-specific regulatory configuration, UAT sign-off
+and go-live operations; optional product features remain in section 23.
 
 ---
 
@@ -2207,7 +2236,7 @@ Targets are **suggested starting points**; confirm them with load tests and with
 | **5. Loans** | Products, applications, eligibility, approvals, disbursement, schedules, repayments, penalties, rescheduling, settlement, write-off, recovery, PAR, statements, classification | Done — requested Phase 5 scope verified on PostgreSQL; see [section 7.5](#75-loans) |
 | **6. Collections** | Sheet generation, collection entry, cash reconciliation, atomic posting, collector performance, reports and maker-checker sheet reversal | Done — reversal and collection workflow tests pass on PostgreSQL |
 | **7. Reporting and control** | All report groups with Excel and PDF export, dashboards, day-end closing, notifications, bulk import, compliance reports, settings and audit screens | Done — reports, dashboards, day-end controls, notifications, bulk imports, compliance reports, settings, audit screens and request/job/integration audit producers are implemented and covered by PostgreSQL tests |
-| **8. Hardening and go-live** | Conformance audit, security fixes, independent penetration test, load testing, user acceptance testing, data migration, training and production rollout | In progress — PostgreSQL security suite and local quality gates pass; exhaustive XSS coverage, container/backup runtime validation and go-live activities remain |
+| **8. Hardening and go-live** | Conformance audit, security fixes, independent penetration test, load testing, user acceptance testing, data migration, training and production rollout | In progress — PostgreSQL security suite and local quality gates pass; exhaustive XSS coverage, Linux deployment/backup runtime validation and go-live activities remain |
 
 **Future ideas**: Django REST Framework API, mobile app for field officers with offline collection, mobile wallet and payment gateway integration, SMS gateway automation, credit bureau checks, fixed deposit and DPS products, micro-insurance, HR and payroll, fixed assets, multi-currency, member self-service portal, MFA for all staff.
 
@@ -2295,9 +2324,9 @@ A feature is done when it works end to end and:
 
 ## 26. License and Contact
 
-- **License**: `TODO` (choose before sharing the code, for example proprietary or MIT)
-- **Maintainers**: `TODO`
-- **Support and bug reports**: `TODO`
-- **Security issues**: report privately to `TODO`, not in a public issue
+- **License**: Not assigned; the project owner must select and approve a license before distribution.
+- **Maintainers**: Not assigned in this repository.
+- **Support and bug reports**: Configure a project-owned support channel before distribution.
+- **Security issues**: Configure a private project-owned reporting channel before distribution.
 
-Copyright © `TODO` year and organization name.
+Copyright owner and year are not assigned in this repository.
