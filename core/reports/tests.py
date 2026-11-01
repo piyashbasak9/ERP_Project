@@ -314,6 +314,73 @@ def test_large_synchronous_export_is_capped_with_audited_explanation(client):
 
 
 @pytest.mark.django_db
+def test_stored_xss_payload_is_safe_in_member_report_grid_popup_and_exports(client):
+    from core.reports.views import _pdf_value
+
+    branch_payload = '<script>alert("branch")</script>"><img src=x>'
+    member_payload = '<script>alert("member")</script>"><svg/onload=1>'
+    branch = Branch.objects.create(name=branch_payload, code="RPT-XSS")
+    user = get_user_model().objects.create_superuser(
+        username="report-xss-admin",
+        password="phase8-test-password-not-for-production",
+        branch=branch,
+    )
+    member = Member.unscoped.create(
+        branch=branch,
+        member_code="RPT-XSS-001",
+        first_name=member_payload,
+        last_name='"><img src=x>',
+        status=Member.STATUS_ACTIVE,
+        admission_date=timezone.localdate(),
+    )
+    report = next(item for item in REPORTS if item.slug == "member-list")
+    client.force_login(user)
+
+    page = client.get(reverse(f"reports:{report.route_name}"))
+    assert page.status_code == 200
+    assert member_payload not in page.content.decode()
+
+    grid = client.get(reverse(f"reports:{report.grid_route_name}"))
+    assert grid.status_code == 200
+    row = next(item for item in grid.json()["rows"] if item["code"] == member.member_code)
+    assert row["name"] == member.full_name
+    assert row["branch"] == branch_payload
+
+    popup = client.get(
+        reverse("branch:Module_Members_edit", args=[member.pk]) + "?popup=1"
+    )
+    assert popup.status_code == 200
+    assert "&lt;script&gt;" in popup.content.decode()
+    assert member_payload not in popup.content.decode()
+
+    excel = client.get(reverse(f"reports:{report.excel_route_name}"))
+    assert excel.status_code == 200
+    workbook = load_workbook(
+        BytesIO(b"".join(excel.streaming_content)),
+        read_only=True,
+    )
+    exported_cells = [
+        cell
+        for row_cells in workbook.active.iter_rows()
+        for cell in row_cells
+    ]
+    member_cell = next(cell for cell in exported_cells if cell.value == member.full_name)
+    assert member_cell.data_type == "s"
+    assert next(cell for cell in exported_cells if cell.value == branch_payload).data_type == "s"
+    workbook.close()
+
+    with patch("core.reports.views._pdf_value", wraps=_pdf_value) as escape_pdf_text:
+        pdf = client.get(reverse(f"reports:{report.pdf_route_name}"))
+    assert pdf.status_code == 200
+    assert pdf["Content-Type"] == "application/pdf"
+    assert any(call.args[0] == member.full_name for call in escape_pdf_text.call_args_list)
+    assert _pdf_value(member.full_name) == (
+        '&lt;script&gt;alert("member")&lt;/script&gt;'
+        '"&gt;&lt;svg/onload=1&gt; "&gt;&lt;img src=x&gt;'
+    )
+
+
+@pytest.mark.django_db
 def test_member_report_filters_by_date_branch_and_status(client):
     branch_one = Branch.objects.create(name="Filter branch one", code="RPT-F1")
     branch_two = Branch.objects.create(name="Filter branch two", code="RPT-F2")

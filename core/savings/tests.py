@@ -10,6 +10,7 @@ from django.core.exceptions import ValidationError
 from django.db import DatabaseError, close_old_connections, connection, transaction
 from django.test import RequestFactory, SimpleTestCase, TestCase, TransactionTestCase
 from django.urls import reverse
+from django.utils.html import conditional_escape
 
 from core.accounting.models import (
     Account,
@@ -811,11 +812,26 @@ class SavingsViewTests(TestCase):
         self.assertEqual(update_audit.old_values["name"], "Popup-managed product")
         self.assertEqual(update_audit.new_values["name"], "Updated product name")
 
+        xss_payload = '<script>alert("savings")</script>"><img src=x>'
+        product.name = xss_payload
+        product.save(update_fields=["name"])
+        popup = self.client.get(
+            reverse("savings:Module_Savings_product_edit", args=[product.pk])
+            + "?popup=1"
+        )
+        self.assertEqual(popup.status_code, 200)
+        self.assertIn(str(conditional_escape(xss_payload)), popup.content.decode())
+        self.assertNotIn(xss_payload, popup.content.decode())
+
         listed = self.client.get(
             reverse("savings:Module_Savings_products"),
             {"format": "json", "searchString": "UI-SPEC", "status": "active"},
         )
         self.assertEqual(listed.json()["records"], 1)
+        listed_product = next(
+            row for row in listed.json()["rows"] if row["id"] == product.pk
+        )
+        self.assertEqual(listed_product["name"], xss_payload)
         deactivated = self.client.post(
             reverse("savings:Module_Savings_product_deactivate", args=[product.pk]),
             **headers,

@@ -114,6 +114,13 @@
                 throw new Error(result.message || 'Your session has expired. Please sign in again.');
             }
             const contentType = response.headers.get('content-type') || '';
+            if (response.status === 403 && contentType.includes('application/json')) {
+                const result = await response.json();
+                if (window.handleAuthChallenge(result)) {
+                    popupModal.hide();
+                    return;
+                }
+            }
             if (!response.ok || !contentType.includes('text/html')) {
                 throw new Error('The form could not be loaded. Please try again.');
             }
@@ -148,10 +155,13 @@
     async function submitPopupForm(form) {
         clearFieldErrors(form);
         const submit = form.querySelector('[type=submit]');
+        const originalSubmitNodes = submit ? Array.from(submit.childNodes) : [];
         if (submit) {
             submit.disabled = true;
-            submit.dataset.originalText = submit.innerHTML;
-            submit.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Saving…';
+            const spinner = document.createElement('span');
+            spinner.className = 'spinner-border spinner-border-sm me-2';
+            spinner.setAttribute('aria-hidden', 'true');
+            submit.replaceChildren(spinner, document.createTextNode('Saving…'));
         }
         try {
             const response = await fetch(form.action || popupUrl.href, {
@@ -170,6 +180,10 @@
                 window.location.assign('/accounts/login/?next=' + encodeURIComponent(window.location.pathname));
                 return;
             }
+            if (window.handleAuthChallenge(result)) {
+                popupModal.hide();
+                return;
+            }
             if (!response.ok || !result.success) {
                 showFieldErrors(form, result.errors);
                 notifyError(result.message || 'Please correct the highlighted fields.');
@@ -186,7 +200,7 @@
         } finally {
             if (submit) {
                 submit.disabled = false;
-                submit.innerHTML = submit.dataset.originalText;
+                submit.replaceChildren(...originalSubmitNodes);
             }
         }
     }

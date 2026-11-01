@@ -1,0 +1,14 @@
+{
+  "private": true,
+  "description": "Pinned source packages for self-hosted Django frontend assets",
+  "scripts": {
+    "sync-vendor": "node scripts/copy-vendor-assets.cjs"
+  },
+  "dependencies": {
+    "bootstrap": "5.3.7",
+    "bootstrap-icons": "1.13.1",
+    "free-jqgrid": "4.15.5",
+    "jquery": "3.7.1",
+    "jquery-ui-dist": "1.13.2"
+  }
+}

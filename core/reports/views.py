@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -307,10 +308,12 @@ def _report_context(request, report):
             if getattr(request, "user_preference", None)
             else 25
         ),
-        "columns_json": [
-            {"key": column.key, "label": column.label}
-            for column in report.columns
-        ],
+        "columns_json": json.dumps(
+            [
+                {"key": column.key, "label": column.label}
+                for column in report.columns
+            ]
+        ),
         "view_url": reverse(f"reports:{report.route_name}"),
         "grid_url": reverse(f"reports:{report.grid_route_name}"),
         "excel_url": reverse(f"reports:{report.excel_route_name}"),

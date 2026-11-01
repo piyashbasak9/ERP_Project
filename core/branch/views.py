@@ -2,16 +2,16 @@ from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import models, transaction
-from django.http import FileResponse, JsonResponse
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
-from django.utils.text import get_valid_filename
 from django.views.decorators.http import require_GET, require_POST
 
 from core.audit.services import log_action
 from core.common.popup import popup_json_response, render_popup_form
+from core.common.private_media import private_media_response
 
 from .day_end_service import BranchDayService
 from .forms import (
@@ -472,7 +472,9 @@ def member_kyc_verify(request, document_id):
 def private_member_file(request, kind, file_id):
     allowed_branch_ids = request.user.accessible_branch_ids(request.active_branch_id)
     if kind == 'photo':
-        member = get_object_or_404(Member.objects, pk=file_id)
+        member = get_object_or_404(
+            Member.objects.filter(branch_id__in=allowed_branch_ids), pk=file_id
+        )
         stored_file = member.photo
         content_type = 'image/jpeg'
         filename = f'{member.member_code}-photo.jpg'
@@ -501,11 +503,12 @@ def private_member_file(request, kind, file_id):
         return JsonResponse({'success': False, 'message': 'File not found.'}, status=404)
 
     log_action('Download', entity_name, entity_id, branch_id=branch_id)
-    response = FileResponse(stored_file.open('rb'), content_type=content_type)
-    response['Content-Disposition'] = f'{disposition}; filename="{get_valid_filename(filename)}"'
-    response['X-Content-Type-Options'] = 'nosniff'
-    response['Cache-Control'] = 'private, no-store'
-    return response
+    return private_media_response(
+        stored_file,
+        content_type=content_type,
+        filename=filename,
+        disposition=disposition,
+    )
 
 
 ORGANIZATION_RESOURCES = {

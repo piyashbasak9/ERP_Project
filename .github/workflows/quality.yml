@@ -3,9 +3,11 @@ name: Quality gates
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
   test-and-scan:
@@ -40,6 +42,8 @@ jobs:
       TEST_DB_PORT: "5432"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -58,13 +62,69 @@ jobs:
         run: |
           python -m pip install -r requirements.txt
           python -m pip install pytest pytest-django ruff bandit pip-audit
+          sudo apt-get update
+          sudo apt-get install --yes age postgresql-client
       - name: Run PostgreSQL test suite
-        run: pytest -vv --tb=long --color=no
+        run: pytest -vv --tb=long --color=no --strict-config --strict-markers
+      - name: Verify encrypted backup and restore on scratch databases
+        env:
+          DB_USER: erp_test_runner
+          DB_PASSWORD: test-only-erp-db-password
+          DB_OWNER_USER: erp_test_runner
+          DB_OWNER_PASSWORD: test-only-erp-db-password
+          DB_HOST: 127.0.0.1
+          DB_PORT: "5432"
+          DB_SSLMODE: prefer
+        run: scripts/test-backup-restore.sh
       - name: Run Ruff
         run: ruff check .
       - name: Run Bandit
-        run: bandit -r core ERP -x '*/tests.py'
+        run: bandit -r core ERP -x '*/tests.py,*/test_*.py'
       - name: Audit dependencies
         run: pip-audit
       - name: Check deployment settings
+        env:
+          DJANGO_SECRET_KEY: ci-only-not-for-production-6d10bbad3a9dcf1c0ae4f0e2b
+          DJANGO_DEBUG: "0"
+          DJANGO_ALLOWED_HOSTS: localhost
+          REDIS_URL: redis://localhost:6379/0
+          DB_SSLMODE: require
         run: python manage.py check --deploy
+      - name: Scan repository history for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build container image
+        env:
+          IMAGE_NAME: ghcr.io/${{ github.repository }}:${{ github.sha }}
+        run: docker build --tag "$(printf '%s' "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')" .
+      - name: Publish image for approved test deployment
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_NAME: ghcr.io/${{ github.repository }}:${{ github.sha }}
+        run: |
+          image_name="$(printf '%s' "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')"
+          printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker tag "$(printf '%s' "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')" "$image_name"
+          docker push "$image_name"
+
+  deploy-test:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: test-and-scan
+    runs-on: [self-hosted, test]
+    environment:
+      name: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy approved image to the test environment
+        env:
+          ERP_IMAGE: ghcr.io/${{ github.repository }}:${{ github.sha }}
+        run: |
+          export ERP_IMAGE="$(printf '%s' "$ERP_IMAGE" | tr '[:upper:]' '[:lower:]')"
+          docker compose --env-file .env.production -f docker-compose.prod.yml pull
+          docker compose --env-file .env.production -f docker-compose.prod.yml up -d postgres redis
+          docker compose --env-file .env.production -f docker-compose.prod.yml run --rm db-roles
+          docker compose --env-file .env.production -f docker-compose.prod.yml run --rm migrate
+          docker compose --env-file .env.production -f docker-compose.prod.yml run --rm runtime-grants
+          docker compose --env-file .env.production -f docker-compose.prod.yml up -d --wait

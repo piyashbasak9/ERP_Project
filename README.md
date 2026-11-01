@@ -38,7 +38,15 @@ The MFI modules in the specification are being delivered in roadmap order. See t
    pip install -r requirements.txt
    ```
 
-3. Configure the environment. Copy `.env.example` to `.env`, replace all placeholders with local values, and keep `.env` out of version control. The required settings are `DJANGO_SECRET_KEY`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`. Export those variables into your shell before running Django (for Bash, use `set -a; source .env; set +a`). Use a least-privilege PostgreSQL application user, not the database superuser.
+3. Configure the environment. Copy `.env.example` to `.env`, replace all placeholders with local values, and keep `.env` out of version control. The required settings are `DJANGO_SECRET_KEY`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`. Export those variables into your shell before running Django:
+
+   ```bash
+   set -a
+   source .env
+   set +a
+   ```
+
+   Use a least-privilege PostgreSQL application user, not the database superuser.
 
 4. Create an empty PostgreSQL database and apply Django migrations:
 

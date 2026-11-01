@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Reset multi-factor authentication{% endblock %}
+{% block content %}
+<main class="container py-4">
+    <h1 class="h3">Reset MFA for {{ target.get_username }}</h1>
+    <p>The user will have to enroll again on their next login. Enter the reason for this reset.</p>
+    {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+    <form method="post">
+        {% csrf_token %}
+        <label class="form-label" for="reset-reason">Reason</label>
+        <textarea class="form-control" id="reset-reason" name="reason" maxlength="500" required></textarea>
+        <button class="btn btn-danger mt-3" type="submit">Reset MFA</button>
+    </form>
+</main>
+{% endblock %}

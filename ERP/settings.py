@@ -14,6 +14,25 @@ REDIS_URL = os.environ.get("REDIS_URL")
 if not DEBUG and not REDIS_URL:
     raise ImproperlyConfigured("REDIS_URL is required when DEBUG is disabled.")
 
+def resolve_database_ssl_options(debug, requested_mode=None, ca_path=None):
+    ca_path = (ca_path or "").strip()
+    sslmode = (requested_mode or ("prefer" if debug else "require")).strip().lower()
+    if not debug and sslmode not in {"require", "verify-ca", "verify-full"}:
+        raise ImproperlyConfigured("Production PostgreSQL connections must require TLS.")
+    if ca_path:
+        sslmode = "verify-full"
+    options = {"sslmode": sslmode}
+    if ca_path:
+        options["sslrootcert"] = ca_path
+    return options
+
+
+DB_SSL_OPTIONS = resolve_database_ssl_options(
+    DEBUG,
+    os.environ.get("DB_SSLMODE"),
+    os.environ.get("DB_SSL_CA_PATH"),
+)
+
 CACHES = {
     "default": (
         {
@@ -56,6 +75,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'axes',
+    'django_otp',
+    'django_otp.plugins.otp_totp',
     'core.accounts',
     'core.branch',
     'core.audit',
@@ -69,11 +90,15 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'core.common.structured_logging.RequestIDMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'core.common.middleware.ContentSecurityPolicyMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django_otp.middleware.OTPMiddleware',
+    'core.accounts.middleware.AbsoluteSessionExpiryMiddleware',
     'core.configuration.middleware.UserConfigurationMiddleware',
     'core.branch.middleware.BranchContextMiddleware',
     'core.audit.middleware.AuditContextMiddleware',
@@ -82,6 +107,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core.accounts.global_auth_middleware.GlobalLoginRequiredMiddleware',
     'core.accounts.middleware.URLPermissionMiddleware',
+    'core.accounts.middleware.MFAEnforcementMiddleware',
 ]
 
 ROOT_URLCONF = 'ERP.urls'
@@ -121,7 +147,7 @@ DATABASES = {
         'PORT': os.environ.get('DB_PORT', '5432'),
         'CONN_MAX_AGE': 60,
         'ATOMIC_REQUESTS': True,
-        'OPTIONS': {'sslmode': os.environ.get('DB_SSLMODE', 'prefer')},
+        'OPTIONS': DB_SSL_OPTIONS,
     }
 }
 
@@ -165,6 +191,8 @@ EXEMPT_FROM_LOGIN = [
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 SECURE_SSL_REDIRECT = not DEBUG
+if os.environ.get('SECURE_PROXY_SSL', '0') == '1':
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = not DEBUG
@@ -173,9 +201,12 @@ CSRF_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_SAMESITE = 'Lax'
-SESSION_COOKIE_AGE = 60 * 30
+SESSION_COOKIE_AGE = int(os.environ.get('SESSION_IDLE_MINUTES', '30')) * 60
 SESSION_SAVE_EVERY_REQUEST = True
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SESSION_ABSOLUTE_TIMEOUT_HOURS = int(os.environ.get('SESSION_ABSOLUTE_TIMEOUT_HOURS', '12'))
+MFA_REQUIRED = True
+MFA_REVERIFICATION_SECONDS = int(os.environ.get('MFA_REVERIFICATION_SECONDS', '300'))
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = 'same-origin'
 
@@ -184,9 +215,13 @@ AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
 ]
 
-AXES_FAILURE_LIMIT = 5
-AXES_COOLOFF_TIME = timedelta(minutes=15)
+AXES_FAILURE_LIMIT = int(os.environ.get('AXES_FAILURE_LIMIT', '5'))
+AXES_COOLOFF_TIME = timedelta(minutes=int(os.environ.get('AXES_COOLOFF_MINUTES', '15')))
 AXES_RESET_ON_SUCCESS = True
+MFA_FAILURE_LIMIT = int(os.environ.get('MFA_FAILURE_LIMIT', str(AXES_FAILURE_LIMIT)))
+MFA_COOLOFF_SECONDS = int(os.environ.get('MFA_COOLOFF_SECONDS', '900'))
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', REDIS_URL or '')
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', REDIS_URL or '')
 
 from django.contrib.messages import constants as messages
 
@@ -198,4 +233,25 @@ MESSAGE_TAGS = {
     messages.SUCCESS: 'success',
     messages.WARNING: 'warning',
     messages.ERROR: 'danger',
+}
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'json': {
+            '()': 'core.common.structured_logging.SafeJSONFormatter',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'json',
+        },
+    },
+    'loggers': {
+        'django': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+        'ERP': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+        'core': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+    },
 }

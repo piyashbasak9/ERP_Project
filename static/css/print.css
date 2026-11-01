@@ -1,0 +1,15 @@
+@media print {
+    .no-print,
+    nav,
+    footer {
+        display: none !important;
+    }
+
+    .container-fluid {
+        width: 100%;
+    }
+
+    .loan-print-area .card {
+        border: 0;
+    }
+}

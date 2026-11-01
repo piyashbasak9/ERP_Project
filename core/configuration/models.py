@@ -74,7 +74,9 @@ class SystemConfiguration(models.Model):
         except (TypeError, ValueError):
             errors["fiscal_year_start_day"] = "Enter a valid fiscal year start date."
         if not 8 <= self.minimum_password_length <= 128:
-            errors["minimum_password_length"] = "Password length must be between 8 and 128."
+            errors["minimum_password_length"] = (  # nosec B105 - validation text, not a credential
+                "Password length must be between 8 and 128."
+            )
         if not 5 <= self.session_idle_minutes <= 1440:
             errors["session_idle_minutes"] = "Session idle timeout must be 5 to 1440 minutes."
         if not 1 <= self.upload_limit_mb <= 50:

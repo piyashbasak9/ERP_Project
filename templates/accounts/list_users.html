@@ -56,6 +56,10 @@
                                    data-confirm-button="Delete">
                                     Delete
                                 </a>
+                                <a href="{% url 'accounts:Module_Auth_mfa_reset' user.id %}"
+                                   class="btn btn-sm btn-outline-secondary">
+                                    Reset MFA
+                                </a>
                             </td>
                         </tr>
                     {% endfor %}

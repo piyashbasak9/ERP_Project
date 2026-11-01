@@ -1,14 +1,20 @@
+import logging
 from datetime import timedelta
 from decimal import Decimal
+from uuid import uuid4
 
+from django.core.cache import cache
+from django.db import DatabaseError, connection
 from django.db.models import DecimalField, ExpressionWrapper, F, Sum
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
+from redis.exceptions import RedisError
 
 from core.accounts.models import Permission
 from core.branch.models import Member
 
+logger = logging.getLogger(__name__)
 
 def _dashboard_permissions(user):
     if user.is_superuser:
@@ -204,4 +210,14 @@ def home(request):
 
 
 def health(request):
+    try:
+        connection.ensure_connection()
+        cache_key = f'health-check:{uuid4().hex}'
+        cache.set(cache_key, 'ok', timeout=5)
+        if cache.get(cache_key) != 'ok':
+            raise RedisError('Cache readiness check failed.')
+        cache.delete(cache_key)
+    except (DatabaseError, RedisError):
+        logger.warning('Readiness check failed')
+        return JsonResponse({'status': 'unavailable'}, status=503)
     return JsonResponse({'status': 'ok'})

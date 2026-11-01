@@ -10,5 +10,5 @@ def build_audit_context(request):
         'branch_id': getattr(request, 'active_branch_id', None),
         'ip_address': request.META.get('REMOTE_ADDR') or None,
         'user_agent': request.META.get('HTTP_USER_AGENT', '')[:500],
-        'correlation_id': uuid4().hex,
+        'correlation_id': getattr(request, 'request_id', uuid4().hex),
     }

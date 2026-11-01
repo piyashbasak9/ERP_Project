@@ -5,6 +5,7 @@ import os
 from django.core.exceptions import ImproperlyConfigured
 
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ["DJANGO_DEBUG"] = "1"
 
 from .settings import *
 
@@ -35,6 +36,7 @@ DATABASES = {
         "HOST": os.environ.get("TEST_DB_HOST", "localhost"),
         "PORT": os.environ.get("TEST_DB_PORT", "5432"),
         "CONN_MAX_AGE": 0,
+        "OPTIONS": {"sslmode": os.environ.get("TEST_DB_SSLMODE", "prefer")},
     }
 }
 
@@ -46,3 +48,4 @@ CACHES = {
 }
 
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+MFA_REQUIRED = False

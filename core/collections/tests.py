@@ -13,6 +13,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import DatabaseError, close_old_connections, connection, transaction
 from django.test import RequestFactory, TestCase, TransactionTestCase
 from django.urls import reverse
+from django.utils.html import conditional_escape
 
 from core.accounting.models import (
     Account,
@@ -929,6 +930,35 @@ class CollectionRouteTests(CollectionFixture, TestCase):
         self.assertContains(response, 'id="live-total"')
         self.assertContains(response, 'id="unsaved-warning"')
         self.assertContains(response, 'data-original="0.00"')
+
+    def test_stored_collection_reason_is_escaped_on_detail_and_print_pages(self):
+        from core.accounts.models import Permission
+
+        payload = '<script>alert("reason")</script>"><img src=x>'
+        for route_name in (
+            "Module_Collections_sheet_detail",
+            "Module_Collections_sheet_print",
+        ):
+            permission = Permission.objects.get(route_name=route_name)
+            RolePermission.objects.get_or_create(role=self.role, permission=permission)
+
+        sheet, item = self.prepare_sheet(amount=Decimal("1.00"))
+        item.reason = payload
+        item.save(update_fields=["reason"])
+
+        detail = self.client.get(
+            reverse("collections:Module_Collections_sheet_detail", args=[sheet.pk])
+        )
+        printed = self.client.get(
+            reverse("collections:Module_Collections_sheet_print", args=[sheet.pk])
+        )
+
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(printed.status_code, 200)
+        for response in (detail, printed):
+            rendered = response.content.decode()
+            self.assertIn(str(conditional_escape(payload)), rendered)
+            self.assertNotIn(payload, rendered)
 
     def test_forged_branch_ids_cannot_open_enter_submit_reconcile_post_or_export(self):
         branch_b = Branch.unscoped.create(name="Other Branch", code="COL-B")

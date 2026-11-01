@@ -2,13 +2,14 @@ import mimetypes
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
-from django.http import FileResponse, Http404
+from django.http import Http404
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from core.accounts.models import Permission
 from core.common.popup import popup_json_response, render_popup_form
+from core.common.private_media import private_media_response
 from core.loans.models import LoanApprovalTier, LoanPARBucket, LoanProduct
 from core.savings.models import SavingsProduct
 
@@ -155,7 +156,9 @@ def organization_logo(request):
     if not logo:
         raise Http404("No organization logo is configured.")
     content_type = mimetypes.guess_type(logo.name)[0] or "application/octet-stream"
-    return FileResponse(logo.open("rb"), content_type=content_type)
+    return private_media_response(
+        logo, content_type=content_type, filename=logo.name, disposition="inline"
+    )
 
 
 @require_GET
@@ -164,7 +167,9 @@ def system_logo(request):
     if not logo:
         raise Http404("No application logo is configured.")
     content_type = mimetypes.guess_type(logo.name)[0] or "application/octet-stream"
-    return FileResponse(logo.open("rb"), content_type=content_type)
+    return private_media_response(
+        logo, content_type=content_type, filename=logo.name, disposition="inline"
+    )
 
 
 @require_GET

@@ -2,15 +2,18 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 from threading import Barrier, Event
 from time import monotonic, sleep
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.contrib.staticfiles.finders import find
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import close_old_connections, connections
 from django.db.models.query import QuerySet
+from django.template.loader import render_to_string
 from django.test import (
     RequestFactory,
     TestCase,
@@ -18,6 +21,7 @@ from django.test import (
     override_settings,
 )
 from django.urls import reverse
+from django.utils.html import conditional_escape
 
 from core.accounting.models import Account, SystemAccountMapping
 from core.accounts.models import Permission, Role, RolePermission, UserRole
@@ -26,6 +30,7 @@ from core.common.context import current_branch_id_var, current_user_var
 from core.common.upload_validation import detect_upload_mime, validate_kyc_file
 
 from .day_end_service import BranchDayService
+from .forms import MemberKYCForm
 from .member_service import MemberService
 from .models import (
     Branch,
@@ -34,6 +39,7 @@ from .models import (
     Center,
     Member,
     MemberKYC,
+    MemberStatusHistory,
     Staff,
     UserBranchAccess,
 )
@@ -196,10 +202,108 @@ class BranchDayEndTests(TestCase):
 
 class BranchIsolationRemainderTests(BranchIsolationTests):
     def grant_route(self, route_name):
-        role = Role.objects.create(name=f"branch-test-role-{Role.objects.count()}")
+        assignment = UserRole.objects.filter(user=self.user).select_related("role").first()
+        if assignment is None:
+            role = Role.objects.create(name=f"branch-test-role-{Role.objects.count()}")
+            assignment = UserRole.objects.create(user=self.user, role=role)
         permission = Permission.objects.get(route_name=route_name)
-        RolePermission.objects.create(role=role, permission=permission)
-        UserRole.objects.create(user=self.user, role=role)
+        RolePermission.objects.get_or_create(
+            role=assignment.role,
+            permission=permission,
+        )
+
+    @override_settings(SECURE_SSL_REDIRECT=True)
+    def test_branch_grid_autoencodes_untrusted_cells(self):
+        malicious_name = '<script>alert("x")</script>"><img src=x onerror="alert(1)">'
+        self.branch_one.name = malicious_name
+        self.branch_one.code = '"><svg/onload=1>'
+        self.branch_one.address = malicious_name
+        self.branch_one.save(update_fields=["name", "code", "address"])
+        self.grant_route("Module_Branch_index_branch")
+        self.grant_route("Module_Branch_edit_branch")
+        self.client.force_login(self.user)
+
+        page = self.client.get(reverse("branch:Module_Branch_index_branch"), secure=True)
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "js/branch-grid.js")
+        script_path = find("js/branch-grid.js")
+        self.assertIsNotNone(script_path)
+        self.assertIn("autoencode: true", Path(script_path).read_text(encoding="utf-8"))
+
+        data = self.client.get(
+            reverse("branch:Module_Branch_index_branch"),
+            {"ajax": "1"},
+            secure=True,
+        )
+        self.assertEqual(data.status_code, 200)
+        branch_row = next(row for row in data.json()["rows"] if row["id"] == self.branch_one.pk)
+        self.assertEqual(branch_row["name"], malicious_name)
+        self.assertEqual(branch_row["code"], '"><svg/onload=1>')
+
+        popup = self.client.get(
+            reverse("branch:Module_Branch_edit_branch", args=[self.branch_one.pk])
+            + "?popup=1",
+            secure=True,
+        )
+        self.assertEqual(popup.status_code, 200)
+        self.assertIn(str(conditional_escape(malicious_name)), popup.content.decode())
+        self.assertNotIn(malicious_name, popup.content.decode())
+        self.assertIn(
+            str(conditional_escape('"><svg/onload=1>')),
+            popup.content.decode(),
+        )
+
+    def test_member_profile_and_popup_escape_stored_text_fields(self):
+        malicious_text = '<script>alert("stored")</script>"><img src=x>'
+        self.grant_route("Module_Members_detail")
+        self.grant_route("Module_Members_edit")
+        self.grant_route("Module_Members_kyc")
+        member = Member.unscoped.create(
+            branch=self.branch_one,
+            member_code="ONE-XSS-001",
+            first_name=malicious_text,
+            last_name='"><svg/onload=1>',
+            present_address=malicious_text,
+            permanent_address='"><img src=x>',
+        )
+        MemberStatusHistory.objects.create(
+            member=member,
+            old_status=Member.STATUS_PENDING,
+            new_status=Member.STATUS_ACTIVE,
+            reason=malicious_text,
+            changed_by=self.user,
+        )
+        document = MemberKYC.objects.create(
+            member=member,
+            document_type=MemberKYC.DOC_TYPE_NATIONAL_ID,
+            document_number=malicious_text,
+            notes=malicious_text,
+        )
+        self.client.force_login(self.user)
+
+        detail = self.client.get(
+            reverse("branch:Module_Members_detail", args=[member.pk])
+        )
+        self.assertEqual(detail.status_code, 200)
+        self.assertIn(str(conditional_escape(malicious_text)), detail.content.decode())
+        self.assertNotIn(malicious_text, detail.content.decode())
+
+        popup = self.client.get(
+            reverse("branch:Module_Members_edit", args=[member.pk]) + "?popup=1"
+        )
+        self.assertEqual(popup.status_code, 200)
+        self.assertIn(str(conditional_escape(malicious_text)), popup.content.decode())
+        self.assertNotIn(malicious_text, popup.content.decode())
+
+        kyc_popup = render_to_string(
+            "members/kyc_form.html",
+            {
+                "member": member,
+                "form": MemberKYCForm(instance=document),
+            },
+        )
+        self.assertIn(str(conditional_escape(malicious_text)), kyc_popup)
+        self.assertNotIn(malicious_text, kyc_popup)
 
     def test_scoped_manager_fails_closed_without_a_request_user(self):
         self.assertFalse(Center.objects.exists())

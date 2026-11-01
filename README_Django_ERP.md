@@ -4,12 +4,12 @@
 
 | | |
 |---|---|
-| **Status** | In development: Phase 7 part 2B is implemented and PostgreSQL-tested; other roadmap gaps remain |
+| **Status** | Phase 8 security tests pass on PostgreSQL (1,759 tests and 284 subtests); empty-database migrations, Ruff, Bandit, pip-audit and `check --deploy` pass. Container runtime, backup/restore execution and operational acceptance remain pending. See [the conformance report](./docs/conformance-report.md) |
 | **Backend** | Python 3.12, Django 6.0.9 |
 | **Database** | PostgreSQL |
 | **Frontend** | Django templates, Bootstrap 5, jQuery, Free jqGrid, Bootstrap Icons |
 | **Theme** | White and dark blue |
-| **Last updated** | 2026-10-31 |
+| **Last updated** | 2026-11-01 |
 
 > **Placeholders to replace:** repository URL, license, maintainers and contact details are marked with `TODO`.
 
@@ -77,7 +77,7 @@ The goal is to grow this platform into a **complete microfinance ERP**. An MFI r
 | Branch management | Partial | Create, list, search, edit, soft delete, jqGrid listing, hierarchy, branch switcher and explicit user branch grants |
 | Popup (modal) create and edit | Done | Shared AJAX-fragment Bootstrap modal preserves frame denial; PostgreSQL tests cover fragments, login/permission checks and the save envelope |
 | Success and error toasts (top middle, 5 seconds) | Implemented | Shared Django message partial and notification script; verify in browser before production |
-| Security hardening | Partial | Phase 1 hardening is in place: env-based secrets, PostgreSQL config, middleware protections, default-deny routing, private media root, and Django-only ORM migrations |
+| Security hardening | Partial | Privileged TOTP MFA, absolute session expiry, PostgreSQL TLS enforcement, private-media X-Accel handling and XSS audit checks pass the full PostgreSQL suite (1,759 tests, 284 subtests). Container, backup/restore and operational acceptance remain pending. See [the conformance report](./docs/conformance-report.md) |
 | Organization hierarchy (head office, region, area, branch) | Partial | Hierarchy, branch scoping and organization screens exist; full isolation coverage and controls remain |
 | Members | Partial | Member profiles, branch-prefixed codes, status history, photo/KYC handling, verification and scoped downloads |
 | Savings | Partial | Product management, status controls and account term snapshots are PostgreSQL-verified; broader savings scope remains in progress; see [section 7.4](#74-savings) |
@@ -85,8 +85,8 @@ The goal is to grow this platform into a **complete microfinance ERP**. An MFI r
 | Collections | Done | Collection workflows, reports, exports, permissions, branch isolation, runtime immutability and maker-checker sheet reversal pass PostgreSQL tests |
 | Accounting | Partial | Chart of accounts, fiscal periods, typed system mappings, balanced journals, approval, posting/reversal, account reconciliation and trial balance |
 | Reports | Implemented for the listed catalog | 36 registered reports share branch-aware filters, jqGrid, totals, audited Excel/PDF exports and a permission-filtered index |
-| Audit and compliance | Partial | Permissioned logs, record trails, system events, activity dashboard, compliance reports, ORM immutability and a PostgreSQL append-only trigger; producer coverage for background jobs and integrations remains |
-| Settings module | Partial | Permissioned system, organization, user-preference and business-rule screens; translation catalogs and shared-cache deployment configuration remain |
+| Audit and compliance | Partial | Permissioned logs, record trails, system events, activity dashboard, compliance reports, ORM immutability and a PostgreSQL append-only trigger; job/integration producers exist, while exhaustive event coverage and retention remain |
+| Settings module | Partial | Permissioned system, organization, user-preference and business-rule screens; settings are read from PostgreSQL, while translation catalogs remain incomplete |
 
 ### 1.3 Highlights (target system)
 
@@ -216,26 +216,28 @@ Roles are fully configurable. The table shows the **suggested default roles** th
 | UI | HTML5, CSS3, Bootstrap 5, Bootstrap Icons |
 | Scripting | jQuery, Free jqGrid |
 
-### 5.2 Planned additions
+### 5.2 Additional tooling and current status
 
-| Concern | Choice |
-|---|---|
-| Settings and secrets | Environment variables (`django-environ` or `python-dotenv`), split settings (`base`, `dev`, `prod`) |
-| Password hashing | Argon2 via `argon2-cffi` |
-| Brute-force protection | `django-axes` |
-| Content Security Policy | `django-csp` |
-| Admin MFA (later) | `django-otp` or an equivalent |
-| Static files | WhiteNoise or Nginx |
-| Application server | Gunicorn behind Nginx (TLS) |
-| Background jobs | Celery with Redis (interest posting, day-end, notifications, large exports) |
-| Cache | Redis (permission cache, sessions optional) |
-| Excel export | `openpyxl` |
-| PDF export | WeasyPrint or ReportLab |
-| Image handling | Pillow (validate and re-encode member photos) |
-| Testing | `pytest`, `pytest-django`, `factory_boy`, Playwright for end-to-end |
-| Quality and security tooling | `ruff`, `black`, `bandit`, `pip-audit`, optional `mypy` |
-| Logging and monitoring | Structured logging, optional Sentry |
-| CI/CD | GitHub Actions or similar |
+| Concern | Choice | Status |
+|---|---|---|---|
+| Settings and secrets | Environment variables, `.env.example`; split `base/dev/prod` settings | Partial |
+| Password hashing | Argon2 via `argon2-cffi` | Implemented |
+| Brute-force protection | `django-axes` | Configured; enforcement tests remain |
+| Content Security Policy | Same-origin CSP middleware | Implemented; inline scripts and external asset origins are blocked |
+| Admin MFA | `django-otp` TOTP and hashed recovery codes | Implemented; PostgreSQL suite passes enrollment, enforcement, recovery, replay, bypass, re-verification, lockout and audited reset tests |
+| Static files | Nginx | Deployment artifact added; deployment not validated |
+| Application server | Gunicorn behind Nginx (TLS) | Deployment artifacts added; deployment not validated |
+| Background jobs | Celery with Redis | Worker/beat topology added; task migration and production operation remain partial |
+| Cache | Redis via `REDIS_URL` | Implemented for production; permissions/settings remain database-backed |
+| Excel export/import | `openpyxl` | Implemented |
+| PDF export | WeasyPrint or ReportLab | Implemented for registered reports |
+| Image handling | Pillow (validate and re-encode member photos) | Implemented for tested upload paths |
+| Testing | `pytest`, `pytest-django`, `factory_boy`, Playwright for end-to-end | PostgreSQL pytest suite: 1,759 passed, 284 subtests passed; Playwright is absent |
+| Quality and security tooling | `ruff`, `black`, `bandit`, `pip-audit`, optional `mypy` | Ruff, Bandit, pip-audit and `check --deploy` pass locally; Gitleaks and Docker are unavailable; see the conformance report |
+| Logging and monitoring | Structured JSON logs with request ID and redaction | Implemented; monitoring/alerting remains open |
+| CI/CD | GitHub Actions | PostgreSQL, scans, deploy check, image build and approval-gated test deployment configured; hosted execution pending |
+
+Frontend vendor packages are pinned in `package.json`/`package-lock.json`; their self-hosted distributions and license notices are under `static/vendor/`. After changing a version, run `npm ci` and `npm run sync-vendor`.
 
 ### 5.3 Architecture decision: one ORM
 
@@ -361,7 +363,7 @@ Each module lists its features, key rules, and main screens. All create and edit
 
 ### 7.1 Authentication
 
-**Status:** Partial. Implemented: login, logout, user create, list, edit and delete, role assignment, role create, edit and list with a URL checklist, global login redirect, route-based permission check. Planned: password change and reset, forced change on first login, password policy, lockout, session idle timeout, role delete, permission matrix with action columns, MFA for admins.
+**Status:** Partial. Implemented: login, logout, user create, list, edit and delete, role assignment, role create/edit/list, route-based permission checks, Argon2 hashing, password validators, Axes lockout configuration, idle and absolute session expiry, and privileged TOTP MFA. Missing or planned: password change/reset, forced change on first login/admin reset, password history/expiry, generic login errors, role delete and a complete action-column permission matrix.
 
 **Features**
 
@@ -663,7 +665,7 @@ All report pages expose common branch, center, field-officer, date-range and sta
 
 ### 7.9 Audit
 
-**Status:** Partial. Permissioned audit logs, record trails, system events, activity dashboard and shared-framework compliance reports are implemented. The ORM rejects updates/deletes and a PostgreSQL trigger plus runtime-role grants protect `audit_logs`. Successful POST mutations are audited inside the request transaction; failed mutations roll back. Background job and integration event producers and exhaustive event-specific coverage remain.
+**Status:** Partial. Permissioned audit logs, record trails, system events, activity dashboard and shared-framework compliance reports are implemented. The ORM rejects updates/deletes and a PostgreSQL trigger plus runtime-role grants protect `audit_logs`. Successful POST mutations are audited inside the request transaction; failed mutations roll back. Notification job-run and failed-integration event producers exist; exhaustive event-specific coverage and retention/archival remain.
 
 **Features**
 
@@ -681,7 +683,7 @@ Details are in [section 13](#13-audit-and-compliance).
 
 ### 7.10 Settings
 
-**Status:** Partial. Each screen has its own route permission; system and organization changes are validated, cached and audited with old/new values. User preferences are self-only and affect report page size, landing page and date display; the selected language is applied, but translation catalogs remain incomplete. Business-rule screens reuse product, approval-tier and PAR-bucket controls instead of duplicating them. Multi-process deployments should configure a shared Django cache backend for cross-worker invalidation.
+**Status:** Partial. Each screen has its own route permission; system and organization changes are validated and audited with old/new values. Settings and permission decisions are read from PostgreSQL, so Redis cache invalidation is not required for correctness across workers. User preferences are self-only and affect report page size, landing page and date display; the selected language is applied, but translation catalogs remain incomplete. Business-rule screens reuse product, approval-tier and PAR-bucket controls instead of duplicating them.
 
 | Group | What it controls |
 |---|---|
@@ -696,7 +698,9 @@ Changes to settings are audited with old and new values.
 
 **PostgreSQL evidence:** `ConfigurationRouteTests.test_settings_screens_and_mutations_require_their_own_permission`, `ConfigurationRouteTests.test_settings_mutation_routes_reject_get`, `ConfigurationRouteTests.test_settings_index_lists_only_screens_the_user_can_open`, `ConfigurationRouteTests.test_system_configuration_is_validated_audited_and_effective_immediately`, `ConfigurationRouteTests.test_user_preferences_only_update_the_logged_in_user`, `ConfigurationRouteTests.test_every_settings_mutation_route_writes_a_request_audit`, and `ConfigurationRouteTests.test_settings_change_rolls_back_when_its_audit_write_fails`.
 
-**Full PostgreSQL validation:** `pytest -q` — 1,689 passed, 278 subtests passed, zero failures, zero errors and zero skips (2026-10-31).
+**Full PostgreSQL validation:** `pytest -q` — 1,693 passed, 278 subtests passed, zero failures, zero errors and zero skips (2026-10-31; 212.91 seconds).
+
+**CSP regression evidence:** `ContentSecurityPolicyTests.test_policy_blocks_inline_and_external_scripts`, `ContentSecurityPolicyTests.test_policy_middleware_is_enabled`, and `ContentSecurityPolicyTests.test_templates_have_no_inline_scripts_external_assets_or_event_handlers`.
 
 **Phase 7 part 2B PostgreSQL evidence:** `test_every_route_audits_successful_state_changing_requests`, `test_authentication_audit_exemptions_have_documented_producers`, `RoutePermissionTests.test_permission_revocation_is_immediate_across_clients_with_shared_cache_config`, `ConfigurationRouteTests.test_settings_are_read_from_database_when_shared_cache_is_unavailable`; notification coverage includes `test_daily_job_generates_all_four_event_types`, `test_notification_generation_is_idempotent_per_recipient_event_and_day`, `test_notification_opt_out_is_respected`, `test_delivery_respects_opt_out_changed_after_notification_creation`, `test_sms_uses_console_provider_without_logging_recipient_data`, `test_provider_failure_retries_and_records_job_and_integration_events`, `test_unexpected_job_failure_is_recorded_and_propagated`, `test_recipients_are_limited_to_the_event_branch`, `test_template_placeholders_are_validated`, `test_every_notification_route_requires_its_permission`, and `test_notification_mutation_routes_reject_get`; import coverage includes `test_validation_reports_row_level_errors`, `test_validated_import_rolls_back_every_row_on_late_failure`, `test_upload_is_idempotent_by_file_hash`, `test_branch_isolation_rejects_foreign_savings_accounts`, `test_savings_opening_import_is_maker_checker_and_posts_balanced_journal`, `test_gl_opening_import_posts_one_balanced_journal_after_checker_approval`, `test_unbalanced_gl_opening_is_rejected_before_approval`, `test_malicious_uploads_are_rejected`, `test_row_limit_is_enforced`, `test_validation_error_download_neutralizes_formula_cells`, `test_every_import_route_requires_its_permission`, and `test_every_import_mutation_route_rejects_get`.
 
@@ -1073,12 +1077,12 @@ reports_loans_export         audit_log_list              accounts_role_edit
 | Lockout | `django-axes`: 5 failed attempts, 15-minute cool-off, reset on success, lockout audited | Implemented |
 | Error messages | One generic message for a wrong username or password, so accounts cannot be enumerated | Planned |
 | `next` parameter | Accepted only if `url_has_allowed_host_and_scheme()` approves it, so the login page cannot redirect to another site | Planned |
-| Session cookie | `HttpOnly`, `Secure`, `SameSite=Lax`, configurable idle timeout (default 30 minutes); absolute lifetime limit remains unimplemented | Partial |
+| Session cookie | `HttpOnly`, `Secure`, `SameSite=Lax`, configurable idle timeout (default 30 minutes) and absolute deadline (default 12 hours) | Implemented; controlled-clock PostgreSQL regression passes in the full suite |
 | Session rotation | New session key at login (Django does this), and after a password change (`update_session_auth_hash`) | Planned |
 | Logout | Flush the server-side session, then redirect to login | Implemented |
 | Password reset | Django token flow, short token lifetime (1 hour), same response whether or not the account exists | Planned |
 | Deactivated users | `is_active = False` blocks login and ends existing sessions | Planned |
-| Privileged accounts | MFA (TOTP) for superusers and admins | Planned |
+| Privileged accounts | TOTP for superusers and roles with user/role/settings/reopen/reversal permissions; hashed recovery codes, lockout, audited admin reset and fresh verification for sensitive routes | Implemented; enforcement, recovery, replay, bypass, re-verification, lockout and reset tests pass on PostgreSQL |
 
 ### 11.6 Production settings baseline
 
@@ -1094,6 +1098,13 @@ DEBUG = False
 ALLOWED_HOSTS = os.environ["DJANGO_ALLOWED_HOSTS"].split(",")
 CSRF_TRUSTED_ORIGINS = os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
 
+db_ssl_options = {"sslmode": os.environ.get("DB_SSLMODE", "require")}
+if os.environ.get("DB_SSL_CA_PATH"):
+    db_ssl_options.update(
+        sslmode="verify-full",
+        sslrootcert=os.environ["DB_SSL_CA_PATH"],
+    )
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -1104,7 +1115,7 @@ DATABASES = {
         "PORT": os.environ.get("DB_PORT", "5432"),
         "CONN_MAX_AGE": 60,
         "ATOMIC_REQUESTS": True,                      # one transaction per request
-        "OPTIONS": {"sslmode": os.environ.get("DB_SSLMODE", "require")},
+        "OPTIONS": db_ssl_options,                  # production rejects allow/prefer/disable
     }
 }
 
@@ -1120,6 +1131,7 @@ CSRF_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_AGE = 60 * 30                          # idle timeout
 SESSION_SAVE_EVERY_REQUEST = True                     # sliding expiry
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SESSION_ABSOLUTE_TIMEOUT_HOURS = 12                   # hard deadline despite activity
 
 # Headers
 X_FRAME_OPTIONS = "DENY"
@@ -1152,30 +1164,32 @@ AUTHENTICATION_BACKENDS = [
 ]
 ```
 
-**Middleware order** (outermost first): security, session, common, CSRF, authentication, axes, messages, clickjacking, CSP, **global auth** (`core.accounts.global_auth_middleware`), **role permission** (`core.accounts.middleware`), audit context. Authentication must run before the two custom middlewares.
+**Active middleware order** (outermost first): request ID, security, CSP, session, common, CSRF, authentication, django-otp, absolute session expiry, user configuration, branch context, audit context, axes, messages, clickjacking, **global auth**, **role permission**, and **MFA enforcement**. Production PostgreSQL TLS defaults to `require`, rejects `allow`/`prefer`/`disable`, and uses `verify-full` when `DB_SSL_CA_PATH` is set. Development/test TLS remains relaxed. `script-src` is same-origin only, external asset origins are blocked, and no inline scripts remain. Inline styles are still permitted for existing template styling.
 
 ### 11.7 Application security controls
 
+**Phase 8 review:** the branch jqGrid stored-XSS finding is fixed with `autoencode: true`; source-level regressions check template escaping, first-party jqGrid encoders and JavaScript markup sinks. Stored `<script>` and quote payloads are exercised across branch/member/KYC, loan and savings products, collection reasons, and member-report page/grid/popup/export paths on PostgreSQL. This is representative coverage, not an exhaustive field-by-field browser matrix; remaining gaps are tracked in [the conformance report](./docs/conformance-report.md).
+
 | Threat | Control |
 |---|---|
-| **Broken access control** | Default-deny permission middleware, route classification test, object-level checks through branch-scoped managers (`get_object_or_404(Model.objects, pk=pk)` with scoping on), no trust in ids from the browser |
-| **CSRF** | `CsrfViewMiddleware` on; every form includes `{% csrf_token %}`; AJAX sends the `X-CSRFToken` header; no `@csrf_exempt` without a documented review |
-| **XSS** | Template auto-escaping on; no `safe` filter or `mark_safe` on user data; jqGrid cells encode content (`autoencode: true`); toasts use `textContent`; strict Content Security Policy |
+| **Broken access control** | Default-deny permission middleware and route classification tests for named application routes; framework/admin route classification and complete object-level coverage remain under review |
+| **CSRF** | `CsrfViewMiddleware` on; forms include `{% csrf_token %}`; AJAX sends the `X-CSRFToken` header. Explicit CSRF-rejection tests are still required |
+| **XSS** | Template auto-escaping on; first-party jqGrid data cells use `autoencode: true`; dynamic links use DOM construction and same-origin validation; toasts use `textContent`; CSP blocks inline and external scripts. Source and stored-payload regressions pass on PostgreSQL for representative editable fields and rendering paths; exhaustive field-by-field/browser coverage remains Partial |
 | **SQL injection** | ORM queries only; any raw SQL uses bound parameters, never string formatting (this includes SQLAlchemy `text()` while it exists) |
 | **Mass assignment** | `ModelForm` lists `fields` explicitly, never `__all__`; role, branch and status fields are set by services, not taken blindly from the POST |
 | **IDOR** | Every detail, edit and delete lookup goes through a scoped queryset; out-of-branch records return 404 |
 | **Clickjacking** | `X-Frame-Options: DENY`; popups are in-page modals, not iframes |
 | **Open redirect** | `next` validated as above |
-| **Brute force** | `django-axes` on login; rate limiting at Nginx (`limit_req`) or with `django-ratelimit` for password reset and exports |
+| **Brute force** | `django-axes` protects password login; MFA has cache-based rate limits/lockout; Nginx limits login and password-reset paths |
 | **Host header attacks** | `ALLOWED_HOSTS` set explicitly |
 | **File upload abuse** | See [section 11.9](#119-secure-file-handling-photos-and-kyc-documents) |
 | **Secrets** | Environment variables or a secret manager; never in Git; `.env` ignored; rotated when staff leave |
-| **Django admin** | Disabled, or served on a non-default path, superuser only, IP allow-listed, MFA when available |
-| **Error disclosure** | `DEBUG = False` in production; custom 403, 404 and 500 pages; stack traces only in logs, with a request id shown to the user |
+| **Django admin** | Administrative route exposure and protection still require explicit deployment review and tests |
+| **Error disclosure** | `DEBUG = False` in production; JSON logs include request IDs and redact labeled secrets/long numbers; custom error pages and deployment log review remain |
 | **Sensitive data** | National ID and phone masked in list views; full value needs a dedicated permission and is audited; never logged |
-| **Database** | Runtime account has DML rights only; migrations run with a separate owner account; TLS to the database; audit and ledger tables are insert-only for the runtime account |
-| **Dependencies** | Versions pinned; `pip-audit` and `bandit` in CI; Django security releases applied promptly |
-| **Backups** | Encrypted, access-controlled, restore tested |
+| **Database** | Runtime account has DML rights only; migrations run with a separate non-superuser owner account; PostgreSQL TLS is mandatory; selected audit and ledger rows are insert-only for runtime |
+| **Dependencies** | Versions pinned; CI runs `pip-audit` and Bandit. Current Bandit findings and scan results are recorded in [the conformance report](./docs/conformance-report.md) |
+| **Backups** | `scripts/backup.sh` and `scripts/restore.sh` encrypt database and private-media archives with age; CI round-trip test is configured but not run in this workspace |
 
 ### 11.8 Known gaps in the current codebase and required fixes
 
@@ -1193,13 +1207,13 @@ This is the original baseline gap list. Several listed items have since been rem
 | 8 | Production settings (`DEBUG`, `SECRET_KEY`, `ALLOWED_HOSTS`, secure cookies, HSTS) are not described | Debug pages and cookies over plain HTTP | Baseline in [section 11.6](#116-production-settings-baseline); `check --deploy` in CI | High |
 | 9 | Password rules limited to confirmation at creation | Weak passwords | Validators, Argon2, forced change on first login | Medium |
 | 10 | `db.sqlite3` and `.venv/` appear in the project tree | A committed SQLite file may contain user hashes; `.venv` bloats the repository | Make sure both are in `.gitignore`; if ever committed, remove from history and rotate affected credentials | Medium |
-| 11 | jQuery, Bootstrap and jqGrid may load from CDNs or inline scripts | Supply-chain risk, cannot enforce a strict CSP | Self-host vendor files in `static/vendor/`, remove inline scripts, enable CSP | Medium |
+| 11 | jQuery, Bootstrap and jqGrid may load from CDNs or inline scripts | Supply-chain risk, cannot enforce a strict CSP | **Done:** pinned vendor files are self-hosted in `static/vendor/`, inline scripts were moved to static files, and CSP is active | Resolved |
 | 12 | Audit trail is only `created_by` and `updated_by` on branches | Cannot prove who did what | Audit module ([section 13](#13-audit-and-compliance)) | Medium |
 | 13 | Soft delete on branches (`is_active = 0`) | Deleted rows can still collide with unique codes or leak into lists | Filter inactive rows in managers, use conditional unique constraints, show status clearly | Low |
 
 ### 11.9 Secure file handling (photos and KYC documents)
 
-Member photos and KYC scans are personal data. They must never be reachable by guessing a URL.
+Member photos and KYC scans are personal data. They must never be reachable by guessing a URL. The deployment must set `PRIVATE_MEDIA_ROOT` to a directory outside the web root; the current default under `BASE_DIR` is not sufficient proof of external storage.
 
 1. Store files in a **private directory outside the web root** (`PRIVATE_MEDIA_ROOT`), never under a path the web server publishes.
 2. Remove `/media/` from the public and exempt lists. Serve files through a Django view that checks **login, role permission, and branch scope**, then streams the file (or hands it to Nginx with `X-Accel-Redirect` on an internal location).
@@ -1932,6 +1946,7 @@ REVOKE UPDATE, DELETE ON <audit_log_table>, <ledger_tables> FROM erp_app;
 
 ```bash
 cp .env.example .env               # then edit the values; never commit .env
+set -a; source .env; set +a        # export values into this shell before Django commands
 ```
 
 Generate a secret key:
@@ -2012,19 +2027,28 @@ All environment-specific and secret values come from the environment (a local `.
 | `DJANGO_DEBUG` | Debug mode | `0` (never `1` in production) |
 | `DJANGO_ALLOWED_HOSTS` | Allowed host names | `erp.example.com` |
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | Trusted origins for HTTPS | `https://erp.example.com` |
-| `DB_NAME`, `DB_USER`, `DB_PASSWORD` | Database connection | *secret* |
+| `DB_NAME`, `DB_USER`, `DB_PASSWORD` | Application database and DML-only runtime credentials | *secret* |
+| `DB_ADMIN_USER`, `DB_ADMIN_PASSWORD` | PostgreSQL bootstrap administrator (deployment only) | *secret* |
+| `DB_OWNER_USER`, `DB_OWNER_PASSWORD` | Non-superuser schema migration/ownership role | *secret* |
 | `DB_HOST`, `DB_PORT` | Database address | `localhost`, `5432` |
-| `DB_SSLMODE` | TLS to the database | `require` in production |
-| `SESSION_IDLE_MINUTES` | Idle timeout | `30` |
+| `DB_SSLMODE`, `DB_SSL_CA_PATH` | PostgreSQL TLS mode and optional trusted CA path | Production defaults to `require`; a CA path forces `verify-full` |
+| `SESSION_IDLE_MINUTES`, `SESSION_ABSOLUTE_TIMEOUT_HOURS` | Idle and absolute session deadlines | `30`, `12` |
+| `MFA_REVERIFICATION_SECONDS`, `MFA_FAILURE_LIMIT`, `MFA_COOLOFF_SECONDS` | Sensitive-action re-verification and MFA lockout | `300`, `5`, `900` |
 | `AXES_FAILURE_LIMIT` | Failed logins before lock | `5` |
 | `AXES_COOLOFF_MINUTES` | Lock duration | `15` |
 | `PRIVATE_MEDIA_ROOT` | Folder for photos and KYC files, outside the web root | `/var/erp/private_media` |
 | `MAX_UPLOAD_MB` | Upload size limit | `2` |
 | `EMAIL_*` | Mail server for password reset and notifications | *secret* |
-| `REDIS_URL` | Cache and Celery broker | `redis://localhost:6379/0` |
-| `SENTRY_DSN` | Error reporting (optional) | *secret* |
+| `REDIS_URL`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | Shared cache and Celery endpoints | Compose supplies internal Redis endpoints |
+| `DB_TLS_CERT_FILE`, `DB_TLS_KEY_FILE`, `DB_TLS_CA_FILE` | PostgreSQL server certificate/key and client trust CA host paths | Host paths; never commit private keys |
+| `TLS_CERT_FILE`, `TLS_KEY_FILE` | Nginx HTTPS certificate and key host paths | Host paths; never commit private keys |
+| `ERP_IMAGE` | Immutable application image reference | *set by release operator* |
+| `AGE_RECIPIENT`, `AGE_IDENTITY`, `BACKUP_DIR` | Encrypted backup destination, restore identity and output directory | Recipient public key; identity protected separately |
+| `EMAIL_*`, `DEFAULT_FROM_EMAIL` | Mail transport for notifications | *secret/configuration* |
+| `TEST_DB_*` | Isolated test-database connection and TLS settings | Test-only |
+| `SENTRY_DSN` | Error reporting (optional; not currently wired) | *secret* |
 
-The database variables configure the Django connection. No SQLAlchemy connection is used.
+The complete variable inventory is in [`.env.production.example`](./.env.production.example). The database variables configure the Django connection. No SQLAlchemy connection is used.
 
 ### 19.2 In-app settings (stored in the database)
 
@@ -2075,6 +2099,8 @@ def test_every_route_is_classified(db):
 
 Run the full suite and the security checks in [`.github/workflows/quality.yml`](./.github/workflows/quality.yml) on every pull request.
 
+**Phase 8 conformance and test evidence:** [docs/conformance-report.md](./docs/conformance-report.md) records requirement-by-requirement status, security findings, test totals and scan results. The pre-hardening baseline passed 1,693 tests and 278 subtests. The current PostgreSQL run passes 1,759 tests and 284 subtests; a fresh scratch database also migrated cleanly and `makemigrations --check --dry-run` reported no changes. Docker/Gitleaks are unavailable locally, and hosted CI and operational acceptance remain pending.
+
 ### PostgreSQL test database
 
 The test settings use PostgreSQL only. No SQLite fallback is allowed: the test suite covers row locks, PostgreSQL triggers, and runtime-role grants. Set `TEST_DB_NAME`, `TEST_DB_USER`, `TEST_DB_PASSWORD`, and optionally `TEST_DB_HOST` / `TEST_DB_PORT`; the test login must have `CREATEDB` and `CREATEROLE` so Django can create and drop its disposable `test_<TEST_DB_NAME>` database and the suite can configure its isolated runtime role.
@@ -2120,64 +2146,26 @@ Internet ── HTTPS ──► Nginx (TLS, rate limits, static, private media v
 - Private media sits on a volume that Nginx can read only through an internal location.
 - All Gunicorn workers use the same Redis service via `REDIS_URL`; permission and settings decisions remain database-authoritative and do not depend on Redis availability.
 
-### 21.3 Example `docker-compose.yml` (adapt to your setup)
+### 21.3 Production Compose deployment
 
-```yaml
-services:
-  db:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
-  redis:
-    image: redis:7
-    command: redis-server --appendonly yes
-    volumes:
-      - redisdata:/data
-
-  web:
-    build: .
-    command: gunicorn ERP.wsgi:application --bind 0.0.0.0:8000 --workers 3
-    env_file: .env
-    depends_on:
-      - db
-      - redis
-    volumes:
-      - private_media:/app/private_media
-    ports:
-      - "8000:8000"        # in production expose only to the reverse proxy
-
-volumes:
-  pgdata:
-  redisdata:
-  private_media:
-```
-
-For Compose, set `REDIS_URL=redis://redis:6379/0`. Keep `.env` out of Git, and put Nginx or Caddy in front for TLS.
+The checked-in [Dockerfile](./Dockerfile), [production Compose stack](./docker-compose.prod.yml), [Nginx configuration](./deploy/nginx.conf), and [environment template](./.env.production.example) implement the reference topology. The image uses a build stage for compiler packages and a runtime stage with a non-root user and Gunicorn. Compose starts TLS-enabled PostgreSQL, Redis, a role-provisioning job, a migration job, post-migration runtime grants, web, Celery worker/beat, and Nginx. The database is not published to the host; static files are public and private media is available only through Nginx's internal X-Accel location. See the [deployment runbook](./docs/DEPLOYMENT.md) before adapting or using this configuration. No live deployment has been validated.
 
 ### 21.4 CI/CD pipeline
 
-1. Start a PostgreSQL service, create an isolated `CREATEDB` test role and a separate non-owner runtime role, then install pinned dependencies
-2. Run the full `pytest` suite against PostgreSQL; execute concurrency and database-permission tests with zero skips
-3. Run `ruff check .`, `bandit -r core ERP -x '*/tests.py'`, and `pip-audit`; tests are excluded from Bandit because their fixed credentials are disposable fixtures, while all application source remains scanned
-4. Run `python manage.py check --deploy` with production-like settings (the CI database values are placeholders and are not used to connect)
-5. Build the image and tag it with the commit
-6. Deploy to Test automatically; deploy to Production after manual approval
-7. Run migrations with the owner account (reviewed SQL, backup taken first), then start the new version
-8. Smoke test the health endpoint and the login page
+1. Start PostgreSQL, provision isolated test/runtime roles, install dependencies, and run the complete PostgreSQL pytest suite.
+2. Verify encrypted backup/restore on scratch databases; run Ruff, Bandit, pip-audit, `check --deploy`, Gitleaks, and an image build.
+3. Publish and deploy only from a manual `workflow_dispatch` on `main`; the `test` GitHub Environment must have required reviewers configured and its runner must be labelled `self-hosted,test`.
+4. Production promotion is deliberately not configured. Take a verified backup before reviewed migrations; migration jobs use the non-superuser owner account.
+5. Smoke-test `/health/`, HTTPS/login, MFA, branch isolation, private media and representative financial read-only paths.
 
 ### 21.5 Operations
 
 | Topic | Practice |
 |---|---|
-| Health check | `/health/` (public, no data) for liveness and readiness |
-| Logging | Structured logs with a request id; no passwords, tokens or full national ID numbers; central store in production |
+| Health check | `/health/` (public, no data) checks database and cache availability |
+| Logging | JSON logs with a request id; formatter redacts labeled secrets and long numeric strings. Central retention/alerting must be configured by the operator |
 | Monitoring and alerts | Error rate, response time, failed jobs, lockouts, repeated failed logins, disk space, certificate expiry |
-| Backups | Daily full plus frequent log backups, encrypted, access-controlled, **regular test restores**, file store backed up with the database |
+| Backups | `scripts/backup.sh` encrypts a `pg_dump` and private-media archive with age; `scripts/restore.sh` requires explicit confirmation. CI restore test is configured; no successful run is evidenced in this checkout |
 | Secrets | Rotated on a schedule and whenever someone with access leaves |
 | Updates | Apply Django security releases promptly; dependency review at least monthly |
 | Access | Production server and database access limited, named, logged; no shared accounts |
@@ -2219,7 +2207,7 @@ Targets are **suggested starting points**; confirm them with load tests and with
 | **5. Loans** | Products, applications, eligibility, approvals, disbursement, schedules, repayments, penalties, rescheduling, settlement, write-off, recovery, PAR, statements, classification | Done — requested Phase 5 scope verified on PostgreSQL; see [section 7.5](#75-loans) |
 | **6. Collections** | Sheet generation, collection entry, cash reconciliation, atomic posting, collector performance, reports and maker-checker sheet reversal | Done — reversal and collection workflow tests pass on PostgreSQL |
 | **7. Reporting and control** | All report groups with Excel and PDF export, dashboards, day-end closing, notifications, bulk import, compliance reports, settings and audit screens | Done — reports, dashboards, day-end controls, notifications, bulk imports, compliance reports, settings, audit screens and request/job/integration audit producers are implemented and covered by PostgreSQL tests |
-| **8. Hardening and go-live** | Independent security review and penetration test, load testing, user acceptance testing, data migration from the old system, training, production rollout | Planned |
+| **8. Hardening and go-live** | Conformance audit, security fixes, independent penetration test, load testing, user acceptance testing, data migration, training and production rollout | In progress — PostgreSQL security suite and local quality gates pass; exhaustive XSS coverage, container/backup runtime validation and go-live activities remain |
 
 **Future ideas**: Django REST Framework API, mobile app for field officers with offline collection, mobile wallet and payment gateway integration, SMS gateway automation, credit bureau checks, fixed deposit and DPS products, micro-insurance, HR and payroll, fixed assets, multi-currency, member self-service portal, MFA for all staff.
 

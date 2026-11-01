@@ -1,11 +1,9 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}Branches{% endblock %}
 
-{% block extra_css %}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
-{% endblock %}
 {% block content %}
-<div class="page-wrapper" id="pageWrapper">
+<div class="page-wrapper" id="pageWrapper" data-grid-url="{% url 'branch:Module_Branch_index_branch' %}?ajax=1">
 
     <!-- Header -->
     <div class="page-header">
@@ -61,98 +59,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
-
-$(function () {
-
-    function fitPageWrapperHeight() {
-        const $wrapper = $("#pageWrapper");
-        const top = $wrapper.offset().top;
-        const footerHeight = $("footer.footer-custom").outerHeight() || 0;
-        const bottomPadding = parseFloat($("main.main-content").css("padding-bottom")) || 0;
-        const available = $(window).height() - top - footerHeight - bottomPadding - 1;
-        $wrapper.css("height", available + "px");
-    }
-
-    function initBranchGrid() {
-        $("#branchGrid").jqGrid({
-            url: "{% url 'branch:Module_Branch_index_branch' %}?ajax=1",
-            datatype: "json",
-            mtype: "GET",
-            colModel: [
-                { label: "ID", name: "id", width: 60, align: 'center', sortable: true },
-                { label: "Name", name: "name", width: 220, sortable: true },
-                { label: "Code", name: "code", width: 120, sortable: true },
-                { label: "Created By", name: "created_by", width: 120, sortable: true },
-                { label: "Updated By", name: "updated_by", width: 120, sortable: true },
-                { label: "Created At", name: "created_at", width: 160, sortable: true },
-                { label: "Updated At", name: "updated_at", width: 160, sortable: true },
-                {
-                    label: "Actions",
-                    name: "actions",
-                    width: 120,
-                    align: 'center',
-                    sortable: false,
-                    formatter: function (cellvalue) {
-                        return cellvalue || '';
-                    },
-                    formatoptions: { escape: false }
-                },
-            ],
-            rowNum: 20,
-            rowList: [20, 50, 100, 200, 500],
-            pager: "#branchPager",
-            viewrecords: true,
-            autowidth: true,
-            shrinkToFit: true,
-            forceFit: true,
-            gridview: true,
-            height: "100%",
-            loadonce: false,
-            jsonReader: {
-                root: "rows",
-                page: "page",
-                total: "total",
-                records: "records",
-                repeatitems: false
-            }
-        });
-
-        resizeGridBody();
-    }
-
-    function resizeGridBody() {
-        const $tableResponsive = $(".table-responsive");
-        const $hdiv = $(".ui-jqgrid-hdiv");
-        const $pager = $(".ui-jqgrid-pager");
-
-        const totalHeight = $tableResponsive.height();
-        const hdivHeight = $hdiv.outerHeight() || 0;
-        const pagerHeight = $pager.outerHeight() || 0;
-
-        const bdivHeight = totalHeight - hdivHeight - pagerHeight;
-        $("#branchGrid").jqGrid("setGridHeight", bdivHeight > 0 ? bdivHeight : 200);
-    }
-
-    $(window).on("resize", function () {
-        $("#branchGrid").jqGrid("setGridWidth", $(".table-responsive").width());
-        fitPageWrapperHeight();
-        resizeGridBody();
-    });
-
-    fitPageWrapperHeight();
-    initBranchGrid();
-    setTimeout(fitPageWrapperHeight, 300);
-
-    $("#btnSearch").click(function () {
-        var name = $("#search_name").val();
-        var code = $("#search_code").val();
-        ajaxUrl = "{% url 'branch:Module_Branch_index_branch' %}?ajax=1&name=" + encodeURIComponent(name) + "&code=" + encodeURIComponent(code);
-        $("#branchGrid").jqGrid("setGridParam", { url: ajaxUrl, page: 1 }).trigger("reloadGrid");
-    });
-
-
-});
-
-</script>
+<script src="{% static 'js/branch-grid.js' %}"></script>
 {% endblock %}

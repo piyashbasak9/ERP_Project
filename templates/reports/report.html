@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}{{ report.title }}{% endblock %}
 {% block content %}
 <div class="container-fluid py-3">
@@ -80,39 +81,6 @@
     </div>
     <p class="small text-muted mt-2 mb-0">{{ records }} matching record{{ records|pluralize }}</p>
 </div>
-{{ columns_json|json_script:"report-columns" }}
-<script>
-$(function () {
-    const columns = JSON.parse(document.getElementById("report-columns").textContent);
-    const params = new URLSearchParams(new FormData(document.getElementById("reportFilters")));
-    const gridUrl = new URL("{{ grid_url|escapejs }}", window.location.origin);
-    params.forEach((value, key) => {
-        if (value) gridUrl.searchParams.set(key, value);
-    });
-    $("#reportGrid").jqGrid({
-        url: gridUrl.toString(),
-        datatype: "json",
-        mtype: "GET",
-        colModel: columns.map(column => ({
-            name: column.key,
-            label: column.label,
-            sortable: true
-        })),
-        pager: "#reportPager",
-        rowNum: {{ default_page_size }},
-        rowList: [25, 50, 100],
-        sortname: columns.length ? columns[0].key : "",
-        sortorder: "asc",
-        autowidth: true,
-        autoencode: true,
-        viewrecords: true,
-        footerrow: true,
-        userDataOnFooter: true,
-        jsonReader: { repeatitems: false },
-        loadComplete: function (data) {
-            if (data.userdata) $("#reportGrid").jqGrid("footerData", "set", data.userdata);
-        }
-    });
-});
-</script>
+<div id="reportGridConfig" data-grid-url="{{ grid_url }}" data-default-page-size="{{ default_page_size }}" data-columns="{{ columns_json }}"></div>
+<script src="{% static 'js/report-grid.js' %}"></script>
 {% endblock %}

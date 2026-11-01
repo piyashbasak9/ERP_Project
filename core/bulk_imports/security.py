@@ -1,8 +1,8 @@
 from io import BytesIO
-from xml.etree import ElementTree
-from xml.etree.ElementTree import ParseError
 from zipfile import BadZipFile, ZipFile
 
+from defusedxml.common import DefusedXmlException
+from defusedxml.ElementTree import ParseError, fromstring
 from django.core.exceptions import ValidationError
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
@@ -39,7 +39,7 @@ def validate_xlsx_archive(upload_bytes, filename):
                 raise ValidationError("The ZIP file is not an Office Open XML workbook.")
             for entry in entries:
                 if entry.filename.endswith(".rels"):
-                    root = ElementTree.fromstring(archive.read(entry))
+                    root = fromstring(archive.read(entry))
                     if any(
                         value.lower() == "external"
                         for element in root.iter()
@@ -49,7 +49,7 @@ def validate_xlsx_archive(upload_bytes, filename):
                         raise ValidationError(
                             "Workbooks with external links are not accepted."
                         )
-    except (BadZipFile, ParseError, RuntimeError) as exc:
+    except (BadZipFile, DefusedXmlException, ParseError, RuntimeError) as exc:
         raise ValidationError("The uploaded file is not a valid .xlsx workbook.") from exc
 
 
