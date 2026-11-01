@@ -75,8 +75,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'axes',
-    'django_otp',
-    'django_otp.plugins.otp_totp',
     'core.accounts',
     'core.branch',
     'core.audit',
@@ -97,7 +95,6 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django_otp.middleware.OTPMiddleware',
     'core.accounts.middleware.AbsoluteSessionExpiryMiddleware',
     'core.configuration.middleware.UserConfigurationMiddleware',
     'core.branch.middleware.BranchContextMiddleware',
@@ -107,7 +104,6 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core.accounts.global_auth_middleware.GlobalLoginRequiredMiddleware',
     'core.accounts.middleware.URLPermissionMiddleware',
-    'core.accounts.middleware.MFAEnforcementMiddleware',
 ]
 
 ROOT_URLCONF = 'ERP.urls'
@@ -205,8 +201,6 @@ SESSION_COOKIE_AGE = int(os.environ.get('SESSION_IDLE_MINUTES', '30')) * 60
 SESSION_SAVE_EVERY_REQUEST = True
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 SESSION_ABSOLUTE_TIMEOUT_HOURS = int(os.environ.get('SESSION_ABSOLUTE_TIMEOUT_HOURS', '12'))
-MFA_REQUIRED = True
-MFA_REVERIFICATION_SECONDS = int(os.environ.get('MFA_REVERIFICATION_SECONDS', '300'))
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = 'same-origin'
 
@@ -218,8 +212,6 @@ AUTHENTICATION_BACKENDS = [
 AXES_FAILURE_LIMIT = int(os.environ.get('AXES_FAILURE_LIMIT', '5'))
 AXES_COOLOFF_TIME = timedelta(minutes=int(os.environ.get('AXES_COOLOFF_MINUTES', '15')))
 AXES_RESET_ON_SUCCESS = True
-MFA_FAILURE_LIMIT = int(os.environ.get('MFA_FAILURE_LIMIT', str(AXES_FAILURE_LIMIT)))
-MFA_COOLOFF_SECONDS = int(os.environ.get('MFA_COOLOFF_SECONDS', '900'))
 CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', REDIS_URL or '')
 CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', REDIS_URL or '')
 

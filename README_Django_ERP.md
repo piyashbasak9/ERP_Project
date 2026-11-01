@@ -4,12 +4,12 @@
 
 | | |
 |---|---|
-| **Status** | Final close-out code and guides are implemented; the full PostgreSQL suite passes (1,762 tests and 284 subtests, zero skips/errors), migrations report no changes, Ruff/Bandit/pip-audit and `check --deploy` pass. Ubuntu host validation, encrypted restore execution, independent review and operational acceptance remain pending. See [the conformance report](./docs/conformance-report.md) |
+| **Status** | MFA was removed at the operator's request. The focused database-independent security tests and Ruff checks pass; PostgreSQL-backed verification of the removal and its migration remains pending. Ubuntu host validation, encrypted restore execution, independent review and operational acceptance also remain pending. See [the conformance report](./docs/conformance-report.md) |
 | **Backend** | Python 3.12, Django 6.0.9 |
 | **Database** | PostgreSQL |
 | **Frontend** | Django templates, Bootstrap 5, jQuery, Free jqGrid, Bootstrap Icons |
 | **Theme** | White and dark blue |
-| **Last updated** | 2026-11-01 |
+| **Last updated** | 2026-11-02 |
 
 > Repository hosting, license ownership, maintainers and support contacts must
 > be configured by the project owner before public distribution.
@@ -78,7 +78,7 @@ The goal is to grow this platform into a **complete microfinance ERP**. An MFI r
 | Branch management | Partial | Create, list, search, edit, soft delete, jqGrid listing, hierarchy, branch switcher and explicit user branch grants |
 | Popup (modal) create and edit | Done | Shared AJAX-fragment Bootstrap modal preserves frame denial; PostgreSQL tests cover fragments, login/permission checks and the save envelope |
 | Success and error toasts (top middle, 5 seconds) | Implemented | Shared Django message partial and notification script; verify in browser before production |
-| Security hardening | Partial | Privileged TOTP MFA, absolute session expiry, PostgreSQL TLS enforcement, private-media X-Accel handling and XSS audit checks pass the full PostgreSQL suite (1,759 tests, 284 subtests). Host deployment, backup/restore and operational acceptance remain pending. See [the conformance report](./docs/conformance-report.md) |
+| Security hardening | Partial | Argon2/Axes, absolute session expiry, PostgreSQL TLS enforcement, private-media X-Accel handling and XSS audit checks are implemented. MFA was removed at the operator's request; host deployment, backup/restore and operational acceptance remain pending. See [the conformance report](./docs/conformance-report.md) |
 | Organization hierarchy (head office, region, area, branch) | Partial | Hierarchy, branch scoping and organization screens exist; full isolation coverage and controls remain |
 | Members | Partial | Member profiles, branch-prefixed codes, status history, photo/KYC handling, verification and scoped downloads |
 | Savings | Partial | Product management, status controls and account term snapshots are PostgreSQL-verified; broader savings scope remains in progress; see [section 7.4](#74-savings) |
@@ -225,7 +225,7 @@ Roles are fully configurable. The table shows the **suggested default roles** th
 | Password hashing | Argon2 via `argon2-cffi` | Implemented |
 | Brute-force protection | `django-axes` | Configured; enforcement tests remain |
 | Content Security Policy | Same-origin CSP middleware | Implemented; inline scripts and external asset origins are blocked |
-| Admin MFA | `django-otp` TOTP and hashed recovery codes | Implemented; PostgreSQL suite passes enrollment, enforcement, recovery, replay, bypass, re-verification, lockout and audited reset tests |
+| Multi-factor authentication | Not included | MFA enrollment, verification, reset flows and stored enrollment data were removed at the operator's request |
 | Static files | Nginx | Deployment artifact added; deployment not validated |
 | Application server | Gunicorn behind Nginx (TLS) | Deployment artifacts added; deployment not validated |
 | Background jobs | Celery with Redis | Worker/beat topology added; task migration and production operation remain partial |
@@ -364,7 +364,7 @@ Each module lists its features, key rules, and main screens. All create and edit
 
 ### 7.1 Authentication
 
-**Status:** Partial. Implemented: login, logout, user create, list, edit and delete, role assignment, role create/edit/list, route-based permission checks, Argon2 hashing, password validators, Axes lockout configuration, idle and absolute session expiry, and privileged TOTP MFA. Missing or planned: password change/reset, forced change on first login/admin reset, password history/expiry, generic login errors, role delete and a complete action-column permission matrix.
+**Status:** Partial. Implemented: login, logout, user create, list, edit and delete, role assignment, role create/edit/list, route-based permission checks, Argon2 hashing, password validators, Axes lockout configuration, and idle and absolute session expiry. MFA is not included by operator request. Missing or planned: password change/reset, forced change on first login/admin reset, password history/expiry, generic login errors, role delete and a complete action-column permission matrix.
 
 **Features**
 
@@ -1055,7 +1055,7 @@ flowchart TD
 **Rules**
 
 1. **Default deny.** A new route that is not classified is denied until someone classifies it. An automated test fails the build if any route is unclassified (see [section 20](#20-testing)).
-2. **`is_staff` is not a business role.** It is a Django admin flag. Only `is_superuser` may bypass role checks, and superuser accounts are few, named, audited, and protected by MFA when available.
+2. **`is_staff` is not a business role.** It is a Django admin flag. Only `is_superuser` may bypass role checks, and superuser accounts are few, named, audited, and protected with strong unique passwords and operational controls.
 3. **Route names are the permission keys.** Give every route a stable `name=`, using `<module>_<resource>_<action>` (for example `loans_application_approve`). Renaming a route silently changes who can use it, so renames go through code review.
 4. **Destructive and state-changing routes accept POST only** (`@require_POST`) and are CSRF-protected. Deleting or approving through a link (GET) is never allowed.
 5. **Object-level checks are separate.** A permission says "may use this page". Branch scope and ownership still decide *which records* ([section 12](#12-branch-data-isolation)).
@@ -1094,7 +1094,7 @@ reports_loans_export         audit_log_list              accounts_role_edit
 | Logout | Flush the server-side session, then redirect to login | Implemented |
 | Password reset | Django token flow, short token lifetime (1 hour), same response whether or not the account exists | Planned |
 | Deactivated users | `is_active = False` blocks login and ends existing sessions | Planned |
-| Privileged accounts | TOTP for superusers and roles with user/role/settings/reopen/reversal permissions; hashed recovery codes, lockout, audited admin reset and fresh verification for sensitive routes | Implemented; enforcement, recovery, replay, bypass, re-verification, lockout and reset tests pass on PostgreSQL |
+| Privileged accounts | MFA is not included by operator request | Removed; stored TOTP devices and recovery codes are deleted by migration |
 
 ### 11.6 Production settings baseline
 
@@ -1176,7 +1176,7 @@ AUTHENTICATION_BACKENDS = [
 ]
 ```
 
-**Active middleware order** (outermost first): request ID, security, CSP, session, common, CSRF, authentication, django-otp, absolute session expiry, user configuration, branch context, audit context, axes, messages, clickjacking, **global auth**, **role permission**, and **MFA enforcement**. Production PostgreSQL TLS defaults to `require`, rejects `allow`/`prefer`/`disable`, and uses `verify-full` when `DB_SSL_CA_PATH` is set. Development/test TLS remains relaxed. `script-src` is same-origin only, external asset origins are blocked, and no inline scripts remain. Inline styles are still permitted for existing template styling.
+**Active middleware order** (outermost first): request ID, security, CSP, session, common, CSRF, authentication, absolute session expiry, user configuration, branch context, audit context, axes, messages, clickjacking, **global auth**, and **role permission**. Production PostgreSQL TLS defaults to `require`, rejects `allow`/`prefer`/`disable`, and uses `verify-full` when `DB_SSL_CA_PATH` is set. Development/test TLS remains relaxed. `script-src` is same-origin only, external asset origins are blocked, and no inline scripts remain. Inline styles are still permitted for existing template styling.
 
 ### 11.7 Application security controls
 
@@ -1192,7 +1192,7 @@ AUTHENTICATION_BACKENDS = [
 | **IDOR** | Every detail, edit and delete lookup goes through a scoped queryset; out-of-branch records return 404 |
 | **Clickjacking** | `X-Frame-Options: DENY`; popups are in-page modals, not iframes |
 | **Open redirect** | `next` validated as above |
-| **Brute force** | `django-axes` protects password login; MFA has cache-based rate limits/lockout; Nginx limits login and password-reset paths |
+| **Brute force** | `django-axes` protects password login; Nginx limits login and password-reset paths |
 | **Host header attacks** | `ALLOWED_HOSTS` set explicitly |
 | **File upload abuse** | See [section 11.9](#119-secure-file-handling-photos-and-kyc-documents) |
 | **Secrets** | Environment variables or a secret manager; never in Git; `.env` ignored; rotated when staff leave |
@@ -1211,7 +1211,7 @@ This is the original baseline gap list. Several listed items have since been rem
 |---|---|---|---|---|
 | 1 | Database user and password (`postgres` / `postgres`) are written directly in `settings.py`, and the SQLAlchemy URL repeats them | Credentials in Git, guessable password, two places to leak | Move to environment variables, one shared source for both ORMs, rotate the password, use a dedicated least-privilege database user | **Critical** |
 | 2 | `/media/` is exempt from the global login check | Anyone with a URL could download uploaded files. Member photos and KYC documents will be stored there | Store uploads outside the web root and serve them only through an authenticated, permission-checked, branch-scoped view ([section 11.9](#119-secure-file-handling-photos-and-kyc-documents)) | **Critical** |
-| 3 | Staff or superuser bypass role checks | `is_staff` is easy to grant and is a Django admin concept, not a business role | Only `is_superuser` bypasses; keep those accounts minimal, audited, MFA-protected | High |
+| 3 | Staff or superuser bypass role checks | `is_staff` is easy to grant and is a Django admin concept, not a business role | Only `is_superuser` bypasses; keep those accounts minimal, audited, and protected with strong unique passwords | High |
 | 4 | Behaviour for routes with no permission row is not defined | A forgotten route could be open to every logged-in user | Default deny plus the route-classification test ([section 11.3](#113-target-decision-flow-default-deny)) | High |
 | 5 | Delete routes (`/branch/delete/<id>/`, `/accounts/users/delete/<id>/`) | If they accept GET they can be triggered by a link or image tag (CSRF) | `@require_POST`, CSRF token, confirmation dialog, audit entry | High |
 | 6 | Branches and RBAC use SQLAlchemy while users use the Django ORM; Alembic exists beside Django migrations | No single transaction across ORMs, no foreign keys managed across them, two migration histories, larger attack surface | Consolidate on Django models and migrations ([section 5.3](#53-architecture-decision-one-orm)); convert `database/change_query.psql` into a migration | High, before Accounting |
@@ -2044,7 +2044,6 @@ All environment-specific and secret values come from the environment (a local `.
 | `DB_HOST`, `DB_PORT` | Database address | `localhost`, `5432` |
 | `DB_SSLMODE`, `DB_SSL_CA_PATH` | PostgreSQL TLS mode and optional trusted CA path | Production defaults to `require`; a CA path forces `verify-full` |
 | `SESSION_IDLE_MINUTES`, `SESSION_ABSOLUTE_TIMEOUT_HOURS` | Idle and absolute session deadlines | `30`, `12` |
-| `MFA_REVERIFICATION_SECONDS`, `MFA_FAILURE_LIMIT`, `MFA_COOLOFF_SECONDS` | Sensitive-action re-verification and MFA lockout | `300`, `5`, `900` |
 | `AXES_FAILURE_LIMIT` | Failed logins before lock | `5` |
 | `AXES_COOLOFF_MINUTES` | Lock duration | `15` |
 | `PRIVATE_MEDIA_ROOT` | Folder for photos and KYC files, outside the web root | `/srv/erp/private_media` |
@@ -2164,7 +2163,7 @@ The checked-in [systemd units](./deploy/systemd/), [Nginx site](./deploy/nginx.c
 2. Verify encrypted backup/restore on scratch PostgreSQL databases; run Ruff, Bandit, pip-audit, `check --deploy`, and Gitleaks.
 3. Deploy only from a manual `workflow_dispatch` on `main`; the `test` GitHub Environment must have required reviewers configured and its Ubuntu runner must be labelled `self-hosted,linux,test`.
 4. Production promotion is deliberately not configured. Take a verified backup before reviewed migrations; migration jobs use the non-superuser owner account.
-5. Smoke-test `/health/`, HTTPS/login, MFA, branch isolation, private media and representative financial read-only paths.
+5. Smoke-test `/health/`, HTTPS/login, branch isolation, private media and representative financial read-only paths.
 
 ### 21.5 Operations
 
@@ -2238,7 +2237,7 @@ Targets are **suggested starting points**; confirm them with load tests and with
 | **7. Reporting and control** | All report groups with Excel and PDF export, dashboards, day-end closing, notifications, bulk import, compliance reports, settings and audit screens | Done — reports, dashboards, day-end controls, notifications, bulk imports, compliance reports, settings, audit screens and request/job/integration audit producers are implemented and covered by PostgreSQL tests |
 | **8. Hardening and go-live** | Conformance audit, security fixes, independent penetration test, load testing, user acceptance testing, data migration, training and production rollout | In progress — PostgreSQL security suite and local quality gates pass; exhaustive XSS coverage, Linux deployment/backup runtime validation and go-live activities remain |
 
-**Future ideas**: Django REST Framework API, mobile app for field officers with offline collection, mobile wallet and payment gateway integration, SMS gateway automation, credit bureau checks, fixed deposit and DPS products, micro-insurance, HR and payroll, fixed assets, multi-currency, member self-service portal, MFA for all staff.
+**Future ideas**: Django REST Framework API, mobile app for field officers with offline collection, mobile wallet and payment gateway integration, SMS gateway automation, credit bureau checks, fixed deposit and DPS products, micro-insurance, HR and payroll, fixed assets, multi-currency and member self-service portal.
 
 ---
 

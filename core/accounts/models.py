@@ -120,18 +120,3 @@ class UserRole(models.Model):
 
     def __str__(self):
         return f'{self.user_id} -> {self.role_id}'
-
-
-class RecoveryCode(models.Model):
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='mfa_recovery_codes',
-    )
-    code_hash = models.CharField(max_length=128)
-    created_at = models.DateTimeField(auto_now_add=True)
-    used_at = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        db_table = 'account_mfa_recovery_codes'
-        indexes = [models.Index(fields=['user', 'used_at'], name='mfa_recovery_user_used')]

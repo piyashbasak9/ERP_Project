@@ -17,10 +17,11 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 
-from ERP.views import health, home
+from ERP.views import favicon, health, home
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('favicon.ico', favicon, name='favicon'),
     path('', home, name='Module_Home_home'),
     path('health/', health, name='health'),
     path("accounts/", include("core.accounts.urls")),

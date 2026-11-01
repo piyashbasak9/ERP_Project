@@ -1,5 +1,5 @@
 window.handleAuthChallenge = function (body) {
-    const target = body && (body.mfa_url || body.login_url);
+    const target = body && body.login_url;
     if (!target) {
         return false;
     }

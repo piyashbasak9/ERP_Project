@@ -3,10 +3,11 @@ from datetime import timedelta
 from decimal import Decimal
 from uuid import uuid4
 
+from django.conf import settings
 from django.core.cache import cache
-from django.db import DatabaseError, connection
+from django.db import DatabaseError, connection, transaction
 from django.db.models import DecimalField, ExpressionWrapper, F, Sum
-from django.http import JsonResponse
+from django.http import FileResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from redis.exceptions import RedisError
@@ -221,3 +222,13 @@ def health(request):
         logger.warning('Readiness check failed')
         return JsonResponse({'status': 'unavailable'}, status=503)
     return JsonResponse({'status': 'ok'})
+
+
+@transaction.non_atomic_requests
+def favicon(_request):
+    icon_path = settings.BASE_DIR / 'static' / 'favicon.svg'
+    return FileResponse(
+        icon_path.open('rb'),
+        content_type='image/svg+xml',
+        headers={'Cache-Control': 'public, max-age=86400'},
+    )

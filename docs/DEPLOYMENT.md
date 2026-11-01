@@ -220,8 +220,8 @@ sudo deploy/release.sh "$(git rev-parse --short HEAD)" "$PWD"
 ```
 
 After the switch, the script restarts Gunicorn and Celery and checks
-`http://127.0.0.1:8000/health/`. Confirm Nginx HTTPS, login, privileged MFA,
-database TLS, static files and authorized private-media downloads before
+`http://127.0.0.1:8000/health/`. Confirm Nginx HTTPS, login, database TLS,
+static files and authorized private-media downloads before
 opening access to users. Direct requests to `/_private_media/` must return 404.
 
 For each update, take and verify an encrypted backup first, then deploy the
@@ -285,32 +285,14 @@ databases created directly by the runner's PostgreSQL installation.
    verification. Validate and reload Nginx after installing its certificate
    and private key.
 5. Coordinate Django signing-key rotation; existing signed sessions and
-   password-reset links will no longer validate. Require sign-in again and
-   verify privileged MFA.
+   password-reset links will no longer validate. Require sign-in again.
 6. Rotate the age recipient for new backups. Retain the old decryption identity
    in protected escrow for the backup retention period, and test restore of
    archives encrypted to both recipients.
 7. Record approver, date, systems changed, and verification evidence without
    storing credentials in logs, tickets, or source control.
 
-## 8. Emergency MFA recovery
-
-If no administrator can complete MFA, an authorized server operator can reset
-an account through the audited, server-only Django command. Record the operator
-and incident/ticket reason. Do not expose this command through a web endpoint.
-
-```sh
-sudo -u erpapp env \
-  DJANGO_SETTINGS_MODULE=ERP.settings \
-  /srv/erp/venv/bin/python /srv/erp/current/manage.py reset_user_mfa \
-  --username '<account>' --reason '<incident or ticket reason>'
-```
-
-The command records an audit event and invalidates the account's enrolled
-device and recovery codes. Verify the audit record, contact the affected user
-through the approved channel, and require MFA enrollment at their next login.
-
-## 9. Incident checklist
+## 8. Incident checklist
 
 - [ ] Assign an incident owner and preserve relevant logs, request IDs, and
   backup metadata.

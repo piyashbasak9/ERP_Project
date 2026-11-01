@@ -2,9 +2,7 @@
 
 This guide describes the workflows that are present in the application. Menus
 and actions appear only when the signed-in user has the matching permission.
-Choose the correct active branch before entering or reviewing records. Privileged
-users must complete MFA enrollment when prompted; sensitive actions may ask for
-an MFA code again.
+Choose the correct active branch before entering or reviewing records.
 
 ## Field officer
 
@@ -98,8 +96,7 @@ an MFA code again.
 1. Open the original savings transaction and choose **Reverse**, or open the
    collection sheet and choose **Request reversal**. Loan payments posted from
    a collection sheet are corrected through that sheet's reversal workflow.
-2. Enter the effective date and a specific reason. Complete MFA re-verification
-   if prompted.
+2. Enter the effective date and a specific reason.
    - **Expected result:** a reversal request is recorded; the original posted
      record remains unchanged.
 3. A different authorized checker reviews and approves the request.
@@ -114,7 +111,7 @@ an MFA code again.
    - **Expected result:** the branch business date advances and posting to the
      closed date is blocked.
 3. To reopen a closed day, use the reopen action, enter the reason, complete
-   the required checker/MFA step, and submit for approval.
+   the required checker step, and submit for approval.
    - **Expected result:** the reopen is audited; the business date changes only
      after a different authorized approver accepts it.
 
@@ -161,9 +158,8 @@ an MFA code again.
    permitted branch, and save.
    - **Expected result:** the user can sign in only to permitted pages and
      accessible branches; permissions are audited.
-3. Have the user sign in and complete MFA enrollment if required. Verify access
-   with the user's account rather than granting extra permissions to bypass a
-   denied action.
+3. Have the user sign in and verify access with that account rather than
+   granting extra permissions to bypass a denied action.
 
 ### Change settings safely
 
@@ -173,9 +169,6 @@ an MFA code again.
    setting, then save.
    - **Expected result:** the saved configuration is visible after refresh and
      the change is audited.
-3. For emergency MFA recovery, use the documented server-only management
-   command in [the deployment runbook](./DEPLOYMENT.md); do not disable MFA or
-   edit database rows by hand.
 
 ## Auditor
 
@@ -197,7 +190,7 @@ an MFA code again.
 
 ## Safe operating rules
 
-- Never share an account, password, MFA code or recovery code.
+- Never share an account or password.
 - Check the active branch, member/account identity, date and amount before every
   financial submission.
 - Do not repeat a submission after a timeout until its status/reference has

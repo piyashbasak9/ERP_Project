@@ -8,6 +8,7 @@ from core.common.popup import popup_json_response
 
 PUBLIC_ROUTE_NAMES = {
     'Module_Auth_login',
+    'favicon',
     'health',
 }
 

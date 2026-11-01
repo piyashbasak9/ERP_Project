@@ -1,24 +1,15 @@
 import json
 import logging
 import re
-from io import StringIO
 from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.contrib.auth.hashers import identify_hasher
 from django.core.exceptions import ImproperlyConfigured
-from django.core.management import call_command
 from django.test import Client, SimpleTestCase, TestCase, override_settings
-from django.urls import reverse
-from django.utils import timezone
-from django_otp.oath import TOTP, totp
-from django_otp.plugins.otp_totp.models import TOTPDevice
+from django.urls import NoReverseMatch, reverse
 
-from core.audit.models import AuditLog
 from ERP.settings import resolve_database_ssl_options
-
-from .models import Permission, RecoveryCode, Role, RolePermission, UserRole
 
 User = get_user_model()
 
@@ -98,8 +89,8 @@ class FirstPartyXSSAuditTests(SimpleTestCase):
             logging.INFO,
             __file__,
             1,
-            'password=%s national_id=%s token=%s',
-            ('dont-log-this', '12345678901', 'private-token'),
+            'national_id=%s token=%s password=%s',
+            ('12345678901', 'private-token', 'dont-log-this'),
             None,
         )
         rendered = json.loads(SafeJSONFormatter().format(record))
@@ -108,6 +99,24 @@ class FirstPartyXSSAuditTests(SimpleTestCase):
         self.assertNotIn('dont-log-this', rendered['message'])
         self.assertNotIn('12345678901', rendered['message'])
         self.assertNotIn('private-token', rendered['message'])
+
+
+class FaviconRoutingTests(SimpleTestCase):
+    @override_settings(
+        MIDDLEWARE=[
+            'django.contrib.sessions.middleware.SessionMiddleware',
+            'django.contrib.auth.middleware.AuthenticationMiddleware',
+            'core.accounts.global_auth_middleware.GlobalLoginRequiredMiddleware',
+            'core.accounts.middleware.URLPermissionMiddleware',
+        ]
+    )
+    def test_anonymous_favicon_request_serves_public_icon_without_login_redirect(self):
+        response = Client().get('/favicon.ico')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'image/svg+xml')
+        self.assertEqual(response['Cache-Control'], 'public, max-age=86400')
+        self.assertEqual(b''.join(response.streaming_content)[:4], b'<svg')
 
 
 class ProductionDatabaseTLSSettingsTests(SimpleTestCase):
@@ -131,7 +140,7 @@ class ProductionDatabaseTLSSettingsTests(SimpleTestCase):
 
 
 class AbsoluteSessionDeadlineTests(TestCase):
-    @override_settings(SESSION_ABSOLUTE_TIMEOUT_HOURS=12, MFA_REQUIRED=False)
+    @override_settings(SESSION_ABSOLUTE_TIMEOUT_HOURS=12)
     def test_absolute_expiry_is_independent_of_sliding_activity(self):
         user = User.objects.create_user(
             username='absolute-session-user',
@@ -151,7 +160,7 @@ class AbsoluteSessionDeadlineTests(TestCase):
         self.assertIn('/accounts/login/', response['Location'])
         self.assertFalse(response.wsgi_request.user.is_authenticated)
 
-    @override_settings(SESSION_ABSOLUTE_TIMEOUT_HOURS=12, MFA_REQUIRED=False)
+    @override_settings(SESSION_ABSOLUTE_TIMEOUT_HOURS=12)
     def test_expired_session_returns_json_login_challenge(self):
         user = User.objects.create_user(
             username='absolute-session-ajax-user',
@@ -178,251 +187,28 @@ class HealthEndpointTests(TestCase):
         self.assertRegex(response['X-Request-ID'], r'^[0-9a-f]{32}$')
 
 
-@override_settings(
-    MFA_REQUIRED=True,
-    MFA_FAILURE_LIMIT=5,
-    MFA_COOLOFF_SECONDS=900,
-    PASSWORD_HASHERS=['django.contrib.auth.hashers.PBKDF2PasswordHasher'],
-)
-class PrivilegedMFAEnforcementTests(TestCase):
-    def setUp(self):
-        self.user = User.objects.create_superuser(
-            username='mfa-admin',
-            email='mfa-admin@example.invalid',
+class LoginWithoutMFATests(TestCase):
+    def test_superuser_login_goes_directly_to_home_without_second_factor(self):
+        user = User.objects.create_superuser(
+            username='login-without-mfa-admin',
+            email='login-without-mfa@example.invalid',
             password='Temporary-test-password-123!',
         )
-        self.client = Client()
-        self.client.force_login(self.user)
 
-    def _new_totp(self, device):
-        return f'{totp(device.bin_key, step=device.step, t0=device.t0, digits=device.digits):0{device.digits}d}'
-
-    def _enroll(self):
-        response = self.client.get(reverse('accounts:Module_Auth_mfa_setup'))
-        self.assertEqual(response.status_code, 200)
-        device = TOTPDevice.objects.get(user=self.user, name='primary')
         response = self.client.post(
-            reverse('accounts:Module_Auth_mfa_setup'),
-            {'token': self._new_totp(device)},
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(device.__class__.objects.get(pk=device.pk).confirmed)
-        return response
-
-    def test_password_only_login_cannot_open_page_or_ajax_endpoint(self):
-        self.client.logout()
-        login = self.client.post(
             reverse('accounts:Module_Auth_login'),
-            {'username': self.user.username, 'password': 'Temporary-test-password-123!'},
-        )
-        self.assertEqual(login.status_code, 302)
-        self.assertIn(
-            reverse('accounts:Module_Auth_mfa_setup'),
-            login['Location'],
-        )
-        self.assertIn('auth_started_at', self.client.session)
-        page = self.client.get('/')
-        self.assertRedirects(
-            page,
-            reverse('accounts:Module_Auth_mfa_setup') + '?next=%2F',
-            fetch_redirect_response=False,
-        )
-        direct = self.client.get(reverse('accounts:Module_Auth_list_users'))
-        self.assertEqual(direct.status_code, 302)
-        self.assertIn(reverse('accounts:Module_Auth_mfa_setup'), direct['Location'])
-        ajax = self.client.get(
-            reverse('accounts:Module_Auth_list_users'),
-            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
-        )
-        self.assertEqual(ajax.status_code, 403)
-        self.assertIn('mfa_url', ajax.json())
-        json_fetch = self.client.get(
-            reverse('accounts:Module_Auth_list_users'),
-            HTTP_ACCEPT='application/json',
-        )
-        self.assertEqual(json_fetch.status_code, 403)
-        self.assertIn('mfa_url', json_fetch.json())
-
-    def test_enrollment_creates_hashed_recovery_codes(self):
-        response = self._enroll()
-        codes = response.context['recovery_codes']
-
-        self.assertEqual(len(codes), 10)
-        stored = list(RecoveryCode.objects.filter(user=self.user))
-        self.assertEqual(len(stored), 10)
-        self.assertNotIn(codes[0], stored[0].code_hash)
-        self.assertEqual(identify_hasher(stored[0].code_hash).algorithm, 'pbkdf2_sha256')
-
-    def test_recovery_code_is_single_use_and_unlocks_the_session(self):
-        response = self._enroll()
-        recovery_code = response.context['recovery_codes'][0]
-        session = self.client.session
-        session.pop('mfa_verified_at', None)
-        session.save()
-
-        verify_url = reverse('accounts:Module_Auth_mfa_verify')
-        verified = self.client.post(verify_url, {'token': recovery_code})
-        self.assertEqual(verified.status_code, 302)
-        self.assertEqual(
-            RecoveryCode.objects.filter(user=self.user, used_at__isnull=False).count(),
-            1,
+            {'username': user.username, 'password': 'Temporary-test-password-123!'},
         )
 
-        self.client.logout()
-        self.client.force_login(self.user)
-        rejected = self.client.post(verify_url, {'token': recovery_code})
-        self.assertEqual(rejected.status_code, 200)
-        self.assertContains(rejected, 'was not accepted')
+        self.assertRedirects(response, '/', fetch_redirect_response=False)
+        self.assertEqual(self.client.get('/').status_code, 200)
+        self.assertNotIn('mfa_verified_at', self.client.session)
 
-    def test_totp_code_cannot_be_replayed(self):
-        self._enroll()
-        self.client.logout()
-        self.client.force_login(self.user)
-        device = TOTPDevice.objects.get(user=self.user, name='primary')
-        current_time = int(timezone.now().timestamp())
-        next_time_step = (
-            (current_time - device.t0) // device.step + 1
-        ) * device.step + device.t0
-        generator = TOTP(
-            device.bin_key,
-            step=device.step,
-            t0=device.t0,
-            digits=device.digits,
-            drift=device.drift,
-        )
-        generator.time = next_time_step
-        token = f'{generator.token():0{device.digits}d}'
-
-        with patch(
-            'django_otp.plugins.otp_totp.models.time.time',
-            return_value=next_time_step,
+    def test_mfa_routes_are_not_registered(self):
+        for route_name in (
+            'accounts:Module_Auth_mfa_setup',
+            'accounts:Module_Auth_mfa_verify',
+            'accounts:Module_Auth_mfa_reset',
         ):
-            first = self.client.post(
-                reverse('accounts:Module_Auth_mfa_verify'),
-                {'token': token},
-            )
-        self.assertEqual(first.status_code, 302)
-        self.client.logout()
-        self.client.force_login(self.user)
-        with patch(
-            'django_otp.plugins.otp_totp.models.time.time',
-            return_value=next_time_step,
-        ):
-            replay = self.client.post(
-                reverse('accounts:Module_Auth_mfa_verify'),
-                {'token': token},
-            )
-
-        self.assertEqual(replay.status_code, 200)
-        self.assertContains(replay, 'was not accepted')
-
-    def test_sensitive_action_requires_recent_mfa_again(self):
-        self._enroll()
-        session = self.client.session
-        session['mfa_verified_at'] = int(timezone.now().timestamp()) - 301
-        session.save()
-
-        sensitive_urls = (
-            reverse('branch:Module_Branch_day_end_reopen'),
-            reverse('accounts:Module_Auth_edit_role', args=[999]),
-            reverse('accounting:Module_Accounting_journal_reverse', args=[999]),
-        )
-        for url in sensitive_urls:
-            with self.subTest(url=url):
-                response = self.client.get(url)
-                self.assertEqual(response.status_code, 302)
-                self.assertIn(reverse('accounts:Module_Auth_mfa_verify'), response['Location'])
-
-        reversal_url = reverse('collections:Module_Collections_sheet_reversal_request', args=[999])
-        ajax = self.client.post(reversal_url, HTTP_ACCEPT='application/json')
-        self.assertEqual(ajax.status_code, 403)
-        self.assertIn('mfa_url', ajax.json())
-
-    @override_settings(MFA_FAILURE_LIMIT=2)
-    def test_failed_mfa_attempts_are_locked_out(self):
-        response = self.client.get(reverse('accounts:Module_Auth_mfa_setup'))
-        self.assertEqual(response.status_code, 200)
-        setup_url = reverse('accounts:Module_Auth_mfa_setup')
-        self.client.post(setup_url, {'token': '000000'})
-        self.client.post(setup_url, {'token': '000000'})
-        locked = self.client.post(setup_url, {'token': '000000'})
-
-        self.assertEqual(locked.status_code, 429)
-
-    def test_another_privileged_admin_can_reset_mfa_with_reason_and_audit(self):
-        target = User.objects.create_superuser(
-            username='mfa-reset-target',
-            email='mfa-reset-target@example.invalid',
-            password='Temporary-test-password-123!',
-        )
-        self._enroll()
-        response = self.client.post(
-            reverse('accounts:Module_Auth_mfa_reset', args=[target.pk]),
-            {'reason': 'Lost authenticator device'},
-        )
-
-        self.assertEqual(response.status_code, 302)
-        self.assertFalse(TOTPDevice.objects.filter(user=target).exists())
-        audit = AuditLog.objects.get(
-            action='MFAReset', entity_name='CustomUser', entity_id=str(target.pk)
-        )
-        self.assertEqual(audit.remarks, 'Lost authenticator device')
-        target_client = Client()
-        login = target_client.post(
-            reverse('accounts:Module_Auth_login'),
-            {'username': target.username, 'password': 'Temporary-test-password-123!'},
-        )
-        self.assertEqual(login.status_code, 302)
-        self.assertIn(reverse('accounts:Module_Auth_mfa_setup'), login['Location'])
-
-    def test_server_command_resets_only_superuser_mfa_and_audits_operator(self):
-        self._enroll()
-        recovery_codes = RecoveryCode.objects.filter(user=self.user)
-        self.assertTrue(recovery_codes.exists())
-        output = StringIO()
-
-        call_command(
-            'reset_user_mfa',
-            username=self.user.username,
-            reason='Authenticator lost during server recovery',
-            operator='on-call-operator',
-            stdout=output,
-        )
-
-        self.assertFalse(TOTPDevice.objects.filter(user=self.user).exists())
-        self.assertFalse(RecoveryCode.objects.filter(user=self.user).exists())
-        audit = AuditLog.objects.get(
-            action='MFAReset',
-            entity_name='CustomUser',
-            entity_id=str(self.user.pk),
-        )
-        self.assertIsNone(audit.user)
-        self.assertEqual(audit.user_name, 'server-command:on-call-operator')
-        self.assertEqual(audit.remarks, 'Authenticator lost during server recovery')
-        self.assertTrue(audit.new_values['mfa_enrollment_required'])
-        self.assertIn('enrollment is required', output.getvalue())
-
-        self.client.force_login(self.user)
-        setup = self.client.get('/')
-        self.assertEqual(setup.status_code, 302)
-        self.assertIn(reverse('accounts:Module_Auth_mfa_setup'), setup['Location'])
-
-    def test_role_with_user_admin_permission_requires_mfa(self):
-        role = Role.objects.create(name='MFA privileged role')
-        permission = Permission.objects.create(
-            route_name='Module_Auth_list_users',
-            url_pattern='/accounts/users/',
-        )
-        RolePermission.objects.create(role=role, permission=permission)
-        target = User.objects.create_user(
-            username='mfa-role-user',
-            password='Temporary-test-password-123!',
-        )
-        UserRole.objects.create(user=target, role=role)
-        client = Client()
-        client.force_login(target)
-
-        response = client.get('/')
-
-        self.assertEqual(response.status_code, 302)
-        self.assertIn(reverse('accounts:Module_Auth_mfa_setup'), response['Location'])
+            with self.subTest(route_name=route_name), self.assertRaises(NoReverseMatch):
+                reverse(route_name, args=[1] if route_name.endswith('mfa_reset') else [])

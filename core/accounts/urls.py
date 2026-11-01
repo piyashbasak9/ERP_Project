@@ -14,7 +14,4 @@ urlpatterns = [
     path('users/', views.list_users, name='Module_Auth_list_users'),
     path('users/edit/<int:pk>/', views.edit_user, name='Module_Auth_edit_user'),
     path('users/delete/<int:pk>/', views.delete_user, name='Module_Auth_delete_user'),
-    path('mfa/setup/', views.mfa_setup, name='Module_Auth_mfa_setup'),
-    path('mfa/verify/', views.mfa_verify, name='Module_Auth_mfa_verify'),
-    path('mfa/reset/<int:user_id>/', views.mfa_admin_reset, name='Module_Auth_mfa_reset'),
 ]

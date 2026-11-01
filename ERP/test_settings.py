@@ -48,4 +48,3 @@ CACHES = {
 }
 
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
-MFA_REQUIRED = False
