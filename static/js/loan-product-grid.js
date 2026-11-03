@@ -58,7 +58,7 @@ $(function () {
             id: "id"
         },
         pager: "#loanProductPager",
-        rowNum: 25,
+        rowNum: 50,
         rowList: [25, 50, 100],
         viewrecords: true,
         autowidth: true,

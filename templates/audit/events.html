@@ -11,7 +11,7 @@
             <div class="col-md-3 align-self-end"><button class="btn btn-primary" type="submit">Filter</button></div>
         </div>
     </form>
-    <div class="table-responsive card"><table class="table table-hover mb-0">
+    <div class="table-responsive card"><table class="table table-hover mb-0 js-jqgrid-source">
         <thead class="table-dark"><tr><th>Time</th><th>Category</th><th>Severity</th><th>Status</th><th>Message</th><th>Branch</th></tr></thead>
         <tbody>{% for event in page_obj %}
             <tr><td>{{ event.timestamp_utc|date:"Y-m-d H:i:s" }}</td><td>{{ event.new_values.category }}</td><td>{{ event.new_values.severity }}</td><td>{{ event.new_values.status }}</td><td>{{ event.new_values.message }}</td><td>{{ event.branch.name|default:"—" }}</td></tr>

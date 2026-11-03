@@ -14,7 +14,7 @@
         <h2 class="h5">{{ year.name }} <small class="text-muted">{{ year.start_date }} — {{ year.end_date }}</small>
             {% if year.is_closed %}<span class="badge text-bg-secondary">Closed</span>{% else %}<span class="badge text-bg-success">Open</span>{% endif %}
         </h2>
-        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0 js-jqgrid-source">
             <thead><tr><th>#</th><th>Period</th><th>Dates</th><th>Status</th><th>Action</th></tr></thead>
             <tbody>{% for period in year.periods.all %}
                 <tr><td>{{ period.number }}</td><td>{{ period.name }}</td><td>{{ period.start_date }} — {{ period.end_date }}</td>

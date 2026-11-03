@@ -40,8 +40,8 @@ $(function () {
                 formatoptions: {escape: false}
             }
         ],
-        rowNum: 20,
-        rowList: [20, 50, 100, 200, 500],
+        rowNum: 50,
+        rowList: [25, 50, 100],
         pager: "#branchPager",
         viewrecords: true,
         autowidth: true,

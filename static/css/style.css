@@ -1,8 +1,8 @@
 :root {
     --brand-primary: #4169a1;
     --brand-primary-dark: #31537f;
-    --brand-dark: #1e2b3a;
-    --brand-darker: #172330;
+    --brand-dark: #064157;
+    --brand-darker: #042f43;
     --page-bg: #f2f5f8;
     --surface: #ffffff;
     --text: #263442;
@@ -1165,6 +1165,8 @@ textarea:focus-visible {
 
 .ui-jqgrid .ui-jqgrid-htable th,
 .ui-jqgrid .ui-jqgrid-htable th div {
+    height: 31px !important;
+    padding: 0.25rem 0.45rem;
     background: #edf2f6 !important;
     color: #46596b;
     font-size: 0.78rem !important;
@@ -1172,11 +1174,11 @@ textarea:focus-visible {
 }
 
 .ui-jqgrid tr.jqgrow td {
+    height: 29px;
     border-color: #e8edf2;
     color: #344454;
-    font-size: 0.86rem !important;
-    padding-top: 9px !important;
-    padding-bottom: 9px !important;
+    font-size: 0.8rem !important;
+    padding: 0.25rem 0.45rem !important;
 }
 
 .ui-jqgrid tr.jqgrow:hover {
@@ -2014,5 +2016,84 @@ textarea:focus-visible {
     .dashboard-primary-action:hover,
     .module-card:hover {
         transform: none;
+    }
+}
+
+.list-grid-toolbar {
+    display: flex;
+    min-height: 42px;
+    align-items: center;
+    gap: 0.55rem;
+    margin-bottom: 0.55rem;
+    padding: 0.4rem 0.7rem;
+    border: 1px solid #c9dce6;
+    border-radius: 0.35rem;
+    background: linear-gradient(105deg, #e8f0f8, #dcf4f1);
+    color: #35566d;
+}
+
+.list-grid-toolbar label {
+    display: inline-flex;
+    align-items: center;
+    color: #0c6070;
+}
+
+.list-grid-toolbar input {
+    width: min(100%, 340px);
+    border-color: #b7cbd8;
+    background: rgba(255, 255, 255, 0.92);
+}
+
+.list-grid-count {
+    margin-left: auto;
+    color: #526e80;
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+.jqgrid-responsive {
+    overflow: hidden;
+    border: 1px solid #cbd4da;
+    border-radius: 0.35rem;
+    background: #fff;
+}
+
+.jqgrid-responsive .ui-jqgrid {
+    border: 0;
+    border-radius: 0;
+}
+
+.jqgrid-responsive .ui-jqgrid tr.jqgrow:nth-child(even) {
+    background: #f7f8f9;
+}
+
+.jqgrid-responsive .ui-jqgrid .ui-pg-table td {
+    padding: 0.25rem;
+    color: #687985;
+    font-size: 0.75rem;
+}
+
+.list-grid-pager {
+    margin-top: 0.25rem;
+}
+
+.list-grid-pager .ui-jqgrid-pager {
+    border-color: #cbd4da;
+    background: #f5f7f8;
+}
+
+.jqgrid-responsive .btn {
+    --bs-btn-padding-y: 0.15rem;
+    --bs-btn-padding-x: 0.4rem;
+    --bs-btn-font-size: 0.75rem;
+}
+
+@media (max-width: 767.98px) {
+    .list-grid-toolbar {
+        flex-wrap: wrap;
+    }
+
+    .list-grid-toolbar input {
+        flex: 1;
     }
 }

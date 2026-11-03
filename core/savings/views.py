@@ -57,7 +57,11 @@ def product_list(request):
         order = order_fields.get(request.GET.get('sidx', 'code'), 'code')
         if request.GET.get('sord', 'asc').lower() == 'desc':
             order = f'-{order}'
-        page_obj = Paginator(products.order_by(order), 25).get_page(
+        try:
+            page_size = min(max(int(request.GET.get('rows', 50)), 1), 100)
+        except (TypeError, ValueError):
+            page_size = 50
+        page_obj = Paginator(products.order_by(order), page_size).get_page(
             request.GET.get('page', 1)
         )
         return JsonResponse({
@@ -192,7 +196,7 @@ def account_list(request):
         )
     if status in dict(SavingsAccount.STATUS_CHOICES):
         accounts = accounts.filter(status=status)
-    page_obj = Paginator(accounts.order_by('account_number'), 25).get_page(
+    page_obj = Paginator(accounts.order_by('account_number'), 100).get_page(
         request.GET.get('page', 1)
     )
     return render(request, 'savings/account_list.html', {
@@ -310,7 +314,7 @@ def transaction_list(request):
     account_number = request.GET.get('account', '').strip()
     if account_number:
         transactions = transactions.filter(account__account_number=account_number)
-    page_obj = Paginator(transactions, 30).get_page(request.GET.get('page', 1))
+    page_obj = Paginator(transactions, 100).get_page(request.GET.get('page', 1))
     return render(request, 'savings/transaction_list.html', {
         'page_obj': page_obj,
         'statuses': SavingsTransaction.STATUS_CHOICES,

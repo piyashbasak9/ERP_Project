@@ -10,7 +10,7 @@
         <div class="col-sm-4 col-md-3"><select class="form-select" name="status"><option value="">All statuses</option>{% for value,label in statuses %}<option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
         <div class="col-auto"><button class="btn btn-outline-primary" type="submit">Filter</button></div>
     </form>
-    <div class="table-responsive card"><table class="table table-hover align-middle mb-0">
+    <div class="table-responsive card"><table class="table table-hover align-middle mb-0 js-jqgrid-source">
         <thead class="table-dark"><tr><th>Date</th><th>Voucher</th><th>Branch</th><th>Narration</th><th>Status</th><th>Debit</th><th>Credit</th><th></th></tr></thead>
         <tbody>{% for entry in page_obj %}
             <tr><td>{{ entry.journal_date }}</td><td>{{ entry.voucher_number }}</td><td>{{ entry.branch.code }}</td><td>{{ entry.narration }}</td><td>{{ entry.get_status_display }}</td>
@@ -19,5 +19,6 @@
                 <td><a class="btn btn-sm btn-outline-primary" href="{% url 'accounting:Module_Accounting_journal_detail' entry.pk %}">View</a></td></tr>
         {% empty %}<tr><td colspan="8" class="text-center text-muted py-4">No journal entries found.</td></tr>{% endfor %}</tbody>
     </table></div>
+    {% include 'partials/pagination.html' with page_obj=page_obj %}
 </div>
 {% endblock %}

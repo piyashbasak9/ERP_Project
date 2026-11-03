@@ -251,7 +251,7 @@ def member_list(request):
     selected_status = request.GET.get('status', '')
     if selected_status in dict(Member.STATUS_CHOICES):
         queryset = queryset.filter(status=selected_status)
-    page_obj = Paginator(queryset, 25).get_page(request.GET.get('page', 1))
+    page_obj = Paginator(queryset, 100).get_page(request.GET.get('page', 1))
     return render(request, 'members/list.html', {
         'page_obj': page_obj,
         'search': search,
@@ -522,7 +522,7 @@ ORGANIZATION_RESOURCES = {
 def organization_list(request, resource):
     model, _, order_field, singular, _, add_route, edit_route = ORGANIZATION_RESOURCES[resource]
     queryset = model.objects.filter(is_active=True).order_by(order_field)
-    page_obj = Paginator(queryset, 25).get_page(request.GET.get('page', 1))
+    page_obj = Paginator(queryset, 100).get_page(request.GET.get('page', 1))
     for record in page_obj.object_list:
         record.edit_url = reverse(f'branch:{edit_route}', args=[record.pk])
     return render(request, 'branch/organization_list.html', {

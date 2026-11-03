@@ -65,7 +65,11 @@ def product_list(request):
         order = order_fields.get(request.GET.get("sidx", "code"), "code")
         if request.GET.get("sord", "asc").lower() == "desc":
             order = f"-{order}"
-        page_obj = Paginator(products.order_by(order), 25).get_page(
+        try:
+            page_size = min(max(int(request.GET.get("rows", 50)), 1), 100)
+        except (TypeError, ValueError):
+            page_size = 50
+        page_obj = Paginator(products.order_by(order), page_size).get_page(
             request.GET.get("page", 1)
         )
         return JsonResponse({

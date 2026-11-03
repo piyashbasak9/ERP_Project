@@ -3,7 +3,7 @@
 {% block content %}
 <div class="container-fluid py-3">
     <span class="eyebrow">LOANS</span><h1 class="h3 mb-3">Repayments</h1>
-    <div class="table-responsive card"><table class="table table-hover align-middle mb-0">
+    <div class="table-responsive card"><table class="table table-hover align-middle mb-0 js-jqgrid-source">
         <thead class="table-dark"><tr><th>Date</th><th>Loan</th><th>Member</th><th>Branch</th><th>Amount</th><th>Principal</th><th>Interest</th><th>Fees</th><th>Penalty</th><th>Voucher</th></tr></thead>
         <tbody>
             {% for payment in payments %}

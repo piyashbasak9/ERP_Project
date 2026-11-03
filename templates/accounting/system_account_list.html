@@ -6,7 +6,7 @@
         <div><span class="eyebrow">ACCOUNTING SETUP</span><h1 class="h3 mb-0">System account mappings</h1></div>
         <a class="btn btn-primary" href="{% url 'accounting:Module_Accounting_system_account_add' %}?popup=1" data-popup data-popup-title="Map system account">Add mapping</a>
     </div>
-    <div class="table-responsive card"><table class="table table-hover align-middle mb-0">
+    <div class="table-responsive card"><table class="table table-hover align-middle mb-0 js-jqgrid-source">
         <thead class="table-dark"><tr><th>System function</th><th>Account</th><th>Type</th><th></th></tr></thead>
         <tbody>{% for mapping in mappings %}
             <tr><td>{{ mapping.get_key_display }}</td><td>{{ mapping.account.code }} — {{ mapping.account.name }}</td><td>{{ mapping.account.get_account_type_display }}</td>

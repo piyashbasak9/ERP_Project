@@ -38,7 +38,7 @@ $(function () {
             id: "id"
         },
         pager: "#collectionPager",
-        rowNum: 25,
+        rowNum: 50,
         rowList: [25, 50, 100],
         viewrecords: true,
         autowidth: true,

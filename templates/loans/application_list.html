@@ -7,7 +7,7 @@
         <a class="btn btn-primary" href="{% url 'loans:Module_Loans_application_add' %}?popup=1" data-popup data-popup-title="New loan application">New application</a>
     </div>
     <div class="table-responsive card">
-        <table class="table table-hover align-middle mb-0">
+        <table class="table table-hover align-middle mb-0 js-jqgrid-source">
             <thead class="table-dark"><tr><th>Member</th><th>Branch</th><th>Product</th><th>Requested</th><th>Approved</th><th>Cycle</th><th>Status</th><th>Maker / checker</th><th>Actions</th></tr></thead>
             <tbody>
                 {% for application in applications %}

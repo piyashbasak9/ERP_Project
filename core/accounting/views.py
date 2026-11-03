@@ -201,7 +201,7 @@ def journal_entry_list(request):
     status = request.GET.get('status', '').strip()
     if status in dict(JournalEntry.STATUS_CHOICES):
         queryset = queryset.filter(status=status)
-    page_obj = Paginator(queryset, 25).get_page(request.GET.get('page', 1))
+    page_obj = Paginator(queryset, 100).get_page(request.GET.get('page', 1))
     return render(request, 'accounting/journal_entry_list.html', {
         'page_obj': page_obj,
         'selected_status': status,
