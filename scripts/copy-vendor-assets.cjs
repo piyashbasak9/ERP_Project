@@ -13,6 +13,8 @@ const mappings = [
     ["free-jqgrid/js/jquery.jqgrid.min.js", "static/vendor/free-jqgrid/js/jquery.jqgrid.min.js"],
     ["free-jqgrid/js/i18n/grid.locale-en.js", "static/vendor/free-jqgrid/js/i18n/grid.locale-en.js"],
     ["free-jqgrid/css", "static/vendor/free-jqgrid/css"],
+    ["slim-select/dist/slimselect.min.js", "static/vendor/slim-select/slimselect.min.js"],
+    ["slim-select/dist/slimselect.css", "static/vendor/slim-select/slimselect.css"],
 ];
 const licenses = [
     ["bootstrap", "bootstrap"],
@@ -20,6 +22,7 @@ const licenses = [
     ["free-jqgrid", "free-jqgrid"],
     ["jquery", "jquery"],
     ["jquery-ui-dist", "jquery-ui-dist"],
+    ["slim-select", "slim-select"],
 ];
 
 for (const [source, destination] of mappings) {

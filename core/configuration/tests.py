@@ -1,11 +1,16 @@
 from datetime import date
+from io import BytesIO
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.core.files.base import ContentFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils.html import conditional_escape
+from PIL import Image
 
 from core.accounts.models import Permission, Role, RolePermission, UserRole
 from core.accounts.permission_utils import sync_permissions
@@ -13,7 +18,7 @@ from core.audit.models import AuditLog
 from core.branch.models import Branch
 from core.common.templatetags.user_formatting import config_money, user_date
 
-from .models import SystemConfiguration, UserPreference
+from .models import OrganizationConfiguration, SystemConfiguration, UserPreference
 from .services import get_system_configuration
 
 
@@ -66,7 +71,6 @@ class ConfigurationRouteTests(TestCase):
             ("Module_Settings_business_rules", "GET", "configuration:Module_Settings_business_rules"),
             ("Module_Settings_business_rules_save", "POST", "configuration:Module_Settings_business_rules_save"),
             ("Module_Settings_system_logo", "GET", "configuration:Module_Settings_system_logo"),
-            ("Module_Settings_organization_logo", "GET", "configuration:Module_Settings_organization_logo"),
         )
         for route_name, method, reverse_name in routes:
             with self.subTest(route=route_name):
@@ -375,3 +379,143 @@ class ConfigurationRouteTests(TestCase):
 
         self.assertEqual(config_money("12345678.9", configuration), "₹1,23,45,678.90")
         self.assertEqual(user_date(date(2026, 10, 30), preference), "30/10/2026")
+
+
+class HeaderBrandingTests(TestCase):
+    def setUp(self):
+        self.media_directory = TemporaryDirectory()
+        self.addCleanup(self.media_directory.cleanup)
+        media_settings = override_settings(MEDIA_ROOT=self.media_directory.name)
+        media_settings.enable()
+        self.addCleanup(media_settings.disable)
+        self.branch = Branch.objects.create(name="Header Branch", code="HDR")
+        self.user = get_user_model().objects.create_superuser(
+            username="header-branding-admin",
+            email="header-branding@example.invalid",
+            password="Header-branding-test-password-123!",
+            branch=self.branch,
+        )
+        self.organization = OrganizationConfiguration.objects.create(
+            legal_name="Header Organization"
+        )
+
+    def save_logo(self):
+        image_buffer = BytesIO()
+        Image.new("RGB", (4, 2), color="navy").save(image_buffer, format="PNG")
+        self.organization.logo.save(
+            "organization-logo.png",
+            ContentFile(image_buffer.getvalue()),
+            save=True,
+        )
+
+    def test_header_uses_default_icon_without_an_organization_logo(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("branch:Module_Branch_index_branch"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            '<img src="/static/favicon.svg" alt="" aria-hidden="true">',
+            html=True,
+        )
+        self.assertNotContains(response, 'class="erp-organization-icon"><img')
+
+    def test_header_uses_private_logo_with_escaped_organization_alt_text(self):
+        payload = '<script>alert("brand")</script> & Co'
+        self.organization.legal_name = payload
+        self.organization.save(update_fields=["legal_name"])
+        self.save_logo()
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("branch:Module_Branch_index_branch"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f'alt="{conditional_escape(payload)}"',
+        )
+        self.assertContains(
+            response,
+            f'src="{reverse("configuration:Module_Settings_organization_logo")}"',
+        )
+        self.assertNotContains(response, payload)
+
+        logo_response = self.client.get(
+            reverse("configuration:Module_Settings_organization_logo")
+        )
+        self.assertEqual(logo_response.status_code, 200)
+        self.assertTrue(
+            b"".join(logo_response.streaming_content).startswith(b"\x89PNG\r\n\x1a\n")
+        )
+
+        with override_settings(DEBUG=False):
+            accelerated_response = self.client.get(
+                reverse("configuration:Module_Settings_organization_logo")
+            )
+        self.assertEqual(accelerated_response.status_code, 200)
+        self.assertTrue(
+            accelerated_response["X-Accel-Redirect"].startswith(
+                "/_private_media/"
+            )
+        )
+
+        self.client.logout()
+        private_logo = self.client.get(
+            reverse("configuration:Module_Settings_organization_logo")
+        )
+        self.assertNotEqual(private_logo.status_code, 200)
+
+    def test_logo_is_available_to_authenticated_users_without_being_public(self):
+        sync_permissions()
+        user = get_user_model().objects.create_user(
+            username="header-branding-member",
+            email="header-branding-member@example.invalid",
+            password="header-test-password",
+            branch=self.branch,
+        )
+        role = Role.objects.create(name="Header branding member role")
+        RolePermission.objects.create(
+            role=role,
+            permission=Permission.objects.get(
+                route_name="Module_Branch_index_branch"
+            ),
+        )
+        UserRole.objects.create(user=user, role=role)
+        self.save_logo()
+        self.client.force_login(user)
+
+        page = self.client.get(reverse("branch:Module_Branch_index_branch"))
+        logo = self.client.get(
+            reverse("configuration:Module_Settings_organization_logo")
+        )
+
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(
+            page,
+            f'src="{reverse("configuration:Module_Settings_organization_logo")}"',
+        )
+        self.assertEqual(logo.status_code, 200)
+        self.assertTrue(
+            b"".join(logo.streaming_content).startswith(b"\x89PNG\r\n\x1a\n")
+        )
+
+        self.client.logout()
+        anonymous_logo = self.client.get(
+            reverse("configuration:Module_Settings_organization_logo")
+        )
+        self.assertNotEqual(anonymous_logo.status_code, 200)
+
+    def test_login_page_only_shows_the_default_brand_icon(self):
+        self.save_logo()
+
+        response = self.client.get(reverse("accounts:Module_Auth_login"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            '<i class="bi bi-bank2" aria-hidden="true"></i>',
+            html=True,
+        )
+        self.assertNotContains(response, "Module_Settings_organization_logo")
+        self.assertNotContains(response, "erp-organization-icon")

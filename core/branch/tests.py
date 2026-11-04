@@ -279,6 +279,18 @@ class BranchIsolationRemainderTests(BranchIsolationTests):
             r"<script(?![^>]*\bsrc=)[^>]*>",
         )
 
+        filter_payload = '<script>alert("filter")</script>"><img src=x>'
+        escaped_filter = self.client.get(
+            reverse("branch:Module_Members_list"),
+            {"q": filter_payload},
+        )
+        self.assertEqual(escaped_filter.status_code, 200)
+        self.assertContains(
+            escaped_filter,
+            f'value="{conditional_escape(filter_payload)}"',
+        )
+        self.assertNotContains(escaped_filter, filter_payload)
+
         data = self.client.get(
             reverse("branch:Module_Members_list"),
             {

@@ -5,6 +5,8 @@ $(function () {
     const table = root.querySelector("[data-list-grid]");
     const $grid = $(table);
     const filterForm = root.querySelector("[data-list-filters]");
+    const filterControls = Array.from(filterForm.querySelectorAll("[data-filter-control]"));
+    const filterFields = Array.from(filterForm.querySelectorAll("[data-filter-field]"));
     const userKey = root.dataset.userKey;
     const pageKey = root.dataset.pageKey;
     const storageKey = `erp-list:${userKey}:${pageKey}`;
@@ -68,22 +70,118 @@ $(function () {
     let collapsed = localStorage.getItem(filterStorageKey) === "collapsed";
     const filterToggle = root.querySelector("[data-filter-toggle]");
     const filterCount = root.querySelector("[data-filter-count]");
-    const updateFilterCount = () => {
-        const active = Array.from(filterForm.elements).filter((field) =>
-            field.name && field.value.trim()
-        ).length;
-        filterCount.textContent = String(active);
-        filterCount.hidden = active === 0;
+    const filterChips = root.querySelector("[data-active-filter-chips]");
+    const selectEnhancers = new Map();
+
+    const fieldValues = (field) => Array.from(
+        field.querySelectorAll("[data-filter-control]")
+    ).filter((control) => control.value.trim());
+
+    const displayValue = (control) => {
+        if (control instanceof HTMLSelectElement) {
+            return control.selectedOptions[0]?.textContent.trim() || control.value;
+        }
+        return control.value.trim();
     };
+
+    const updateFilterUi = () => {
+        filterControls.forEach((control) => {
+            const clearButton = control.parentElement.querySelector("[data-filter-clear]");
+            clearButton.hidden = !control.value.trim();
+        });
+        const activeFields = filterFields.filter((field) => fieldValues(field).length);
+        filterCount.textContent = String(activeFields.length);
+        filterCount.hidden = activeFields.length === 0;
+        filterChips.replaceChildren();
+        activeFields.forEach((field) => {
+            const label = field.dataset.filterLabel;
+            const value = fieldValues(field).map((control) => {
+                const text = displayValue(control);
+                if (control.type !== "date" || fieldValues(field).length === 1) {
+                    return text;
+                }
+                const rangeLabel = control.getAttribute("aria-label")
+                    .replace(label, "")
+                    .trim();
+                return `${rangeLabel}: ${text}`;
+            }).join(" – ");
+            const chip = document.createElement("button");
+            chip.className = "erp-filter-chip";
+            chip.type = "button";
+            chip.dataset.filterChip = field.dataset.filterField;
+            chip.setAttribute("aria-label", `Remove ${label} filter: ${value}`);
+            const text = document.createElement("span");
+            text.textContent = `${label}: ${value}`;
+            const icon = document.createElement("i");
+            icon.className = "bi bi-x";
+            icon.setAttribute("aria-hidden", "true");
+            chip.append(text, icon);
+            chip.addEventListener("click", () => {
+                field.querySelectorAll("[data-filter-control]").forEach(clearFilterControl);
+                filterForm.requestSubmit();
+            });
+            filterChips.append(chip);
+        });
+        filterChips.hidden = !collapsed || activeFields.length === 0;
+    };
+
+    filterControls.filter((control) => control instanceof HTMLSelectElement)
+        .forEach((select) => {
+            if (typeof window.SlimSelect !== "function") {
+                throw new Error("Slim Select failed to load for list filters.");
+            }
+            selectEnhancers.set(select, new window.SlimSelect({
+                select,
+                settings: {
+                    showSearch: true,
+                    searchPlaceholder: "Search options",
+                    searchText: "No matching options",
+                    placeholderText: select.options[0]?.textContent.trim() || "All",
+                    ariaLabel: select.getAttribute("aria-label") || "Filter options",
+                    allowDeselect: false,
+                    closeOnSelect: true,
+                },
+                events: {afterChange: updateFilterUi},
+            }));
+        });
+
+    function clearFilterControl(control) {
+        const enhancer = selectEnhancers.get(control);
+        if (enhancer) {
+            enhancer.setSelected("");
+        } else {
+            control.value = "";
+        }
+        control.dispatchEvent(new Event("input", {bubbles: true}));
+        control.dispatchEvent(new Event("change", {bubbles: true}));
+    }
+
+    filterControls.forEach((control) => {
+        control.parentElement.querySelector("[data-filter-clear]")
+            .addEventListener("click", () => clearFilterControl(control));
+    });
+    filterForm.addEventListener("input", updateFilterUi);
+    filterForm.addEventListener("change", updateFilterUi);
+    filterForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const parameters = new URLSearchParams();
+        for (const [name, value] of new FormData(filterForm)) {
+            if (String(value).trim()) parameters.append(name, value);
+        }
+        const target = new URL(filterForm.action, window.location.href);
+        target.search = parameters.toString();
+        window.location.assign(target.toString());
+    });
+
     const setFilterCollapsed = (value) => {
         collapsed = value;
         filterForm.hidden = collapsed;
         filterToggle.setAttribute("aria-expanded", String(!collapsed));
         localStorage.setItem(filterStorageKey, collapsed ? "collapsed" : "expanded");
+        updateFilterUi();
     };
     filterToggle.addEventListener("click", () => setFilterCollapsed(!collapsed));
     setFilterCollapsed(collapsed);
-    updateFilterCount();
 
     const savedColumns = JSON.parse(localStorage.getItem(storageKey) || "{}");
     const savedHiddenColumns = savedColumns.hidden || savedColumns;

@@ -7,6 +7,9 @@ async function main() {
     const sessionCookie = process.env.ERP_E2E_SESSION_COOKIE;
     const paths = process.env.ERP_E2E_PATHS.split(",");
     const screenshotDirectory = process.env.ERP_E2E_SCREENSHOT_DIR;
+    const screenshotPhase = process.env.ERP_E2E_SCREENSHOT_PHASE === "before"
+        ? "before"
+        : "after";
     const browser = await chromium.launch({headless: true});
 
     try {
@@ -48,6 +51,18 @@ async function main() {
 
                 const metrics = await page.evaluate(() => {
                     const main = document.querySelector("main.main-content").getBoundingClientRect();
+                    const header = document.querySelector(".erp-header").getBoundingClientRect();
+                    const brandIcon = document.querySelector(".erp-organization-icon").getBoundingClientRect();
+                    const filterPanel = document.querySelector(".erp-filter-panel").getBoundingClientRect();
+                    const filterGeometry = Array.from(
+                        document.querySelectorAll(".erp-filter-field"),
+                    ).map((field) => ({
+                        labelWidth: field.querySelector("label").getBoundingClientRect().width,
+                        controlHeight: (
+                            field.querySelector(".ss-main")
+                            || field.querySelector(".erp-filter-control .form-control")
+                        ).getBoundingClientRect().height,
+                    }));
                     const listPage = document.querySelector(".erp-list-page").getBoundingClientRect();
                     const gridElement = document.querySelector(".erp-list-grid-wrap");
                     const grid = gridElement.getBoundingClientRect();
@@ -62,6 +77,11 @@ async function main() {
                         viewportWidth: window.innerWidth,
                         documentWidth: document.documentElement.scrollWidth,
                         mainWidth: main.width,
+                        headerHeight: header.height,
+                        brandIconWidth: brandIcon.width,
+                        brandIconHeight: brandIcon.height,
+                        filterPanelWidth: filterPanel.width,
+                        filterGeometry,
                         listPageWidth: listPage.width,
                         gridHeight: grid.height,
                         gridWidth: jqGrid.width,
@@ -79,6 +99,14 @@ async function main() {
                 });
                 if (metrics.documentWidth > metrics.viewportWidth) {
                     throw new Error(`${route} has horizontal page scrolling at ${viewport.width}px: ${JSON.stringify(metrics)}`);
+                }
+                if (metrics.headerHeight !== 56
+                    || metrics.brandIconWidth !== 32
+                    || metrics.brandIconHeight !== 32
+                    || metrics.filterPanelWidth > 1100
+                    || !metrics.filterGeometry.every((field) =>
+                        field.labelWidth === 90 && field.controlHeight === 28)) {
+                    throw new Error(`${route} shared header or filter dimensions are incorrect: ${JSON.stringify(metrics)}`);
                 }
                 if (Math.abs(metrics.mainWidth - metrics.viewportWidth) > 2) {
                     throw new Error(`${route} main content does not fill the viewport: ${JSON.stringify(metrics)}`);
@@ -98,10 +126,59 @@ async function main() {
                 const slug = route.split("/").filter(Boolean).join("-") || "branches";
                 const screenshotPath = path.join(
                     screenshotDirectory,
-                    `${slug}-${viewport.width}x${viewport.height}.png`,
+                    `${slug}-${screenshotPhase}-${viewport.width}x${viewport.height}.png`,
                 );
                 await page.screenshot({path: screenshotPath});
                 console.log(`${route} ${viewport.width}x${viewport.height}: ${JSON.stringify(metrics)} -> ${screenshotPath}`);
+
+                if (route === paths[1] && viewport.width === 1366) {
+                    await page.setViewportSize({width: 390, height: 844});
+                    const mobileFields = await page.evaluate(() => {
+                        const panel = document.querySelector(".erp-filter-panel").getBoundingClientRect();
+                        return Array.from(document.querySelectorAll(".erp-filter-field"))
+                            .map((field) => field.getBoundingClientRect().width >= panel.width - 24);
+                    });
+                    if (!mobileFields.every(Boolean)) {
+                        throw new Error("Mobile filter fields do not fill the available panel width.");
+                    }
+                    await page.setViewportSize(viewport);
+
+                    const query = '<script>alert("filter")</script>';
+                    const search = page.locator("#filter-q");
+                    await search.fill(query);
+                    await search.press("Enter");
+                    await page.waitForFunction((value) =>
+                        new URL(location.href).searchParams.get("q") === value, query);
+                    await page.locator("[data-filter-toggle]").click();
+                    const chip = page.locator('[data-filter-chip="q"]');
+                    await chip.waitFor({state: "visible"});
+                    if (!(await chip.innerText()).includes(query)) {
+                        throw new Error("Active filter chip did not preserve the filter text.");
+                    }
+                    await chip.click();
+                    await page.waitForFunction(() =>
+                        !new URL(location.href).searchParams.has("q"));
+                    await page.locator("[data-filter-toggle]").click();
+
+                    await page.locator(".ss-main").click();
+                    await page.keyboard.type("Inactive");
+                    await page.waitForFunction(() =>
+                        document.querySelectorAll(".ss-option").length === 1);
+                    await page.keyboard.press("ArrowDown");
+                    await page.keyboard.press("Enter");
+                    await page.waitForFunction(() =>
+                        document.querySelector("#filter-status").value === "inactive");
+                    await page.locator("[data-filter-search]").click();
+                    await page.waitForFunction(() =>
+                        new URL(location.href).searchParams.get("status") === "inactive");
+
+                    await page.locator(
+                        '.erp-filter-field[data-filter-field="status"] [data-filter-clear]'
+                    ).click();
+                    await page.locator("[data-filter-search]").click();
+                    await page.waitForFunction(() =>
+                        !new URL(location.href).searchParams.has("status"));
+                }
                 await page.close();
             }
         }

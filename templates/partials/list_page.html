@@ -11,30 +11,52 @@
             <button class="erp-icon-button" type="button" data-filter-toggle aria-expanded="true" aria-controls="listFilters" aria-label="Toggle filters" title="Toggle filters">
                 <i class="bi bi-search" aria-hidden="true"></i><span class="filter-count" data-filter-count hidden></span>
             </button>
+            <div class="erp-filter-chips" data-active-filter-chips aria-label="Active filters" hidden></div>
         </div>
     </header>
 
     <form id="listFilters" class="erp-filter-panel" method="get" action="{{ request.path }}" data-list-filters>
         <div class="erp-filter-fields">
             {% for filter in list_filters %}
-            <div class="erp-filter-field">
-                <label for="filter-{{ filter.name }}">{{ filter.label }}</label>
-                {% if filter.type == "select" %}
-                <select id="filter-{{ filter.name }}" name="{{ filter.name }}" class="form-select form-select-sm">
+            <div class="erp-filter-field" data-filter-field="{{ filter.name }}" data-filter-label="{{ filter.label }}" data-filter-type="{{ filter.type|default:'text' }}">
+                <label for="filter-{{ filter.name }}{% if filter.type == 'date-range' %}-from{% endif %}">{{ filter.label }}</label>
+                {% if filter.type == "date-range" %}
+                <div class="erp-filter-range">
+                    <span class="erp-filter-control erp-filter-control--date">
+                        <i class="bi bi-calendar3 erp-filter-calendar" aria-hidden="true"></i>
+                        <input id="filter-{{ filter.name }}-from" name="{{ filter.from_name }}" type="date" value="{{ filter.from_value }}" class="form-control" data-filter-control aria-label="{{ filter.from_label|default:'From' }} {{ filter.label }}">
+                        <button class="erp-filter-clear" type="button" data-filter-clear hidden aria-label="Clear {{ filter.from_label|default:'From' }} {{ filter.label }}"><i class="bi bi-x" aria-hidden="true"></i></button>
+                    </span>
+                    <span class="erp-filter-range-separator" aria-hidden="true">to</span>
+                    <span class="erp-filter-control erp-filter-control--date">
+                        <i class="bi bi-calendar3 erp-filter-calendar" aria-hidden="true"></i>
+                        <input id="filter-{{ filter.name }}-to" name="{{ filter.to_name }}" type="date" value="{{ filter.to_value }}" class="form-control" data-filter-control aria-label="{{ filter.to_label|default:'To' }} {{ filter.label }}">
+                        <button class="erp-filter-clear" type="button" data-filter-clear hidden aria-label="Clear {{ filter.to_label|default:'To' }} {{ filter.label }}"><i class="bi bi-x" aria-hidden="true"></i></button>
+                    </span>
+                </div>
+                {% elif filter.type == "select" %}
+                <div class="erp-filter-control{% if filter.options|length < 6 %} erp-filter-control--short{% endif %}">
+                    <select id="filter-{{ filter.name }}" name="{{ filter.name }}" class="form-select" data-filter-control aria-label="{{ filter.label }}">
                     <option value="">All</option>
                     {% for value, label in filter.options %}
                     <option value="{{ value }}"{% if filter.value == value %} selected{% endif %}>{{ label }}</option>
                     {% endfor %}
-                </select>
+                    </select>
+                    <button class="erp-filter-clear" type="button" data-filter-clear hidden aria-label="Clear {{ filter.label }}"><i class="bi bi-x" aria-hidden="true"></i></button>
+                </div>
                 {% else %}
-                <input id="filter-{{ filter.name }}" name="{{ filter.name }}" type="{{ filter.type|default:'search' }}" value="{{ filter.value }}" placeholder="{{ filter.placeholder }}" class="form-control form-control-sm">
+                <span class="erp-filter-control{% if filter.type == 'date' %} erp-filter-control--date{% endif %}">
+                    {% if filter.type == "date" %}<i class="bi bi-calendar3 erp-filter-calendar" aria-hidden="true"></i>{% endif %}
+                    <input id="filter-{{ filter.name }}" name="{{ filter.name }}" type="{{ filter.type|default:'search' }}" value="{{ filter.value }}" placeholder="{{ filter.placeholder }}" class="form-control" data-filter-control aria-label="{{ filter.label }}">
+                    <button class="erp-filter-clear" type="button" data-filter-clear hidden aria-label="Clear {{ filter.label }}"><i class="bi bi-x" aria-hidden="true"></i></button>
+                </span>
                 {% endif %}
             </div>
             {% endfor %}
         </div>
         <div class="erp-filter-actions">
-            <button class="btn btn-sm btn-outline-primary" type="submit"><i class="bi bi-search" aria-hidden="true"></i> Search</button>
-            <a href="{{ request.path }}" class="erp-reset-link">Reset</a>
+            <button class="btn btn-sm btn-outline-primary" type="submit" data-filter-search aria-label="Search filters"><i class="bi bi-search" aria-hidden="true"></i> Search</button>
+            <a href="{{ request.path }}" class="erp-reset-link" aria-label="Reset filters">Reset</a>
         </div>
     </form>
 

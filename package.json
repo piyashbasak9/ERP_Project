@@ -10,7 +10,8 @@
     "bootstrap-icons": "1.13.1",
     "free-jqgrid": "4.15.5",
     "jquery": "3.7.1",
-    "jquery-ui-dist": "1.13.2"
+    "jquery-ui-dist": "1.13.2",
+    "slim-select": "2.10.0"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1"

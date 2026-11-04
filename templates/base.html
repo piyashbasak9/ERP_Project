@@ -10,6 +10,7 @@
     <link rel="icon" type="image/svg+xml" href="{% static 'favicon.svg' %}">
     <link href="{% static 'vendor/bootstrap/css/bootstrap.min.css' %}" rel="stylesheet">
     <link href="{% static 'vendor/bootstrap-icons/font/bootstrap-icons.min.css' %}" rel="stylesheet">
+    <link href="{% static 'vendor/slim-select/slimselect.css' %}" rel="stylesheet">
     <link rel="stylesheet" href="{% static 'vendor/jquery-ui/jquery-ui.min.css' %}">
     <link rel="stylesheet" href="{% static 'vendor/free-jqgrid/css/ui.jqgrid.min.css' %}">
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
@@ -24,7 +25,16 @@
             <button class="erp-menu-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#erpMenu" aria-controls="erpMenu" aria-expanded="false" aria-label="Toggle menu">
                 <i class="bi bi-list" aria-hidden="true"></i>
             </button>
-            <a class="navbar-brand" href="{% url 'Module_Home_home' %}">{{ organization_configuration.legal_name }}</a>
+            <a class="erp-header-organization" href="{% url 'Module_Home_home' %}">
+                <span class="erp-organization-icon">
+                    {% if user.is_authenticated and organization_configuration.logo %}
+                    <img src="{% url 'configuration:Module_Settings_organization_logo' %}" alt="{{ organization_configuration.legal_name }}">
+                    {% else %}
+                    <img src="{% static 'favicon.svg' %}" alt="" aria-hidden="true">
+                    {% endif %}
+                </span>
+                <span class="navbar-brand">{{ organization_configuration.legal_name }}</span>
+            </a>
         </div>
         <div class="erp-header-actions">
             {% can 'Module_Notifications_list' as can_view_notifications %}
@@ -219,6 +229,7 @@
     <script src="{% static 'vendor/free-jqgrid/js/i18n/grid.locale-en.js' %}"></script>
     <script src="{% static 'vendor/free-jqgrid/js/jquery.jqgrid.min.js' %}"></script>
     <script src="{% static 'vendor/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
+    <script src="{% static 'vendor/slim-select/slimselect.min.js' %}"></script>
     <script src="{% static 'js/script.js' %}"></script>
     <script src="{% static 'js/notify.js' %}"></script>
     <script src="{% static 'js/popup.js' %}"></script>

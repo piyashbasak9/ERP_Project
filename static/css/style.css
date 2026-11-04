@@ -529,6 +529,9 @@ footer.footer-custom strong {
     --erp-success: #1E8E3E;
     --erp-warning: #F29900;
     --erp-error: #D93025;
+    --erp-control-radius: 5px;
+    --erp-control-border: var(--erp-border);
+    --erp-control-focus: 0 0 0 2px rgba(18, 58, 122, 0.28);
     --erp-density-font: 13px;
     --erp-density-line: 1.35;
     --erp-control-height: 28px;
@@ -552,6 +555,36 @@ footer.footer-custom strong {
     min-width: 0;
     align-items: center;
     gap: 8px;
+}
+
+.erp-header-organization {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+}
+
+.erp-organization-icon {
+    display: inline-flex;
+    width: auto;
+    height: 55px;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 6px;
+    background: var(--erp-primary-hover);
+    color: #fff;
+    font-size: 18px;
+}
+
+.erp-organization-icon img {
+    display: block;
+    width: auto;
+    height: 100%;
+    max-width: 180px;
+    object-fit: contain;
 }
 
 .erp-header .navbar-brand {
@@ -820,8 +853,15 @@ footer.footer-custom strong {
     min-height: 32px;
     height: 32px;
     padding: 4px 7px;
-    border-radius: 3px;
+    border-color: var(--erp-control-border);
+    border-radius: var(--erp-control-radius);
     font-size: 12px;
+}
+
+.modal-body .form-control:focus,
+.modal-body .form-select:focus {
+    border-color: var(--erp-primary-hover);
+    box-shadow: var(--erp-control-focus);
 }
 
 .modal-body textarea.form-control {
@@ -899,6 +939,7 @@ footer.footer-custom strong {
 
 .erp-page-tools {
     display: flex;
+    min-width: 0;
     align-items: center;
     gap: var(--erp-gap);
 }
@@ -946,11 +987,50 @@ footer.footer-custom strong {
     text-align: center;
 }
 
-.erp-filter-panel {
+.erp-filter-chips {
     display: flex;
+    max-width: min(45vw, 600px);
+    align-items: center;
+    gap: 4px;
+    overflow-x: auto;
+}
+
+.erp-filter-chips[hidden] {
+    display: none;
+}
+
+.erp-filter-chip {
+    display: inline-flex;
+    min-height: 24px;
     flex: 0 0 auto;
     align-items: center;
-    justify-content: space-between;
+    gap: 4px;
+    padding: 2px 6px;
+    border: 1px solid #9AACC5;
+    border-radius: 12px;
+    background: #F1F5FB;
+    color: #27364B;
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+.erp-filter-chip:hover {
+    border-color: var(--erp-primary);
+    background: var(--erp-primary-light);
+}
+
+.erp-filter-chip:focus-visible {
+    outline: 2px solid #1D70B8;
+    outline-offset: 2px;
+}
+
+.erp-filter-panel {
+    display: grid;
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: 1100px;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    align-items: start;
     gap: 8px;
     padding: 6px 12px;
     border-bottom: 1px solid #C8D6EC;
@@ -962,53 +1042,145 @@ footer.footer-custom strong {
 }
 
 .erp-filter-fields {
-    display: flex;
-    flex: 1 1 auto;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 8px;
-    min-width: 0;
+    display: contents;
 }
 
 .erp-filter-field {
     display: flex;
-    min-width: 220px;
-    max-width: 360px;
+    min-width: 0;
+    max-width: 100%;
     align-items: center;
-    flex: 1 1 240px;
 }
 
 .erp-filter-field label {
     display: flex;
-    min-width: 92px;
+    width: 90px;
+    min-width: 90px;
+    max-width: 90px;
     height: var(--erp-control-height);
     align-items: center;
-    padding: 0 6px;
+    justify-content: flex-end;
+    padding: 0 7px;
     border: 1px solid var(--erp-border);
     border-right: 0;
+    border-radius: var(--erp-control-radius) 0 0 var(--erp-control-radius);
     background: #F1F3F6;
     color: #27364B;
     font-size: 12px;
-    font-weight: 600;
-    white-space: nowrap;
+    font-weight: 500;
+    line-height: 1.05;
+    text-align: right;
+    white-space: normal;
+}
+
+.erp-filter-control {
+    position: relative;
+    display: block;
+    width: 190px;
+    min-width: 0;
+    flex: 0 1 190px;
+}
+
+.erp-filter-control--short {
+    width: 120px;
+    flex-basis: 120px;
+}
+
+.erp-filter-control--date {
+    width: 130px;
+    flex-basis: 130px;
 }
 
 .erp-filter-field .form-control,
 .erp-filter-field .form-select {
+    display: block;
+    width: 100%;
     min-width: 0;
     height: var(--erp-control-height);
-    padding: 2px 6px;
-    border-color: var(--erp-border);
-    border-radius: 0 3px 3px 0;
+    min-height: var(--erp-control-height);
+    padding: 2px 27px 2px 7px;
+    border-color: var(--erp-control-border);
+    border-radius: 0 var(--erp-control-radius) var(--erp-control-radius) 0;
     background-color: #fff;
     color: var(--erp-text);
     font-size: 12px;
 }
 
+.erp-filter-field .form-control::placeholder {
+    color: #66758A;
+    opacity: 1;
+}
+
+.erp-filter-field .form-control:focus,
+.erp-filter-field .form-select:focus {
+    z-index: 1;
+    border-color: var(--erp-primary-hover);
+    box-shadow: var(--erp-control-focus);
+}
+
+.erp-filter-clear {
+    position: absolute;
+    z-index: 4;
+    top: 4px;
+    right: 4px;
+    display: inline-flex;
+    width: 20px;
+    height: 20px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: #fff;
+    color: #46566C;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.erp-filter-clear:hover {
+    background: var(--erp-primary-light);
+    color: var(--erp-primary);
+}
+
+.erp-filter-clear[hidden] {
+    display: none;
+}
+
+.erp-filter-calendar {
+    position: absolute;
+    z-index: 2;
+    top: 7px;
+    left: 7px;
+    color: #52647C;
+    font-size: 12px;
+    pointer-events: none;
+}
+
+.erp-filter-control--date .form-control {
+    padding-left: 25px;
+}
+
+.erp-filter-range {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 5px;
+}
+
+.erp-filter-range-separator {
+    color: #46566C;
+    font-size: 11px;
+}
+
+.erp-filter-field[data-filter-type="date-range"] {
+    grid-column: span 2;
+}
+
 .erp-filter-actions {
     display: flex;
-    flex: 0 0 auto;
+    min-height: var(--erp-control-height);
     align-items: center;
+    justify-self: start;
     gap: 8px;
 }
 
@@ -1016,14 +1188,55 @@ footer.footer-custom strong {
     height: var(--erp-control-height);
     padding: 3px 12px;
     border-radius: 16px;
+    border-color: var(--erp-primary);
+    color: var(--erp-primary);
     font-size: 12px;
     line-height: 1.2;
+}
+
+.erp-filter-actions .btn:hover {
+    background: var(--erp-primary);
+    color: #fff;
 }
 
 .erp-reset-link {
     color: var(--erp-primary);
     font-size: 12px;
     text-decoration: underline;
+}
+
+.erp-filter-field .ss-main {
+    width: 100%;
+    height: var(--erp-control-height);
+    min-height: var(--erp-control-height);
+    border: 1px solid var(--erp-control-border);
+    border-radius: 0 var(--erp-control-radius) var(--erp-control-radius) 0;
+    background: #fff;
+    color: var(--erp-text);
+    font-size: 12px;
+}
+
+.erp-filter-field .ss-main:focus,
+.erp-filter-field .ss-main:focus-visible {
+    border-color: var(--erp-primary-hover);
+    outline: 0;
+    box-shadow: var(--erp-control-focus);
+}
+
+.erp-filter-field .ss-main .ss-values,
+.erp-filter-field .ss-main .ss-single {
+    padding-left: 7px;
+}
+
+.erp-filter-field .ss-content {
+    z-index: 20;
+    border-color: var(--erp-control-border);
+    color: var(--erp-text);
+    font-size: 12px;
+}
+
+.erp-filter-field[data-filter-type="date-range"] .erp-filter-range {
+    flex: 1 1 auto;
 }
 
 .erp-list-grid-wrap {
@@ -1284,15 +1497,30 @@ footer.footer-custom strong {
         overflow: visible;
     }
 
-    .erp-filter-panel,
-    .erp-filter-fields {
+    .erp-filter-panel {
+        max-width: none;
+        grid-template-columns: minmax(0, 1fr);
         align-items: stretch;
-        flex-direction: column;
+    }
+
+    .erp-filter-field[data-filter-type="date-range"] {
+        grid-column: auto;
     }
 
     .erp-filter-field {
         width: 100%;
         max-width: none;
+    }
+
+    .erp-filter-control,
+    .erp-filter-control--short,
+    .erp-filter-control--date {
+        width: auto;
+        max-width: none;
+        flex: 1 1 0;
+    }
+
+    .erp-filter-range {
         flex: 1 1 auto;
     }
 

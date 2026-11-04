@@ -22,6 +22,7 @@ AUTHENTICATED_ONLY_ROUTE_NAMES = {
     'Module_Auth_change_password_done',
     'Module_Branch_switch',
     'Module_Branch_quick_search',
+    'Module_Settings_organization_logo',
 }
 
 

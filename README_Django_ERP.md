@@ -1237,7 +1237,7 @@ This is the original baseline gap list. Several listed items have since been rem
 Member photos and KYC scans are personal data. They must never be reachable by guessing a URL. The deployment must set `PRIVATE_MEDIA_ROOT` to a directory outside the web root; the current default under `BASE_DIR` is not sufficient proof of external storage.
 
 1. Store files in a **private directory outside the web root** (`PRIVATE_MEDIA_ROOT`), never under a path the web server publishes.
-2. Remove `/media/` from the public and exempt lists. Serve files through a Django view that checks **login, role permission, and branch scope**, then streams the file (or hands it to Nginx with `X-Accel-Redirect` on an internal location).
+2. Remove `/media/` from the public and exempt lists. Serve files through a Django view that checks **login, role permission, and branch scope**, then streams the file in development or hands it to Nginx with `X-Accel-Redirect` on an internal location in deployment. Organization branding logos are the exception: the logo view requires an active login but is available to every authenticated user.
 3. **Validate on upload**: size limit; allowed types only (JPG and PNG for photos; JPG, PNG and PDF for KYC); check the file **signature**, not just the extension; for images, open with Pillow and **re-encode**, which also strips embedded metadata and hostile payloads.
 4. **Random stored file names** (UUID); the original name is kept only in the database and sanitized.
 5. Set `Content-Disposition` and `X-Content-Type-Options: nosniff` on downloads.
@@ -1650,7 +1650,7 @@ static/
 └── vendor/                 # self-hosted Bootstrap, jQuery, jqGrid, Bootstrap Icons
 ```
 
-- The application shell uses a full-width dark-blue 56px header and a separate, slightly darker 34px menu strip. The header shows the legal organization name, permitted quick actions, branch switcher, and user menu. Logout is a **button inside a POST form**.
+- The application shell uses a full-width dark-blue 56px header and a separate, slightly darker 34px menu strip. The header shows a 32px organization tile (logo through the authenticated private-media view when permitted, otherwise the self-hosted bank icon), legal organization name, permitted quick actions, branch switcher, and user menu. Login always uses the default icon. Logout is a **button inside a POST form**.
 - The permission-aware bell opens the authenticated user's branch-scoped in-app notifications; each item can be marked read with POST.
 - Menu entries and action shortcuts use the same route permission service as the middleware. Unavailable routes are omitted and empty module groups are hidden. The menu supports keyboard operation and collapses below 992px.
 - **Content** is white on a very light background. Legacy screens continue to render in the shared shell; the Branch, Members, and Savings accounts pilot lists use the dense full-height layout.
@@ -1833,7 +1833,7 @@ Text and background pairs must meet WCAG AA contrast.
 - Server-side paging, sorting and filtering; the response format is in [section 14.2](#142-standard-ajax-response).
 - Branches, Members, and Savings accounts are the initial dense-list pilot. Their layout is shared through `templates/partials/list_page.html`; each view supplies its title, permission-checked add route, filter descriptors, grid columns, and server-side JSON URL. `static/js/list-page.js` reads the declared column metadata and supplies paging, sorting, URL-synchronized filters, persistent per-user/per-page filter and column preferences, load timing, and the column chooser. Other list screens retain their current templates until separately converted.
 - On desktop pilot lists, the grid consumes all remaining viewport height and owns vertical scrolling. The title, filters, grid footer, and status footer remain outside the scroll area. At tablet widths the default column set is reduced; below 768px filters stack and the grid may scroll horizontally without widening the page.
-- Dense tokens are a 13px system font, 1.35 line height, 28px controls, 32px rows, and 4px spacing. The existing white/dark-blue palette in [section 16.5](#165-theme-white-and-dark-blue) is the source of truth.
+- Dense tokens are a 13px system font, 1.35 line height, 28px controls, 32px rows, and 4px spacing. Shared filter and popup-control border, radius, and focus tokens use the existing white/dark-blue palette in [section 16.5](#165-theme-white-and-dark-blue).
 - List filter controls submit through GET and preserve their values in the URL. The collapsed state and column visibility are stored in browser local storage using the authenticated user and page as the key.
 - Shared report grids use the report registry's columns and applicable filters, return totals in `userdata`, and enforce a report-specific grid permission.
 - Report Excel and PDF downloads use the same registered columns, queryset and totals as the grid; they include organization/filter labels, are audited, and reject exports above 5,000 rows with a clear filter-narrowing message.
@@ -1863,7 +1863,9 @@ $("#branchGrid").jqGrid({
 
 ### 16.7 Reusable ListPage component
 
-Pilot templates extend `base.html` and include `partials/list_page.html`. The view provides `list_title`, `grid_url`, `list_filters`, `list_columns`, `initial_page_text`, and an optional `add_url`/`add_title`. A filter descriptor has `name`, `label`, `value`, and optionally `type`, `placeholder`, and `options`; a column descriptor has `name`, `label`, and optionally `width`, `align`, and `hidden`.
+Pilot templates extend `base.html` and include `partials/list_page.html`. The view provides `list_title`, `grid_url`, `list_filters`, `list_columns`, `initial_page_text`, and an optional `add_url`/`add_title`. A filter descriptor has `name`, `label`, `value`, and optionally `type`, `placeholder`, and `options`; `date-range` descriptors also provide `from_name`, `to_name`, `from_value`, and `to_value`. A column descriptor has `name`, `label`, and optionally `width`, `align`, and `hidden`.
+
+The shared filter grid uses bounded widths, inline clear buttons, keyboard-searchable selects (self-hosted pinned MIT Slim Select), and removable chips while collapsed. Filter values remain URL-backed; empty values are omitted on submit. Popup inputs share the filter border, radius, and focus tokens without changing their layout.
 
 The shared JavaScript module initializes Free jqGrid in JSON mode with `autoencode: true`. Each endpoint keeps the queryset's existing branch scope and allowlists sortable fields before applying server-side ordering and pagination. Actions are server-rendered only when their action route permission is granted; state changes remain POST-only and audited. Do not put inline scripts or user data into action HTML.
 
@@ -1875,7 +1877,7 @@ Run the dedicated desktop browser check with test PostgreSQL variables configure
 npm run test:e2e:layout
 ```
 
-The check creates isolated test fixtures, verifies all three pilot lists at 1366×768 and 1920×1080, and saves the six viewport screenshots under `docs/ui/`.
+The check creates isolated test fixtures, verifies all three pilot lists at 1366×768 and 1920×1080, and saves before/after viewport screenshots under `docs/ui/`.
 
 ### 16.8 Permission-aware UI
 
@@ -1903,7 +1905,7 @@ The details users notice every day. These apply to every screen.
 | Buttons | Loading state while working; disabled when the action is not allowed; primary action on the right |
 | Tables | Server-side paging, sorting, filtering; sticky header; row count; column chooser; empty state with a clear message; right-aligned numbers; report totals and export controls only where permitted |
 | Dense lists | Pilot lists use a full-width 56px header, 34px permission-aware module menu, compact title/filter bars, and a viewport-filling grid. The grid alone scrolls vertically on desktop; filters collapse with a per-user/per-page state and active-filter count |
-| Search | Debounced; shows active report filters (branch, center, field officer, dates and status); one-click clear |
+| Search | Debounced; shows active list/report filters as removable chips when collapsed; one-click clear |
 | Reports | Permission-filtered report index; same definition drives on-screen columns/totals and Excel/PDF output; organization name and active filters appear on exports |
 | Status | Colored status tags with text (never color alone) |
 | Loading | Skeletons for tables and cards instead of blank screens |
