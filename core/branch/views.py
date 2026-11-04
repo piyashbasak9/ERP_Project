@@ -6,12 +6,15 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.html import format_html, format_html_join
+from django.utils.http import url_has_allowed_host_and_scheme, urlencode
 from django.views.decorators.http import require_GET, require_POST
 
+from core.accounts.permission_utils import user_has_route_permission
 from core.audit.services import log_action
 from core.common.popup import popup_json_response, render_popup_form
 from core.common.private_media import private_media_response
+from core.common.templatetags.user_formatting import user_date
 
 from .day_end_service import BranchDayService
 from .forms import (
@@ -33,28 +36,33 @@ from .service import BranchReadService, BranchWriteService
 # Create your views here.
 
 
-def _serialize_branch(branch):
+def _serialize_branch(branch, request):
     branch_id = branch.get('id') if isinstance(branch, dict) else branch.id
-    edit_url = reverse('branch:Module_Branch_edit_branch', args=[branch_id])
-    delete_url = reverse('branch:Module_Branch_delete_branch', args=[branch_id])
-    
-    action_html = (
-        f'<div class="d-flex gap-2 justify-content-center">'
-        f'<a href="{edit_url}?popup=1" class="btn btn-sm btn-outline-primary" title="Edit" data-popup data-popup-title="Edit branch">✏️</a>'
-        f'<a href="{delete_url}" class="btn btn-sm btn-outline-danger" title="Delete" data-confirm data-confirm-title="Delete branch" data-confirm-message="Delete this branch? This action cannot be undone." data-confirm-button="Delete">🗑️</a>'
-        f'</div>'
-    )
+    actions = []
+    if user_has_route_permission(request.user, 'Module_Branch_edit_branch'):
+        actions.append(format_html(
+            '<a href="{}?popup=1" data-popup data-popup-title="Edit branch">Edit</a>',
+            reverse('branch:Module_Branch_edit_branch', args=[branch_id]),
+        ))
+    if user_has_route_permission(request.user, 'Module_Branch_delete_branch'):
+        actions.append(format_html(
+            '<a href="{}" data-confirm data-confirm-title="Delete branch" '
+            'data-confirm-message="Delete this branch? This action cannot be undone." '
+            'data-confirm-button="Delete">Delete</a>',
+            reverse('branch:Module_Branch_delete_branch', args=[branch_id]),
+        ))
+    action_html = format_html_join(' | ', '{}', ((action,) for action in actions))
 
     if isinstance(branch, dict):
         return {
             'id': branch.get('id'),
             'name': branch.get('name'),
             'code': branch.get('code'),
-            'is_active': branch.get('is_active'),
+            'is_active': 'Active' if branch.get('is_active') else 'Inactive',
             'created_by': branch.get('created_by'),
-            'created_at': branch.get('created_at'),
+            'created_at': user_date(branch.get('created_at'), request.user_preference),
             'updated_by': branch.get('updated_by'),
-            'updated_at': branch.get('updated_at'),
+            'updated_at': user_date(branch.get('updated_at'), request.user_preference),
             'actions': action_html
         }
 
@@ -62,11 +70,11 @@ def _serialize_branch(branch):
         'id': branch.id,
         'name': branch.name,
         'code': branch.code,
-        'is_active': branch.is_active,
+        'is_active': 'Active' if branch.is_active else 'Inactive',
         'created_by': branch.created_by_name if branch.created_by else None,
-        'created_at': branch.created_at,
+        'created_at': user_date(branch.created_at, request.user_preference),
         'updated_by': branch.updated_by_name if branch.updated_by else None,
-        'updated_at': branch.updated_at,
+        'updated_at': user_date(branch.updated_at, request.user_preference),
         'actions': action_html
     }
 
@@ -74,8 +82,20 @@ def _serialize_branch(branch):
 
 def index(request):
     data = BranchReadService(request).all()
+    sort_fields = {
+        'name': 'name',
+        'code': 'code',
+        'created_by': 'created_by__username',
+        'created_at': 'created_at',
+        'updated_by': 'updated_by__username',
+        'updated_at': 'updated_at',
+    }
+    sort_field = sort_fields.get(request.GET.get('sidx'), 'name')
+    if request.GET.get('sord') == 'desc':
+        sort_field = f'-{sort_field}'
+    data = data.order_by(sort_field, 'pk')
     try:
-        rows = min(max(int(request.GET.get('rows', 20)), 1), 100)
+        rows = min(max(int(request.GET.get('rows', 20)), 1), 200)
     except (TypeError, ValueError):
         rows = 20
     paginator = Paginator(data, rows)
@@ -83,13 +103,144 @@ def index(request):
 
     if request.GET.get('ajax'):
         return JsonResponse({
-            'rows': [_serialize_branch(item) for item in page_obj.object_list],
+            'rows': [_serialize_branch(item, request) for item in page_obj.object_list],
             'page': page_obj.number,
             'total': paginator.num_pages,
             'records': paginator.count,
         })
 
-    return render(request, 'branch/index.html')
+    return render(request, 'branch/index.html', {
+        'list_title': 'Branches',
+        'grid_url': request.path,
+        'initial_page_text': f'Page {page_obj.number} of {paginator.num_pages}',
+        'add_url': (
+            reverse('branch:Module_Branch_add_branch')
+            if user_has_route_permission(request.user, 'Module_Branch_add_branch')
+            else ''
+        ),
+        'add_title': 'Create branch',
+        'list_filters': [
+            {
+                'name': 'name', 'label': 'Branch name',
+                'value': request.GET.get('name', ''), 'placeholder': 'Name',
+            },
+            {
+                'name': 'code', 'label': 'Code',
+                'value': request.GET.get('code', ''), 'placeholder': 'Branch code',
+            },
+        ],
+        'list_columns': [
+            {'name': 'name', 'label': 'Branch name', 'width': 240},
+            {'name': 'code', 'label': 'Code', 'width': 100},
+            {'name': 'is_active', 'label': 'Status', 'width': 90},
+            {'name': 'created_by', 'label': 'Created by', 'width': 130, 'hidden': True},
+            {'name': 'created_at', 'label': 'Created at', 'width': 150, 'hidden': True},
+            {'name': 'updated_by', 'label': 'Updated by', 'width': 130, 'hidden': True},
+            {'name': 'updated_at', 'label': 'Updated at', 'width': 150, 'hidden': True},
+            {'name': 'actions', 'label': 'Actions', 'width': 130, 'sortable': False},
+        ],
+    })
+
+
+@require_GET
+def quick_search(request):
+    query = request.GET.get('q', '').strip()[:80]
+    member_access = user_has_route_permission(request.user, 'Module_Members_list')
+    savings_access = user_has_route_permission(request.user, 'Module_Savings_accounts')
+    loan_access = user_has_route_permission(request.user, 'Module_Loans_applications')
+    if not (member_access or savings_access or loan_access):
+        raise PermissionDenied
+
+    encoded_query = urlencode({'q': query})
+    results = []
+    if len(query) >= 2:
+        if member_access:
+            members = Member.objects.select_related('branch').filter(
+                models.Q(member_code__icontains=query)
+                | models.Q(first_name__icontains=query)
+                | models.Q(last_name__icontains=query)
+            ).order_by('member_code')[:10]
+            member_detail_allowed = user_has_route_permission(
+                request.user, 'Module_Members_detail'
+            )
+            for member in members:
+                url = (
+                    reverse('branch:Module_Members_detail', args=[member.pk])
+                    if member_detail_allowed
+                    else f'{reverse("branch:Module_Members_list")}?{encoded_query}'
+                )
+                results.append({
+                    'category': 'Member',
+                    'label': f'{member.member_code} — {member.full_name}',
+                    'detail': member.branch.name,
+                    'url': url,
+                })
+
+        if savings_access:
+            from core.savings.models import SavingsAccount
+
+            accounts = SavingsAccount.objects.select_related(
+                'branch', 'member', 'group'
+            ).filter(
+                models.Q(account_number__icontains=query)
+                | models.Q(member__member_code__icontains=query)
+                | models.Q(member__first_name__icontains=query)
+                | models.Q(member__last_name__icontains=query)
+                | models.Q(group__name__icontains=query)
+            ).order_by('account_number')[:10]
+            statement_allowed = user_has_route_permission(
+                request.user, 'Module_Savings_statement'
+            )
+            for account in accounts:
+                url = (
+                    reverse('savings:Module_Savings_statement', args=[account.pk])
+                    if statement_allowed
+                    else f'{reverse("savings:Module_Savings_accounts")}?{encoded_query}'
+                )
+                results.append({
+                    'category': 'Savings account',
+                    'label': account.account_number,
+                    'detail': (
+                        account.member.full_name
+                        if account.member_id
+                        else account.group.name
+                    ),
+                    'url': url,
+                })
+
+        if loan_access:
+            from core.loans.models import LoanApplication
+
+            applications = LoanApplication.objects.select_related(
+                'member', 'branch', 'loan'
+            ).filter(
+                models.Q(reference_number__icontains=query)
+                | models.Q(member__member_code__icontains=query)
+                | models.Q(member__first_name__icontains=query)
+                | models.Q(member__last_name__icontains=query)
+            ).order_by('-created_at')[:10]
+            statement_allowed = user_has_route_permission(
+                request.user, 'Module_Loans_statement'
+            )
+            for application in applications:
+                if statement_allowed and hasattr(application, 'loan'):
+                    url = reverse(
+                        'loans:Module_Loans_statement',
+                        args=[application.loan.pk],
+                    )
+                else:
+                    url = reverse('loans:Module_Loans_applications')
+                results.append({
+                    'category': 'Loan',
+                    'label': application.reference_number or f'Application {application.pk}',
+                    'detail': application.member.full_name,
+                    'url': url,
+                })
+
+    return render(request, 'quick_search.html', {
+        'query': query,
+        'search_results': results,
+    })
 
 
 
@@ -251,12 +402,89 @@ def member_list(request):
     selected_status = request.GET.get('status', '')
     if selected_status in dict(Member.STATUS_CHOICES):
         queryset = queryset.filter(status=selected_status)
-    page_obj = Paginator(queryset, 100).get_page(request.GET.get('page', 1))
+    sort_fields = {
+        'member_code': 'member_code',
+        'full_name': 'first_name',
+        'phone': 'phone',
+        'branch': 'branch__name',
+        'center_group': 'center__name',
+        'status': 'status',
+    }
+    sort_field = sort_fields.get(request.GET.get('sidx'), 'member_code')
+    if request.GET.get('sord') == 'desc':
+        sort_field = f'-{sort_field}'
+    queryset = queryset.order_by(sort_field, 'pk')
+    try:
+        page_size = min(max(int(request.GET.get('rows', 20)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 20
+    paginator = Paginator(queryset, page_size)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+    if request.GET.get('ajax'):
+        rows = []
+        can_view = user_has_route_permission(request.user, 'Module_Members_detail')
+        can_edit = user_has_route_permission(request.user, 'Module_Members_edit')
+        for member in page_obj.object_list:
+            actions = []
+            if can_view:
+                actions.append(format_html(
+                    '<a href="{}">View</a>',
+                    reverse('branch:Module_Members_detail', args=[member.pk]),
+                ))
+            if can_edit:
+                actions.append(format_html(
+                    '<a href="{}?popup=1" data-popup data-popup-title="Edit member">Edit</a>',
+                    reverse('branch:Module_Members_edit', args=[member.pk]),
+                ))
+            rows.append({
+                'id': member.pk,
+                'member_code': member.member_code,
+                'full_name': member.full_name,
+                'phone': f'••••{member.phone[-4:]}' if member.phone else '',
+                'branch': member.branch.name,
+                'center_group': ' / '.join(filter(None, [
+                    member.center.name if member.center_id else '',
+                    member.group.name if member.group_id else '',
+                ])),
+                'status': member.get_status_display(),
+                'actions': format_html_join(' | ', '{}', ((action,) for action in actions)),
+            })
+        return JsonResponse({
+            'rows': rows,
+            'page': page_obj.number,
+            'total': paginator.num_pages,
+            'records': paginator.count,
+        })
+
     return render(request, 'members/list.html', {
-        'page_obj': page_obj,
-        'search': search,
-        'selected_status': selected_status,
-        'statuses': Member.STATUS_CHOICES,
+        'list_title': 'Members',
+        'grid_url': request.path,
+        'initial_page_text': f'Page {page_obj.number} of {paginator.num_pages}',
+        'add_url': (
+            reverse('branch:Module_Members_add')
+            if user_has_route_permission(request.user, 'Module_Members_add')
+            else ''
+        ),
+        'add_title': 'Register member',
+        'list_filters': [
+            {
+                'name': 'q', 'label': 'Member code or name',
+                'value': search, 'placeholder': 'Search by member code or name',
+            },
+            {
+                'name': 'status', 'label': 'Status', 'type': 'select',
+                'value': selected_status, 'options': Member.STATUS_CHOICES,
+            },
+        ],
+        'list_columns': [
+            {'name': 'member_code', 'label': 'Member code', 'width': 130},
+            {'name': 'full_name', 'label': 'Name', 'width': 200},
+            {'name': 'phone', 'label': 'Phone', 'width': 110},
+            {'name': 'branch', 'label': 'Branch', 'width': 170},
+            {'name': 'center_group', 'label': 'Center / group', 'width': 180, 'hidden': True},
+            {'name': 'status', 'label': 'Status', 'width': 100},
+            {'name': 'actions', 'label': 'Actions', 'width': 120},
+        ],
     })
 
 

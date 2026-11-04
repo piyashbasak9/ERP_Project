@@ -10,6 +10,7 @@ User=erpapp
 Group=erpmedia
 WorkingDirectory=/srv/erp/current
 EnvironmentFile=/etc/erp/erp.env
+Environment=DJANGO_ENV=production
 ExecStart=/srv/erp/venv/bin/celery -A ERP beat --loglevel=INFO --schedule=/srv/erp/shared/celerybeat/celerybeat-schedule
 Restart=on-failure
 RestartSec=5s

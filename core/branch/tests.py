@@ -225,8 +225,8 @@ class BranchIsolationRemainderTests(BranchIsolationTests):
 
         page = self.client.get(reverse("branch:Module_Branch_index_branch"), secure=True)
         self.assertEqual(page.status_code, 200)
-        self.assertContains(page, "js/branch-grid.js")
-        script_path = find("js/branch-grid.js")
+        self.assertContains(page, "js/list-page.js")
+        script_path = find("js/list-page.js")
         self.assertIsNotNone(script_path)
         self.assertIn("autoencode: true", Path(script_path).read_text(encoding="utf-8"))
 
@@ -252,6 +252,78 @@ class BranchIsolationRemainderTests(BranchIsolationTests):
             str(conditional_escape('"><svg/onload=1>')),
             popup.content.decode(),
         )
+
+    def test_member_list_grid_filters_round_trip_and_has_no_inline_script(self):
+        malicious_name = '<script>alert("x")</script>'
+        member = Member.unscoped.create(
+            branch=self.branch_one,
+            member_code="ONE-000001",
+            first_name=malicious_name,
+            last_name="Target",
+            status=Member.STATUS_ACTIVE,
+        )
+        self.grant_route("Module_Members_list")
+        self.client.force_login(self.user)
+
+        page = self.client.get(
+            reverse("branch:Module_Members_list"),
+            {"q": member.member_code, "status": Member.STATUS_ACTIVE},
+        )
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'value="ONE-000001"')
+        self.assertContains(page, 'value="active" selected')
+        self.assertNotContains(page, malicious_name)
+        self.assertContains(page, 'data-list-page')
+        self.assertNotRegex(
+            page.content.decode(),
+            r"<script(?![^>]*\bsrc=)[^>]*>",
+        )
+
+        data = self.client.get(
+            reverse("branch:Module_Members_list"),
+            {
+                "ajax": "1",
+                "q": member.member_code,
+                "status": Member.STATUS_ACTIVE,
+                "page": 1,
+                "rows": 20,
+            },
+        )
+        self.assertEqual(data.status_code, 200)
+        self.assertEqual(data.json()["records"], 1)
+        self.assertEqual(data.json()["rows"][0]["member_code"], member.member_code)
+        self.assertEqual(data.json()["rows"][0]["full_name"], f"{malicious_name} Target")
+        script_path = find("js/list-page.js")
+        self.assertIsNotNone(script_path)
+        self.assertIn("autoencode: true", Path(script_path).read_text(encoding="utf-8"))
+
+    def test_quick_search_requires_list_permission_and_stays_branch_scoped(self):
+        own_member = Member.unscoped.create(
+            branch=self.branch_one,
+            member_code="ONE-SEARCH-001",
+            first_name="Searchable",
+            last_name="Member",
+            status=Member.STATUS_ACTIVE,
+        )
+        Member.unscoped.create(
+            branch=self.branch_two,
+            member_code="TWO-SEARCH-001",
+            first_name="Searchable",
+            last_name="Other",
+            status=Member.STATUS_ACTIVE,
+        )
+        self.client.force_login(self.user)
+        search_url = reverse("branch:Module_Branch_quick_search")
+
+        denied = self.client.get(search_url, {"q": "SEARCH"})
+        self.assertEqual(denied.status_code, 403)
+
+        self.grant_route("Module_Members_list")
+        allowed = self.client.get(search_url, {"q": "SEARCH"})
+
+        self.assertEqual(allowed.status_code, 200)
+        self.assertContains(allowed, own_member.member_code)
+        self.assertNotContains(allowed, "TWO-SEARCH-001")
 
     def test_member_profile_and_popup_escape_stored_text_fields(self):
         malicious_text = '<script>alert("stored")</script>"><img src=x>'

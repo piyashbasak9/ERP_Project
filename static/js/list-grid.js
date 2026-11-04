@@ -33,7 +33,22 @@ $(function () {
         $responsive.addClass("jqgrid-responsive");
         const toolbar = document.createElement("div");
         toolbar.className = "list-grid-toolbar";
-        toolbar.innerHTML = `<label for="${searchId}"><i class="bi bi-search" aria-hidden="true"></i><span class="visually-hidden">Search records</span></label><input id="${searchId}" class="form-control form-control-sm" type="search" placeholder="Search loaded records"><span class="list-grid-count">${rows.length} records</span>`;
+        const searchLabel = document.createElement("label");
+        searchLabel.htmlFor = searchId;
+        searchLabel.setAttribute("aria-label", "Search records");
+        const searchIcon = document.createElement("i");
+        searchIcon.className = "bi bi-search";
+        searchIcon.setAttribute("aria-hidden", "true");
+        searchLabel.append(searchIcon);
+        const searchInput = document.createElement("input");
+        searchInput.id = searchId;
+        searchInput.className = "form-control form-control-sm";
+        searchInput.type = "search";
+        searchInput.placeholder = "Search loaded records";
+        const recordCount = document.createElement("span");
+        recordCount.className = "list-grid-count";
+        recordCount.textContent = `${rows.length} records`;
+        toolbar.append(searchLabel, searchInput, recordCount);
         $responsive.before(toolbar);
 
         const pager = document.createElement("div");
@@ -41,14 +56,22 @@ $(function () {
         pager.className = "list-grid-pager";
         if (!hasServerPagination) $responsive.after(pager);
 
-        const columns = headers.map((label, index) => ({
-            label,
-            name: `column_${index}`,
-            index: `column_${index}`,
-            width: index === headers.length - 1 ? 135 : 120,
-            sortable: true,
-            formatter: (_value, _options, row) => row[`html_${index}`] || ""
-        }));
+        const columns = headers.map((label, index) => {
+            const isActionColumn = label.toLowerCase() === "actions"
+                || (!label && index === headers.length - 1);
+            const column = {
+                label,
+                name: `column_${index}`,
+                index: `column_${index}`,
+                width: index === headers.length - 1 ? 135 : 120,
+                sortable: true,
+            };
+            if (isActionColumn) {
+                column.formatter = (_value, _options, row) => row[`html_${index}`] || "";
+                column.formatoptions = {escape: false};
+            }
+            return column;
+        });
 
         $source.jqGrid({
             datatype: "local",
@@ -64,7 +87,7 @@ $(function () {
             shrinkToFit: true,
             forceFit: true,
             gridview: true,
-            autoencode: false,
+            autoencode: true,
             loadonce: true,
             sortname: "column_0",
             sortorder: "asc",

@@ -11,6 +11,7 @@ Group=erpmedia
 SupplementaryGroups=erpmedia
 WorkingDirectory=/srv/erp/current
 EnvironmentFile=/etc/erp/backup.env
+Environment=DJANGO_ENV=production
 ExecStart=/srv/erp/current/scripts/backup.sh
 UMask=0077
 NoNewPrivileges=yes

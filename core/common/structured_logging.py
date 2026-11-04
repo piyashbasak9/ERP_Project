@@ -11,6 +11,9 @@ _SECRET_VALUE = re.compile(
     r'(\s*[:=]\s*)("[^"]*"|\'[^\']*\'|[^,\s;]+)'
 )
 _LONG_NUMBER = re.compile(r'\b\d{5,}\b')
+_DEVELOPMENT_SECRET = re.compile(
+    r'(?i)\b(password|token|secret)\b(\s*[:=]\s*)("[^"]*"|\'[^\']*\'|[^,\s;]+)'
+)
 
 
 class SafeJSONFormatter(logging.Formatter):
@@ -27,6 +30,11 @@ class SafeJSONFormatter(logging.Formatter):
             },
             ensure_ascii=True,
         )
+
+
+class DevelopmentFormatter(logging.Formatter):
+    def format(self, record):
+        return _DEVELOPMENT_SECRET.sub(r'\1\2[REDACTED]', super().format(record))
 
 
 class RequestIDMiddleware:

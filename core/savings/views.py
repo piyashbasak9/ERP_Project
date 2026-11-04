@@ -10,11 +10,17 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
+from django.utils.html import format_html, format_html_join
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from core.accounts.permission_utils import user_has_route_permission
 from core.audit.services import log_action
 from core.common.popup import popup_json_response, render_popup_form
-from core.configuration.services import get_organization_configuration
+from core.common.templatetags.user_formatting import config_money
+from core.configuration.services import (
+    get_organization_configuration,
+    get_system_configuration,
+)
 
 from .forms import (
     SavingsAccountForm,
@@ -34,6 +40,16 @@ def _show_form(request, template, form, title, *, status=200, **extra):
     return render_popup_form(
         request, template, {'form': form, 'title': title, **extra}, status=status
     )
+
+
+def _add_validation_error(form, error):
+    if hasattr(error, 'message_dict'):
+        for field, errors in error.message_dict.items():
+            for message in errors:
+                form.add_error(field if field in form.fields else None, message)
+    else:
+        for message in error.messages:
+            form.add_error(None, message)
 
 
 @require_GET
@@ -196,14 +212,126 @@ def account_list(request):
         )
     if status in dict(SavingsAccount.STATUS_CHOICES):
         accounts = accounts.filter(status=status)
-    page_obj = Paginator(accounts.order_by('account_number'), 100).get_page(
-        request.GET.get('page', 1)
-    )
+    sort_fields = {
+        'account_number': 'account_number',
+        'product': 'product__name',
+        'owner': 'member__first_name',
+        'branch': 'branch__name',
+        'balance': 'balance',
+        'available': 'balance',
+        'status': 'status',
+    }
+    sort_field = sort_fields.get(request.GET.get('sidx'), 'account_number')
+    if request.GET.get('sord') == 'desc':
+        sort_field = f'-{sort_field}'
+    try:
+        page_size = min(max(int(request.GET.get('rows', 20)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 20
+    paginator = Paginator(accounts.order_by(sort_field, 'pk'), page_size)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+    if request.GET.get('ajax'):
+        can_statement = user_has_route_permission(
+            request.user, 'Module_Savings_statement'
+        )
+        can_export = user_has_route_permission(
+            request.user, 'Module_Savings_statement_export'
+        )
+        can_reactivate = user_has_route_permission(
+            request.user, 'Module_Savings_reactivation_form'
+        )
+        can_close = user_has_route_permission(
+            request.user, 'Module_Savings_close_account'
+        )
+        system_configuration = get_system_configuration()
+        rows = []
+        for account in page_obj.object_list:
+            owner = (
+                account.member.full_name
+                if account.member_id
+                else f'{account.group.name} (Group)'
+            )
+            actions = []
+            if can_statement:
+                actions.append(format_html(
+                    '<a href="{}">Statement</a>',
+                    reverse('savings:Module_Savings_statement', args=[account.pk]),
+                ))
+            if can_export:
+                actions.append(format_html(
+                    '<a href="{}">CSV</a>',
+                    reverse('savings:Module_Savings_statement_export', args=[account.pk]),
+                ))
+            if account.status == SavingsAccount.STATUS_DORMANT and can_reactivate:
+                actions.append(format_html(
+                    '<a href="{}">Reactivate</a>',
+                    reverse('savings:Module_Savings_reactivation_form', args=[account.pk]),
+                ))
+            if (
+                account.balance == 0
+                and account.reserved_balance == 0
+                and account.status != 'closed'
+                and can_close
+            ):
+                actions.append(format_html(
+                    '<a href="{}" data-confirm data-confirm-title="Close account" '
+                    'data-confirm-message="Close savings account {}?" '
+                    'data-confirm-button="Close">Close</a>',
+                    reverse('savings:Module_Savings_close_account', args=[account.pk]),
+                    account.account_number,
+                ))
+            rows.append({
+                'id': account.pk,
+                'account_number': account.account_number,
+                'product': account.product.name,
+                'owner': owner,
+                'branch': account.branch.name,
+                'balance': config_money(account.balance, system_configuration),
+                'available': config_money(
+                    account.available_balance, system_configuration
+                ),
+                'status': account.get_status_display(),
+                'actions': format_html_join(' | ', '{}', ((action,) for action in actions)),
+            })
+        return JsonResponse({
+            'rows': rows,
+            'page': page_obj.number,
+            'total': paginator.num_pages,
+            'records': paginator.count,
+        })
+
     return render(request, 'savings/account_list.html', {
-        'page_obj': page_obj,
-        'search': search,
-        'selected_status': status,
-        'statuses': SavingsAccount.STATUS_CHOICES,
+        'list_title': 'Savings accounts',
+        'grid_url': request.path,
+        'initial_page_text': f'Page {page_obj.number} of {paginator.num_pages}',
+        'add_url': (
+            reverse('savings:Module_Savings_account_add')
+            if user_has_route_permission(
+                request.user, 'Module_Savings_account_add'
+            )
+            else ''
+        ),
+        'add_title': 'Open savings account',
+        'list_filters': [
+            {
+                'name': 'q', 'label': 'Account / owner',
+                'value': search, 'placeholder': 'Account number or owner',
+            },
+            {
+                'name': 'status', 'label': 'Status', 'type': 'select',
+                'value': status, 'options': SavingsAccount.STATUS_CHOICES,
+            },
+        ],
+        'list_columns': [
+            {'name': 'account_number', 'label': 'Account number', 'width': 150},
+            {'name': 'product', 'label': 'Product', 'width': 160},
+            {'name': 'owner', 'label': 'Owner', 'width': 200},
+            {'name': 'branch', 'label': 'Branch', 'width': 150, 'hidden': True},
+            {'name': 'balance', 'label': 'Balance', 'width': 120, 'align': 'right'},
+            {'name': 'available', 'label': 'Available', 'width': 120, 'align': 'right'},
+            {'name': 'status', 'label': 'Status', 'width': 100},
+            {'name': 'actions', 'label': 'Actions', 'width': 180},
+        ],
     })
 
 
@@ -277,7 +405,7 @@ def account_create(request):
                 idempotency_key=values['idempotency_key'],
             )
         except ValidationError as exc:
-            form.add_error(None, exc)
+            _add_validation_error(form, exc)
         else:
             message = f'Savings account {account.account_number} opened.'
             response = popup_json_response(
@@ -365,7 +493,7 @@ def _render_transaction_form(request, operation, data):
                     narration=values['narration'],
                 )
         except ValidationError as exc:
-            form.add_error(None, exc)
+            _add_validation_error(form, exc)
         else:
             if result.status == SavingsTransaction.STATUS_PENDING:
                 message = 'Withdrawal submitted for approval.'
@@ -409,7 +537,7 @@ def _charge_fee(request, data):
                 narration=values['narration'],
             )
         except ValidationError as exc:
-            form.add_error(None, exc)
+            _add_validation_error(form, exc)
         else:
             message = 'Savings fee posted successfully.'
             response = popup_json_response(request, message=message)
@@ -450,7 +578,7 @@ def _interest_post(request, data):
                 idempotency_key=values['idempotency_key'],
             )
         except ValidationError as exc:
-            form.add_error(None, exc)
+            _add_validation_error(form, exc)
         else:
             message = f'Interest of {result.amount} posted.'
             response = popup_json_response(request, message=message)
@@ -562,7 +690,7 @@ def reactivate_account(request, pk):
     except SavingsAccount.DoesNotExist:
         return render(request, '404.html', status=404)
     except ValidationError as exc:
-        form.add_error(None, exc)
+        _add_validation_error(form, exc)
         return _show_form(
             request,
             'savings/reactivation_form.html',
@@ -611,7 +739,7 @@ def reverse_transaction(request, pk):
                 reason=form.cleaned_data['reason'],
             )
         except ValidationError as exc:
-            form.add_error(None, exc)
+            _add_validation_error(form, exc)
         else:
             message = f'Transaction reversed as {reversal.pk}.'
             response = popup_json_response(
@@ -692,7 +820,7 @@ def reject_withdrawal(request, pk):
                 reason=form.cleaned_data['reason'],
             )
         except ValidationError as exc:
-            form.add_error(None, exc)
+            _add_validation_error(form, exc)
         else:
             message = 'Withdrawal rejected; reserved funds were released.'
             response = popup_json_response(request, message=message)

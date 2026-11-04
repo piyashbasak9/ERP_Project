@@ -1,3 +1,15 @@
+import time
+
+
+class PagePerformanceMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        request.page_render_started_at = time.perf_counter()
+        return self.get_response(request)
+
+
 class ContentSecurityPolicyMiddleware:
     policy = (
         "default-src 'self'; "

@@ -2,7 +2,20 @@ from django.db import transaction
 from django.urls import URLPattern, URLResolver, get_resolver
 
 from .middleware import AUTHENTICATED_ONLY_ROUTE_NAMES, PUBLIC_ROUTE_NAMES
-from .models import Permission
+from .models import Permission, UserRole
+
+
+def user_has_route_permission(user, route_name):
+    if not user.is_authenticated or not user.is_active:
+        return False
+    if user.is_superuser:
+        return True
+    return UserRole.objects.filter(
+        user=user,
+        role__permissions__route_name=route_name,
+        role__permissions__is_allowed=True,
+        role__permissions__is_active=True,
+    ).exists()
 
 
 def get_all_urls():

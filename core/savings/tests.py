@@ -4,8 +4,10 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from threading import Barrier
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.contrib.staticfiles.finders import find
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, close_old_connections, connection, transaction
 from django.test import RequestFactory, SimpleTestCase, TestCase, TransactionTestCase
@@ -723,6 +725,44 @@ class SavingsViewTests(TestCase):
                 response = self.client.get(url)
                 self.assertEqual(response.status_code, 200)
 
+    @patch(
+        "core.savings.views.SavingsService.open_account",
+        side_effect=ValidationError(
+            {"journal_date": "No open fiscal year contains this date."}
+        ),
+    )
+    def test_account_creation_renders_service_errors_for_unknown_fields(
+        self, open_account
+    ):
+        member = Member.unscoped.create(
+            branch=self.branch,
+            member_code="SUI-ERROR",
+            first_name="Test",
+            last_name="Member",
+            status=Member.STATUS_ACTIVE,
+        )
+
+        response = self.client.post(
+            reverse("savings:Module_Savings_account_add") + "?popup=1",
+            {
+                "branch": self.branch.pk,
+                "product": self.product.pk,
+                "owner_type": "member",
+                "member": member.pk,
+                "opened_at": "2025-01-01",
+                "opening_balance": "100.00",
+                "idempotency_key": str(uuid.uuid4()),
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["errors"]["__all__"],
+            ["No open fiscal year contains this date."],
+        )
+        open_account.assert_called_once()
+
     def test_account_statement_and_pagination_partial_render(self):
         for index in range(26):
             member = Member.unscoped.create(
@@ -760,6 +800,53 @@ class SavingsViewTests(TestCase):
         )
         self.assertEqual(list_response.status_code, 200)
         self.assertContains(list_response, "Page 1 of 2")
+
+    def test_savings_account_list_uses_server_grid_and_round_trips_filters(self):
+        malicious_name = '<img src=x onerror="alert(1)">'
+        member = Member.unscoped.create(
+            branch=self.branch,
+            member_code="SUI-XSS-001",
+            first_name=malicious_name,
+            last_name="Member",
+            status=Member.STATUS_ACTIVE,
+        )
+        with patch("pdb.set_trace"):
+            SavingsService(self.request).open_account(
+                branch_id=self.branch.pk,
+                product_id=self.product.pk,
+                member_id=member.pk,
+                opened_at=date(2025, 1, 1),
+                opening_balance=Decimal("0.00"),
+                idempotency_key=uuid.uuid4(),
+            )
+        page = self.client.get(
+            reverse("savings:Module_Savings_accounts"),
+            {"q": member.member_code, "status": SavingsAccount.STATUS_ACTIVE},
+        )
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'value="SUI-XSS-001"')
+        self.assertContains(page, 'value="active" selected')
+        self.assertNotContains(page, malicious_name)
+        self.assertNotRegex(
+            page.content.decode(),
+            r"<script(?![^>]*\bsrc=)[^>]*>",
+        )
+        grid_data = self.client.get(
+            reverse("savings:Module_Savings_accounts"),
+            {
+                "ajax": "1",
+                "q": member.member_code,
+                "status": SavingsAccount.STATUS_ACTIVE,
+                "page": 1,
+                "rows": 20,
+            },
+        )
+        self.assertEqual(grid_data.status_code, 200)
+        self.assertEqual(grid_data.json()["records"], 1)
+        self.assertEqual(grid_data.json()["rows"][0]["owner"], f"{malicious_name} Member")
+        script_path = find("js/list-page.js")
+        self.assertIsNotNone(script_path)
+        self.assertIn("autoencode: true", Path(script_path).read_text(encoding="utf-8"))
 
     def test_savings_product_crud_status_filter_and_audit(self):
         create_url = (
@@ -979,9 +1066,15 @@ class SavingsBranchIsolationTests(TestCase):
         self.client.force_login(self.user_a)
 
     def test_branch_a_cannot_list_open_post_or_download_branch_b_account(self):
-        listing = self.client.get(reverse("savings:Module_Savings_accounts"))
-        self.assertContains(listing, self.account_a.account_number)
-        self.assertNotContains(listing, self.account_b.account_number)
+        listing = self.client.get(
+            reverse("savings:Module_Savings_accounts"), {"ajax": "1"}
+        )
+        self.assertEqual(listing.status_code, 200)
+        account_numbers = {
+            row["account_number"] for row in listing.json()["rows"]
+        }
+        self.assertIn(self.account_a.account_number, account_numbers)
+        self.assertNotIn(self.account_b.account_number, account_numbers)
         self.assertEqual(
             self.client.get(
                 reverse("savings:Module_Savings_statement", args=[self.account_b.pk])

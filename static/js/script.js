@@ -40,7 +40,29 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 document.addEventListener('click', function (event) {
+    const quickSearchToggle = event.target.closest('[data-quick-search-toggle]');
+    if (quickSearchToggle) {
+        const quickSearch = document.querySelector('[data-quick-search-form]');
+        if (quickSearch) {
+            quickSearch.hidden = !quickSearch.hidden;
+            if (!quickSearch.hidden) {
+                quickSearch.querySelector('input').focus();
+            }
+        }
+    }
+
     if (event.target.closest('[data-print-window]')) {
         window.print();
+    }
+});
+
+document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape') {
+        return;
+    }
+    const quickSearch = document.querySelector('[data-quick-search-form]');
+    if (quickSearch && !quickSearch.hidden) {
+        quickSearch.hidden = true;
+        document.querySelector('[data-quick-search-toggle]')?.focus();
     }
 });

@@ -2,7 +2,8 @@
   "private": true,
   "description": "Pinned source packages for self-hosted Django frontend assets",
   "scripts": {
-    "sync-vendor": "node scripts/copy-vendor-assets.cjs"
+    "sync-vendor": "node scripts/copy-vendor-assets.cjs",
+    "test:e2e:layout": "DJANGO_SETTINGS_MODULE=ERP.test_settings python manage.py test e2e.playwright_layout --verbosity=2"
   },
   "dependencies": {
     "bootstrap": "5.3.7",
@@ -10,5 +11,8 @@
     "free-jqgrid": "4.15.5",
     "jquery": "3.7.1",
     "jquery-ui-dist": "1.13.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1"
   }
 }

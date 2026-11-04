@@ -134,6 +134,7 @@ class UserPreference(models.Model):
         choices=SystemConfiguration.DATE_FORMAT_CHOICES,
         default="%d-%b-%Y",
     )
+    show_performance_timers = models.BooleanField(default=True)
 
     class Meta:
         db_table = "user_preferences"

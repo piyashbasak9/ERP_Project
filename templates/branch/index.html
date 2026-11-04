@@ -1,63 +1,9 @@
 {% extends 'base.html' %}
 {% load static %}
 {% block title %}Branches{% endblock %}
-
 {% block content %}
-<div class="page-wrapper" id="pageWrapper" data-grid-url="{% url 'branch:Module_Branch_index_branch' %}?ajax=1">
-
-    <!-- Header -->
-    <div class="page-header">
-        <h2>
-            <span class="header-icon"><i class="bi bi-diagram-3-fill"></i></span>
-            Branches
-        </h2>
-        <a href="{% url 'branch:Module_Branch_add_branch' %}?popup=1"
-           class="btn btn-primary btn-create"
-           data-popup
-           data-popup-title="Create branch">
-            <i class="bi bi-plus-circle me-1"></i>Create New Branch
-        </a>
-    </div>
-
-    <!-- Search Area -->
-    <div class="card search-card">
-        <div class="card-body">
-
-            <div class="search-field">
-                <label>Branch Name</label>
-                <div class="input-icon-wrap">
-                    <i class="bi bi-building"></i>
-                    <input type="text" id="search_name" class="form-control with-icon" placeholder="e.g. Dhaka Main Branch">
-                </div>
-            </div>
-
-            <div class="search-field">
-                <label>Code</label>
-                <div class="input-icon-wrap">
-                    <i class="bi bi-upc-scan"></i>
-                    <input type="text" id="search_code" class="form-control with-icon" placeholder="e.g. DHK-01">
-                </div>
-            </div>
-            <div class="search-actions">
-                <button type="button" class="btn btn-primary" id="btnSearch">
-                    <i class="bi bi-search me-1"></i>Search
-                </button>
-            </div>
-
-        </div>
-    </div>
-
-    <!-- Grid -->
-    <div class="grid-card mt-2">
-        <div class="table-responsive">
-            <table id="branchGrid"></table>
-            <div id="branchPager"></div>
-        </div>
-    </div>
-
-</div>
+{% include 'partials/list_page.html' %}
 {% endblock %}
-
 {% block extra_js %}
-<script src="{% static 'js/branch-grid.js' %}"></script>
+<script src="{% static 'js/list-page.js' %}"></script>
 {% endblock %}

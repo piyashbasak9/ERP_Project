@@ -1,0 +1,71 @@
+{% load rbac %}
+<section class="erp-list-page" data-list-page data-grid-url="{{ grid_url }}" data-page-key="{{ request.path }}" data-user-key="{{ request.user.pk }}" data-performance-timers="{{ show_performance_timers|yesno:'true,false' }}">
+    <header class="erp-page-title">
+        <h1>{{ list_title }}</h1>
+        <div class="erp-page-tools">
+            {% if add_url %}
+            <a class="erp-icon-button" href="{{ add_url }}?popup=1" data-popup data-popup-title="{{ add_title }}" aria-label="{{ add_title }}" title="{{ add_title }}">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i>
+            </a>
+            {% endif %}
+            <button class="erp-icon-button" type="button" data-filter-toggle aria-expanded="true" aria-controls="listFilters" aria-label="Toggle filters" title="Toggle filters">
+                <i class="bi bi-search" aria-hidden="true"></i><span class="filter-count" data-filter-count hidden></span>
+            </button>
+        </div>
+    </header>
+
+    <form id="listFilters" class="erp-filter-panel" method="get" action="{{ request.path }}" data-list-filters>
+        <div class="erp-filter-fields">
+            {% for filter in list_filters %}
+            <div class="erp-filter-field">
+                <label for="filter-{{ filter.name }}">{{ filter.label }}</label>
+                {% if filter.type == "select" %}
+                <select id="filter-{{ filter.name }}" name="{{ filter.name }}" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    {% for value, label in filter.options %}
+                    <option value="{{ value }}"{% if filter.value == value %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                {% else %}
+                <input id="filter-{{ filter.name }}" name="{{ filter.name }}" type="{{ filter.type|default:'search' }}" value="{{ filter.value }}" placeholder="{{ filter.placeholder }}" class="form-control form-control-sm">
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="erp-filter-actions">
+            <button class="btn btn-sm btn-outline-primary" type="submit"><i class="bi bi-search" aria-hidden="true"></i> Search</button>
+            <a href="{{ request.path }}" class="erp-reset-link">Reset</a>
+        </div>
+    </form>
+
+    <div class="erp-list-grid-wrap">
+        <table class="erp-list-grid" data-list-grid aria-label="{{ list_title }}">
+            <thead><tr>{% for column in list_columns %}<th data-name="{{ column.name }}" data-width="{{ column.width|default:140 }}" data-hidden="{{ column.hidden|yesno:'true,false' }}" {% if column.align %}data-align="{{ column.align }}"{% endif %}>{{ column.label }}</th>{% endfor %}</tr></thead>
+            <tbody></tbody>
+        </table>
+        <div id="jqgrid-pager-{{ request.user.pk }}" data-jqgrid-pager hidden aria-hidden="true"></div>
+        <div class="erp-grid-status" aria-live="polite">
+            <span data-load-time>DLT: —</span>
+            <nav class="erp-grid-pager" data-grid-pager aria-label="Grid pagination">
+                <span class="visually-hidden" aria-hidden="true">{{ initial_page_text }}</span>
+                <button class="erp-grid-page-button" type="button" data-page-first aria-label="First page" title="First page">|&lt;</button>
+                <button class="erp-grid-page-button" type="button" data-page-previous aria-label="Previous page" title="Previous page">&lt;</button>
+                <label for="grid-page-{{ request.user.pk }}">Page</label>
+                <input id="grid-page-{{ request.user.pk }}" type="number" min="1" value="1" data-page-input aria-label="Current page">
+                <span>of <span data-page-count>1</span></span>
+                <button class="erp-grid-page-button" type="button" data-page-next aria-label="Next page" title="Next page">&gt;</button>
+                <button class="erp-grid-page-button" type="button" data-page-last aria-label="Last page" title="Last page">&gt;|</button>
+                <label class="visually-hidden" for="grid-page-size-{{ request.user.pk }}">Rows per page</label>
+                <select id="grid-page-size-{{ request.user.pk }}" data-page-size aria-label="Rows per page">
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                </select>
+                <button class="erp-grid-page-button" type="button" data-column-chooser aria-label="Choose columns" title="Choose columns">Columns</button>
+                <button class="erp-grid-page-button" type="button" data-grid-refresh aria-label="Refresh grid" title="Refresh grid">Refresh</button>
+            </nav>
+            <span data-view-range>View 0 - 0 of 0</span>
+        </div>
+    </div>
+</section>

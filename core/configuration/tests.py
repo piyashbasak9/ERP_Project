@@ -36,6 +36,24 @@ class ConfigurationRouteTests(TestCase):
             RolePermission.objects.create(role=role, permission=permission)
         UserRole.objects.create(user=self.user, role=role)
 
+    def test_performance_timers_follow_the_signed_in_users_preference(self):
+        self.grant_routes("Module_Branch_index_branch")
+        route = reverse("branch:Module_Branch_index_branch")
+        preference = UserPreference.objects.create(
+            user=self.user, show_performance_timers=False
+        )
+
+        hidden = self.client.get(route)
+
+        self.assertEqual(hidden.status_code, 200)
+        self.assertNotContains(hidden, "PRT:")
+        preference.show_performance_timers = True
+        preference.save(update_fields=["show_performance_timers"])
+
+        visible = self.client.get(route)
+
+        self.assertContains(visible, "PRT:")
+
     def test_settings_screens_and_mutations_require_their_own_permission(self):
         routes = (
             ("Module_Settings_index", "GET", "configuration:Module_Settings_index"),
@@ -54,6 +72,20 @@ class ConfigurationRouteTests(TestCase):
             with self.subTest(route=route_name):
                 response = getattr(self.client, method.lower())(reverse(reverse_name))
                 self.assertEqual(response.status_code, 403)
+
+    @override_settings(DEBUG=True)
+    def test_development_permission_denial_logs_route_user_and_missing_permission(self):
+        with self.assertLogs("core.accounts.middleware", level="WARNING") as captured:
+            response = self.client.get(reverse("configuration:Module_Settings_index"))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("route=Module_Settings_index", captured.output[0])
+        self.assertIn(f"user={self.user.username}", captured.output[0])
+        self.assertIn(
+            "missing_permission=Module_Settings_index", captured.output[0]
+        )
+        self.assertNotIn("password", captured.output[0].lower())
+        self.assertNotIn("token", captured.output[0].lower())
 
     def test_settings_mutation_routes_reject_get(self):
         routes = (

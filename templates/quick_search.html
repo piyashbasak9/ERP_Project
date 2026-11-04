@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}Quick search{% endblock %}
+{% block content %}
+<section class="container-fluid py-3">
+    <h1 class="h5 mb-3">Quick search</h1>
+    <form method="get" action="{% url 'branch:Module_Branch_quick_search' %}" class="d-flex gap-2 mb-3">
+        <label class="visually-hidden" for="quick-search-query">Member, loan or savings account</label>
+        <input id="quick-search-query" name="q" value="{{ query }}" class="form-control" type="search" minlength="2" maxlength="80" placeholder="Member code or name, loan number, account number" autofocus>
+        <button class="btn btn-primary" type="submit"><i class="bi bi-search" aria-hidden="true"></i> Search</button>
+    </form>
+    {% if query and search_results %}
+    <div class="table-responsive card">
+        <table class="table table-sm table-hover mb-0">
+            <thead><tr><th>Type</th><th>Reference</th><th>Details</th><th>Action</th></tr></thead>
+            <tbody>
+                {% for result in search_results %}
+                <tr>
+                    <td>{{ result.category }}</td>
+                    <td>{{ result.label }}</td>
+                    <td>{{ result.detail }}</td>
+                    <td><a href="{{ result.url }}">Open</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% elif query %}
+    <p class="text-muted" role="status">No matching records were found in your accessible branches.</p>
+    {% else %}
+    <p class="text-muted">Enter at least two characters to search your permitted member, loan, and savings records.</p>
+    {% endif %}
+</section>
+{% endblock %}

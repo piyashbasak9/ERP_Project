@@ -8,11 +8,10 @@ from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
 DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
 REDIS_URL = os.environ.get("REDIS_URL")
-if not DEBUG and not REDIS_URL:
-    raise ImproperlyConfigured("REDIS_URL is required when DEBUG is disabled.")
+LOCAL_SETTINGS_PATH = BASE_DIR / "ERP" / "local_settings.py"
 
 def resolve_database_ssl_options(debug, requested_mode=None, ca_path=None):
     ca_path = (ca_path or "").strip()
@@ -28,7 +27,7 @@ def resolve_database_ssl_options(debug, requested_mode=None, ca_path=None):
 
 
 DB_SSL_OPTIONS = resolve_database_ssl_options(
-    DEBUG,
+    DEBUG or LOCAL_SETTINGS_PATH.is_file(),
     os.environ.get("DB_SSLMODE"),
     os.environ.get("DB_SSL_CA_PATH"),
 )
@@ -89,8 +88,10 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'core.common.structured_logging.RequestIDMiddleware',
+    'core.common.errors.DevelopmentErrorLoggingMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'core.common.middleware.ContentSecurityPolicyMiddleware',
+    'core.common.middleware.PagePerformanceMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -247,3 +248,16 @@ LOGGING = {
         'core': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
     },
 }
+
+CSRF_FAILURE_VIEW = 'core.common.errors.csrf_failure'
+
+from ERP.local_loader import load_local_settings
+
+load_local_settings(globals())
+
+if not SECRET_KEY:
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY must be configured or supplied by local settings."
+    )
+if not DEBUG and not REDIS_URL:
+    raise ImproperlyConfigured("REDIS_URL is required when DEBUG is disabled.")

@@ -12,6 +12,7 @@ jobs:
   test-and-scan:
     runs-on: ubuntu-latest
     env:
+      DJANGO_ENV: test
       DJANGO_SECRET_KEY: ci-only-not-for-production-6d10bbad3a9dcf1c0ae4f0e2b
       DJANGO_DEBUG: "0"
       DJANGO_ALLOWED_HOSTS: localhost
@@ -31,6 +32,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Reject tracked local settings
+        run: |
+          if git ls-files | grep -Eq '(^|/)local_settings\.py$'; then
+            echo "A development-only local_settings.py is tracked." >&2
+            exit 1
+          fi
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -73,6 +80,7 @@ jobs:
         run: pip-audit
       - name: Check deployment settings
         env:
+          DJANGO_ENV: production
           DJANGO_SECRET_KEY: ci-only-not-for-production-6d10bbad3a9dcf1c0ae4f0e2b
           DJANGO_DEBUG: "0"
           DJANGO_ALLOWED_HOSTS: localhost

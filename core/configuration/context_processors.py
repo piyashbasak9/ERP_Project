@@ -1,3 +1,5 @@
+import time
+
 from core.accounts.models import Permission
 
 from .services import get_organization_configuration, get_system_configuration
@@ -23,10 +25,22 @@ def organization_context(request):
                     ],
                 ).values_list("route_name", flat=True)
             )
+    preference = getattr(request, "user_preference", None)
+    show_performance_timers = (
+        preference.show_performance_timers
+        if preference is not None
+        else bool(request.user.is_authenticated and request.user.is_superuser)
+    )
+    started_at = getattr(request, "page_render_started_at", None)
+    page_render_time = (
+        f"{time.perf_counter() - started_at:.2f}" if started_at is not None else "0.00"
+    )
     return {
         "system_configuration": get_system_configuration(),
         "organization_configuration": get_organization_configuration(),
-        "user_preference": getattr(request, "user_preference", None),
+        "user_preference": preference,
+        "show_performance_timers": show_performance_timers,
+        "page_render_time": page_render_time,
         "can_view_system_logo": "Module_Settings_system_logo" in allowed_routes,
         "can_view_organization_logo": (
             "Module_Settings_organization_logo" in allowed_routes

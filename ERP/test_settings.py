@@ -4,6 +4,7 @@ import os
 
 from django.core.exceptions import ImproperlyConfigured
 
+os.environ["DJANGO_ENV"] = "test"
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ["DJANGO_DEBUG"] = "1"
 

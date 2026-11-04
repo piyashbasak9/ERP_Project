@@ -1098,7 +1098,16 @@ reports_loans_export         audit_log_list              accounts_role_edit
 
 ### 11.6 Production settings baseline
 
-Secrets and environment-specific values come from environment variables. `python manage.py check --deploy` must report no issues before every release.
+Production uses `DJANGO_ENV=production`; secrets and environment-specific values come from environment variables. `ERP/settings.py` never imports development overrides in production. `python manage.py check --deploy` must report no issues before every release.
+
+`ERP/local_settings.py` is an ignored, development-only override. If that file
+exists while `DJANGO_ENV=production`, settings loading fails closed. Tests set
+`DJANGO_ENV=test` before importing project settings and never load local
+overrides. Production startup and `check --deploy` also reject insecure
+cookies, HTTP redirects/HSTS/origins, non-TLS PostgreSQL, console email,
+eager Celery, wildcard hosts, disabled lockout, and missing MFA enforcement.
+The current application has no MFA enforcement, so production startup remains
+blocked until that separate security capability is implemented and approved.
 
 ```python
 # ERP/settings/prod.py (illustrative)
@@ -1628,22 +1637,23 @@ erDiagram
 
 ```
 templates/
-├── base.html               # layout: header, sidebar, content block, toast container, modal shell
+├── base.html               # shared header, permission-aware module menu, content and status bar
 ├── home.html               # dashboard
 ├── accounts/ branch/ registration/
-└── partials/               # (planned) toasts.html, modal.html, grid helpers, form field macros
+└── partials/               # toasts.html, modal shell and reusable list_page.html
 static/
 ├── css/style.css           # theme variables and overrides
 ├── js/script.js            # shared setup (CSRF header, AJAX error handling)
 ├── js/popup.js             # popup modal behaviour
-├── js/notify.js            # (planned) toast helper
-└── vendor/                 # (planned) self-hosted Bootstrap, jQuery, jqGrid, Bootstrap Icons
+├── js/list-page.js         # shared Free jqGrid setup for pilot lists
+├── js/notify.js            # toast helper
+└── vendor/                 # self-hosted Bootstrap, jQuery, jqGrid, Bootstrap Icons
 ```
 
-- **Header** is white with the branch switcher, the user menu, and a logout **button inside a POST form**.
+- The application shell uses a full-width dark-blue 56px header and a separate, slightly darker 34px menu strip. The header shows the legal organization name, permitted quick actions, branch switcher, and user menu. Logout is a **button inside a POST form**.
 - The permission-aware bell opens the authenticated user's branch-scoped in-app notifications; each item can be marked read with POST.
-- **Sidebar** is dark blue. Its items come from a context processor that lists only the pages the user's role may open; empty module groups are hidden.
-- **Content** is white cards on a very light background. Breadcrumbs show the current location.
+- Menu entries and action shortcuts use the same route permission service as the middleware. Unavailable routes are omitted and empty module groups are hidden. The menu supports keyboard operation and collapses below 992px.
+- **Content** is white on a very light background. Legacy screens continue to render in the shared shell; the Branch, Members, and Savings accounts pilot lists use the dense full-height layout.
 - Vendor files are **self-hosted** so a strict Content Security Policy can be enforced.
 
 Notification events are generated and delivered outside web requests by `python manage.py dispatch_notifications`. Run it every five minutes (generation is idempotent by recipient, event reference, channel and day) to send due reminders and retry transient delivery failures:
@@ -1821,6 +1831,10 @@ Text and background pairs must meet WCAG AA contrast.
 ### 16.6 jqGrid lists
 
 - Server-side paging, sorting and filtering; the response format is in [section 14.2](#142-standard-ajax-response).
+- Branches, Members, and Savings accounts are the initial dense-list pilot. Their layout is shared through `templates/partials/list_page.html`; each view supplies its title, permission-checked add route, filter descriptors, grid columns, and server-side JSON URL. `static/js/list-page.js` reads the declared column metadata and supplies paging, sorting, URL-synchronized filters, persistent per-user/per-page filter and column preferences, load timing, and the column chooser. Other list screens retain their current templates until separately converted.
+- On desktop pilot lists, the grid consumes all remaining viewport height and owns vertical scrolling. The title, filters, grid footer, and status footer remain outside the scroll area. At tablet widths the default column set is reduced; below 768px filters stack and the grid may scroll horizontally without widening the page.
+- Dense tokens are a 13px system font, 1.35 line height, 28px controls, 32px rows, and 4px spacing. The existing white/dark-blue palette in [section 16.5](#165-theme-white-and-dark-blue) is the source of truth.
+- List filter controls submit through GET and preserve their values in the URL. The collapsed state and column visibility are stored in browser local storage using the authenticated user and page as the key.
 - Shared report grids use the report registry's columns and applicable filters, return totals in `userdata`, and enforce a report-specific grid permission.
 - Report Excel and PDF downloads use the same registered columns, queryset and totals as the grid; they include organization/filter labels, are audited, and reject exports above 5,000 rows with a clear filter-narrowing message.
 - `autoencode: true` so cell values are HTML-escaped.
@@ -1847,7 +1861,23 @@ $("#branchGrid").jqGrid({
 });
 ```
 
-### 16.7 Permission-aware UI
+### 16.7 Reusable ListPage component
+
+Pilot templates extend `base.html` and include `partials/list_page.html`. The view provides `list_title`, `grid_url`, `list_filters`, `list_columns`, `initial_page_text`, and an optional `add_url`/`add_title`. A filter descriptor has `name`, `label`, `value`, and optionally `type`, `placeholder`, and `options`; a column descriptor has `name`, `label`, and optionally `width`, `align`, and `hidden`.
+
+The shared JavaScript module initializes Free jqGrid in JSON mode with `autoencode: true`. Each endpoint keeps the queryset's existing branch scope and allowlists sortable fields before applying server-side ordering and pagination. Actions are server-rendered only when their action route permission is granted; state changes remain POST-only and audited. Do not put inline scripts or user data into action HTML.
+
+The footer's server render time and the grid's client data-load time are displayed only when the user's `show_performance_timers` preference is enabled. The preference defaults to enabled for newly created preferences; users can change it from Preferences.
+
+Run the dedicated desktop browser check with test PostgreSQL variables configured and Chromium installed using `npx playwright install chromium`:
+
+```sh
+npm run test:e2e:layout
+```
+
+The check creates isolated test fixtures, verifies all three pilot lists at 1366×768 and 1920×1080, and saves the six viewport screenshots under `docs/ui/`.
+
+### 16.8 Permission-aware UI
 
 ```django
 {% load rbac %}
@@ -1872,6 +1902,7 @@ The details users notice every day. These apply to every screen.
 | Destructive actions | Confirmation dialog naming the record ("Deactivate branch *Dhaka Main*?"); reason field where audit needs one |
 | Buttons | Loading state while working; disabled when the action is not allowed; primary action on the right |
 | Tables | Server-side paging, sorting, filtering; sticky header; row count; column chooser; empty state with a clear message; right-aligned numbers; report totals and export controls only where permitted |
+| Dense lists | Pilot lists use a full-width 56px header, 34px permission-aware module menu, compact title/filter bars, and a viewport-filling grid. The grid alone scrolls vertically on desktop; filters collapse with a per-user/per-page state and active-filter count |
 | Search | Debounced; shows active report filters (branch, center, field officer, dates and status); one-click clear |
 | Reports | Permission-filtered report index; same definition drives on-screen columns/totals and Excel/PDF output; organization name and active filters appear on exports |
 | Status | Colored status tags with text (never color alone) |
@@ -1880,7 +1911,7 @@ The details users notice every day. These apply to every screen.
 | Formats | Money with configured currency symbol and western/Indian grouping in printable financial statements; dates use the user's configured format |
 | Time | Stored in UTC, shown in the organization time zone |
 | Keyboard | Tab order is logical; `Enter` submits a form; `Esc` closes a popup; visible focus ring |
-| Responsive | Usable on tablet; collection screens are optimized for small screens |
+| Responsive | Dense lists are optimized for desktop at 1280px and wider, reduce default columns below that, and stack filters/allow grid-only horizontal scrolling below 768px. Collection entry screens remain optimized for small screens |
 | Print | Print-friendly layout for collection sheets, receipts, loan statements and vouchers, with organization name and logo |
 | Navigation | Breadcrumbs; active menu highlight; menu collapses on small screens; branch switcher in the header |
 | Session | Idle warning before auto logout; returning to the original page after login |
@@ -1959,13 +1990,20 @@ REVOKE UPDATE, DELETE ON <audit_log_table>, <ledger_tables> FROM erp_app;
 ```bash
 cp .env.example .env               # then edit the values; never commit .env
 set -a; source .env; set +a        # export values into this shell before Django commands
+cp ERP/local_settings.example.py ERP/local_settings.py
 ```
 
-Generate a secret key:
+In the ignored `ERP/local_settings.py`, replace the example `SECRET_KEY`
+placeholder with a generated, persistent development-only key:
 
 ```bash
 python -c "from django.core.management.utils import get_random_secret_key as k; print(k())"
 ```
+
+The local file selects HTTP-safe settings, in-memory cache, console email and
+readable console logging while leaving database credentials in `.env`. SQL
+logging is opt-in with `LOG_SQL=1`. Keep Django's enforced CSP enabled. Never
+copy this file to a server or reuse its key in another environment.
 
 **6. Run migrations**
 
@@ -2035,6 +2073,7 @@ All environment-specific and secret values come from the environment (a local `.
 
 | Variable | Purpose | Example or default |
 |---|---|---|
+| `DJANGO_ENV` | Settings isolation mode | `local` for development, `test` for tests, `production` on deployed services |
 | `DJANGO_SECRET_KEY` | Signing key | *secret, long and random* |
 | `DJANGO_DEBUG` | Debug mode | `0` (never `1` in production) |
 | `DJANGO_ALLOWED_HOSTS` | Allowed host names | `erp.example.com` |
@@ -2054,8 +2093,16 @@ All environment-specific and secret values come from the environment (a local `.
 | `AGE_RECIPIENT`, `AGE_IDENTITY`, `BACKUP_DIR` | Encrypted backup destination, restore identity and output directory | Recipient public key; identity protected separately |
 | `TEST_DB_*` | Isolated test-database connection and TLS settings | Test-only |
 | `SENTRY_DSN` | Error reporting (optional; not currently wired) | *secret* |
+| `LOG_SQL` | Enable local SQL query logging | `1` only when diagnosing a local query |
 
 The runtime variables are listed in [`.env.production.example`](./.env.production.example); role and backup-specific variables are in the protected templates installed by `scripts/install-env-templates.sh`. The database variables configure the Django connection. No SQLAlchemy connection is used.
+
+For development, copy `ERP/local_settings.example.py` to
+`ERP/local_settings.py`, replace its placeholder with a generated local key,
+then run `python manage.py runserver`. The ignored local file overrides
+development values only when `DJANGO_ENV` is unset or `local`; it does not
+change the `.env` database values. `DJANGO_ENV=test` ignores the file, and
+`DJANGO_ENV=production` rejects its presence.
 
 ### 19.2 In-app settings (stored in the database)
 
@@ -2155,7 +2202,7 @@ Internet ── HTTPS ──► Nginx (TLS, rate limits, static, private media v
 
 ### 21.3 Ubuntu systemd deployment
 
-The checked-in [systemd units](./deploy/systemd/), [Nginx site](./deploy/nginx.conf), [release and rollback scripts](./deploy/), and environment templates ([runtime](./.env.production.example), [role and backup](./deploy/)) describe a direct Ubuntu deployment. Gunicorn and Celery run as non-root service accounts with systemd hardening; PostgreSQL and Redis are loopback-only, migrations use the owner role, and the web/worker processes use the DML-only runtime role. Releases briefly stop application services while roles and migrations are applied. Nginx terminates TLS and serves public static files while private media is available only through its internal X-Accel location. The [deployment runbook](./docs/DEPLOYMENT.md) installs the templates outside the checkout with mode 0600. Host installation and live service validation remain pending.
+The checked-in [systemd units](./deploy/systemd/), [Nginx site](./deploy/nginx.conf), [release and rollback scripts](./deploy/), and environment templates ([runtime](./.env.production.example), [role and backup](./deploy/)) describe a direct Ubuntu deployment. Every service sets `DJANGO_ENV=production`; the release script refuses a checkout containing `ERP/local_settings.py`, and CI rejects any tracked `local_settings.py`. Gunicorn and Celery run as non-root service accounts with systemd hardening; PostgreSQL and Redis are loopback-only, migrations use the owner role, and the web/worker processes use the DML-only runtime role. Releases briefly stop application services while roles and migrations are applied. Nginx terminates TLS and serves public static files while private media is available only through its internal X-Accel location. The [deployment runbook](./docs/DEPLOYMENT.md) installs the templates outside the checkout with mode 0600. Host installation and live service validation remain pending.
 
 ### 21.4 CI/CD pipeline
 
@@ -2188,7 +2235,8 @@ The checked-in [systemd units](./deploy/systemd/), [Nginx site](./deploy/nginx.c
 | Role-specific daily workflow guide | Done | [`docs/USER_GUIDE.md`](./docs/USER_GUIDE.md) |
 | Staff UAT scenarios and acceptance checklist | Done | [`docs/UAT_PLAN.md`](./docs/UAT_PLAN.md) |
 | Spreadsheet/legacy migration, reconciliation, cut-over and rollback guide | Done | [`docs/DATA_MIGRATION.md`](./docs/DATA_MIGRATION.md) |
-| PostgreSQL and local quality/security checks | Done | 1,762 tests and 284 subtests passed with zero skips/errors; Ruff, Bandit, pip-audit, `makemigrations --check --dry-run` and `check --deploy` passed. Full command output is summarized in [`docs/conformance-report.md`](./docs/conformance-report.md) |
+| PostgreSQL and local quality/security checks | Partial | Latest full PostgreSQL run: 1,748 tests and 298 subtests passed with zero skips/errors; Django `check` and `makemigrations --check --dry-run` pass. Ruff passes the changed Python files except the pre-existing `pdb.set_trace()` in `core/savings/services.py`; production checks correctly fail closed while this checkout has local settings and MFA enforcement is unavailable. Bandit, pip-audit, Gitleaks and hosted checks were not rerun for this change. |
+| Development-only settings isolation and production guard | Partial | Loader and per-setting guard tests pass; the real ignored file loads only in local mode, is ignored and untracked, and production rejects its presence. Production remains blocked because this codebase has no MFA enforcement. |
 | Gitleaks history scan | Partial | Gitleaks is not installed locally; the workflow gate is configured, but no hosted run is evidenced |
 | Ubuntu host and encrypted backup/restore validation | Partial | Requires a provisioned host, encryption tooling/keys and an observed restore; see [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) |
 | Hosted CI and approval-gated test deployment | Partial | Workflow exists; GitHub Environment reviewers, runner and hosted run evidence are external |
@@ -2257,6 +2305,7 @@ Targets are **suggested starting points**; confirm them with load tests and with
 | Time | `USE_TZ = True`, UTC in the database; a clock helper so tests can control time |
 | Migrations | One migration per change, never edit an applied one, read the SQL before merging |
 | Secrets | Never in code, tests, logs, screenshots or commits |
+| Local settings | Copy `ERP/local_settings.example.py` to ignored `ERP/local_settings.py`; use only with `DJANGO_ENV=local`. Tests force `DJANGO_ENV=test`; all deployed services use `DJANGO_ENV=production`. Never track or release the real local file |
 | Documentation | Update this README and the `docs/` folder when behaviour changes |
 
 **Repository hygiene**

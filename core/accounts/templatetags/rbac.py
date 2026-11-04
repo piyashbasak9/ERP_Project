@@ -1,6 +1,6 @@
 from django import template
 
-from core.accounts.models import UserRole
+from core.accounts.permission_utils import user_has_route_permission
 
 register = template.Library()
 
@@ -10,14 +10,4 @@ def can(context, route_name):
     request = context.get('request')
     if request is None:
         return False
-    user = request.user
-    if not user.is_authenticated or not user.is_active:
-        return False
-    if user.is_superuser:
-        return True
-    return UserRole.objects.filter(
-        user=user,
-        role__permissions__route_name=route_name,
-        role__permissions__is_allowed=True,
-        role__permissions__is_active=True,
-    ).exists()
+    return user_has_route_permission(request.user, route_name)

@@ -1,5 +1,6 @@
 import uuid
 
+from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import render
 
@@ -11,21 +12,23 @@ def is_popup_request(request):
     )
 
 
-def popup_json_response(request, *, message, data=None, errors=None, status=200):
+def popup_json_response(
+    request, *, message, data=None, errors=None, status=200, debug=None
+):
     if not is_popup_request(request):
         return None
-    return JsonResponse(
-        {
-            "success": status < 400,
-            "message": message,
-            "data": data,
-            "errors": errors,
-            "request_id": getattr(request, "request_id", None)
-            or request.headers.get("x-request-id")
-            or uuid.uuid4().hex[:10],
-        },
-        status=status,
-    )
+    payload = {
+        "success": status < 400,
+        "message": message,
+        "data": data,
+        "errors": errors,
+        "request_id": getattr(request, "request_id", None)
+        or request.headers.get("x-request-id")
+        or uuid.uuid4().hex[:10],
+    }
+    if settings.DEBUG and debug is not None:
+        payload["debug"] = debug
+    return JsonResponse(payload, status=status)
 
 
 def render_popup_form(request, template_name, context, *, status=200):

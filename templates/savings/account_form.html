@@ -6,8 +6,9 @@
     <div class="card form-card"><div class="card-body">
         <form method="post">
             {% csrf_token %}{{ form.non_field_errors }}
+            <div class="row g-2">
             {% for field in form %}
-            <div class="mb-3">
+            <div class="col-12 col-md-6 mb-2">
                 {% if field.is_hidden %}{{ field }}
                 {% else %}
                 <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
@@ -15,9 +16,12 @@
                 {% if field.errors %}<div class="text-danger small">{{ field.errors }}</div>{% endif %}
             </div>
             {% endfor %}
+            </div>
             <p class="form-text">Group-account opening deposits are recorded against the selected contributing member.</p>
-            <button class="btn btn-primary" type="submit">Open account</button>
-            <a class="btn btn-outline-secondary" href="{% url 'savings:Module_Savings_accounts' %}" data-popup-close>Cancel</a>
+            <div class="erp-popup-actions d-flex justify-content-end gap-2">
+                <a class="btn btn-outline-secondary" href="{% url 'savings:Module_Savings_accounts' %}" data-popup-close>Cancel</a>
+                <button class="btn btn-primary" type="submit">Open account</button>
+            </div>
         </form>
     </div></div>
 </div>

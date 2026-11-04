@@ -84,6 +84,10 @@ sudo install -o root -g root -m 0600 \
 
 Set `DJANGO_DEBUG=0`, a unique `DJANGO_SECRET_KEY`, the actual allowed host and
 HTTPS CSRF origin, and `DB_SSLMODE=verify-full` in the runtime environment.
+Set `DJANGO_ENV=production`; do not copy `ERP/local_settings.py` into any
+release or server checkout. The release script refuses deployment if the
+ignored local file is present in its source checkout, and the settings loader
+fails closed if the file is found in production.
 Set `DB_SSL_CA_PATH` to the CA file. The PostgreSQL certificate must contain
 `localhost` in its SAN when `DB_HOST=localhost`. Use
 `PRIVATE_MEDIA_ROOT=/srv/erp/private_media`,

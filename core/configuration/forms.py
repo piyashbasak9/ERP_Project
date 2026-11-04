@@ -58,7 +58,8 @@ class UserPreferenceForm(StyledModelForm):
     class Meta:
         model = UserPreference
         fields = [
-            "language", "default_page_size", "default_landing_page", "date_format"
+            "language", "default_page_size", "default_landing_page", "date_format",
+            "show_performance_timers",
         ]
 
 

@@ -104,6 +104,18 @@ class RoutePermissionTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_module_menu_contains_only_permitted_page_routes(self):
+        self.grant_routes('Module_Branch_index_branch')
+
+        response = self.client.get(reverse('branch:Module_Branch_index_branch'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'href="/branch/"')
+        self.assertContains(response, '>Branches</a>')
+        self.assertNotContains(response, 'href="/savings/accounts/"')
+        self.assertNotContains(response, 'href="/branch/members/"')
+        self.assertNotContains(response, '>Savings</button>')
+
     def test_dashboard_cards_match_branch_data_and_require_metric_permission(self):
         Member.unscoped.create(
             branch=self.branch,

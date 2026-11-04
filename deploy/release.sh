@@ -21,6 +21,10 @@ if [[ ! -d "$source_dir/.git" && ! -f "$source_dir/.git" ]]; then
     printf 'Source must be a Git checkout.\n' >&2
     exit 2
 fi
+if [[ -e "$source_dir/ERP/local_settings.py" || -L "$source_dir/ERP/local_settings.py" ]]; then
+    printf 'Refusing to deploy while ERP/local_settings.py is present.\n' >&2
+    exit 2
+fi
 
 app_root=/srv/erp
 releases_dir="$app_root/releases"
@@ -89,6 +93,10 @@ trap cleanup EXIT
 install -d -o root -g erpmedia -m 0750 "$releases_dir"
 install -d -o erpapp -g erpmedia -m 0750 "$temporary_dir"
 git -C "$source_dir" archive "$release_id" | tar -xf - -C "$temporary_dir"
+if [[ -e "$temporary_dir/ERP/local_settings.py" || -L "$temporary_dir/ERP/local_settings.py" ]]; then
+    printf 'Release archive contains ERP/local_settings.py; refusing deployment.\n' >&2
+    exit 2
+fi
 
 set -a
 # These files are created by the root-only installer and must remain root-owned.
@@ -99,6 +107,7 @@ runtime_database_password=$DB_PASSWORD
 set -a
 . "$roles_env"
 set +a
+export DJANGO_ENV=production
 
 if [[ "$DB_NAME" != "$runtime_database_name" || "$DB_USER" != "erp_runtime" \
     || "$runtime_database_password" != "$DB_PASSWORD" \
