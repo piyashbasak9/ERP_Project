@@ -267,10 +267,15 @@ class BranchIsolationRemainderTests(BranchIsolationTests):
 
         page = self.client.get(
             reverse("branch:Module_Members_list"),
-            {"q": member.member_code, "status": Member.STATUS_ACTIVE},
+            {
+                "code": member.member_code,
+                "name": "Target",
+                "status": Member.STATUS_ACTIVE,
+            },
         )
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, 'value="ONE-000001"')
+        self.assertContains(page, 'value="Target"')
         self.assertContains(page, 'value="active" selected')
         self.assertNotContains(page, malicious_name)
         self.assertContains(page, 'data-list-page')
@@ -282,7 +287,7 @@ class BranchIsolationRemainderTests(BranchIsolationTests):
         filter_payload = '<script>alert("filter")</script>"><img src=x>'
         escaped_filter = self.client.get(
             reverse("branch:Module_Members_list"),
-            {"q": filter_payload},
+            {"name": filter_payload},
         )
         self.assertEqual(escaped_filter.status_code, 200)
         self.assertContains(
@@ -295,7 +300,8 @@ class BranchIsolationRemainderTests(BranchIsolationTests):
             reverse("branch:Module_Members_list"),
             {
                 "ajax": "1",
-                "q": member.member_code,
+                "code": member.member_code,
+                "name": "Target",
                 "status": Member.STATUS_ACTIVE,
                 "page": 1,
                 "rows": 20,
@@ -305,6 +311,12 @@ class BranchIsolationRemainderTests(BranchIsolationTests):
         self.assertEqual(data.json()["records"], 1)
         self.assertEqual(data.json()["rows"][0]["member_code"], member.member_code)
         self.assertEqual(data.json()["rows"][0]["full_name"], f"{malicious_name} Target")
+        legacy_data = self.client.get(
+            reverse("branch:Module_Members_list"),
+            {"ajax": "1", "q": member.member_code, "status": Member.STATUS_ACTIVE},
+        )
+        self.assertEqual(legacy_data.status_code, 200)
+        self.assertEqual(legacy_data.json()["records"], 1)
         script_path = find("js/list-page.js")
         self.assertIsNotNone(script_path)
         self.assertIn("autoencode: true", Path(script_path).read_text(encoding="utf-8"))

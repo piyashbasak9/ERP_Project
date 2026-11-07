@@ -15,7 +15,7 @@
         </div>
     </header>
 
-    <form id="listFilters" class="erp-filter-panel" method="get" action="{{ request.path }}" data-list-filters>
+    <form id="listFilters" class="erp-filter-panel{% if filter_layout %} erp-filter-panel--{{ filter_layout }}{% endif %}" method="get" action="{{ request.path }}" data-list-filters>
         <div class="erp-filter-fields">
             {% for filter in list_filters %}
             <div class="erp-filter-field" data-filter-field="{{ filter.name }}" data-filter-label="{{ filter.label }}" data-filter-type="{{ filter.type|default:'text' }}">

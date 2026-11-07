@@ -392,12 +392,21 @@ def switch(request):
 @require_GET
 def member_list(request):
     queryset = Member.objects.select_related('branch', 'center', 'group').order_by('member_code')
-    search = request.GET.get('q', '').strip()
-    if search:
+    member_code = request.GET.get('code', '').strip()
+    name = request.GET.get('name', '').strip()
+    legacy_search = request.GET.get('q', '').strip()
+    if member_code:
+        queryset = queryset.filter(member_code__icontains=member_code)
+    if name:
         queryset = queryset.filter(
-            models.Q(member_code__icontains=search)
-            | models.Q(first_name__icontains=search)
-            | models.Q(last_name__icontains=search)
+            models.Q(first_name__icontains=name)
+            | models.Q(last_name__icontains=name)
+        )
+    if legacy_search and not member_code and not name:
+        queryset = queryset.filter(
+            models.Q(member_code__icontains=legacy_search)
+            | models.Q(first_name__icontains=legacy_search)
+            | models.Q(last_name__icontains=legacy_search)
         )
     selected_status = request.GET.get('status', '')
     if selected_status in dict(Member.STATUS_CHOICES):
@@ -459,6 +468,7 @@ def member_list(request):
     return render(request, 'members/list.html', {
         'list_title': 'Members',
         'grid_url': request.path,
+        'filter_layout': 'members',
         'initial_page_text': f'Page {page_obj.number} of {paginator.num_pages}',
         'add_url': (
             reverse('branch:Module_Members_add')
@@ -468,8 +478,12 @@ def member_list(request):
         'add_title': 'Register member',
         'list_filters': [
             {
-                'name': 'q', 'label': 'Member code or name',
-                'value': search, 'placeholder': 'Search by member code or name',
+                'name': 'code', 'label': 'Member code',
+                'value': member_code, 'placeholder': 'Member code',
+            },
+            {
+                'name': 'name', 'label': 'Name',
+                'value': name, 'placeholder': 'Member name',
             },
             {
                 'name': 'status', 'label': 'Status', 'type': 'select',

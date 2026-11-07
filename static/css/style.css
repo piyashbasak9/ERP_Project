@@ -1037,6 +1037,15 @@ footer.footer-custom strong {
     background: linear-gradient(110deg, #E8EEF8 0%, #E9F4F7 100%);
 }
 
+.erp-filter-panel--members {
+    grid-template-columns: repeat(3, minmax(200px, 1fr)) auto;
+}
+
+.erp-filter-panel--members [data-filter-field="status"] .erp-filter-control--short {
+    width: 150px;
+    flex-basis: 150px;
+}
+
 .erp-filter-panel[hidden] {
     display: none;
 }
@@ -1206,14 +1215,27 @@ footer.footer-custom strong {
 }
 
 .erp-filter-field .ss-main {
+    display: flex;
     width: 100%;
     height: var(--erp-control-height);
     min-height: var(--erp-control-height);
+    align-items: center;
+    flex-wrap: nowrap;
     border: 1px solid var(--erp-control-border);
     border-radius: 0 var(--erp-control-radius) var(--erp-control-radius) 0;
     background: #fff;
     color: var(--erp-text);
     font-size: 12px;
+}
+
+.erp-filter-field .ss-main .ss-values {
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+}
+
+.erp-filter-field .ss-main .ss-arrow {
+    flex: 0 0 12px;
 }
 
 .erp-filter-field .ss-main:focus,
@@ -1476,6 +1498,16 @@ footer.footer-custom strong {
     .erp-menu-list .dropdown-menu {
         position: static !important;
         transform: none !important;
+    }
+
+    .erp-filter-panel--members {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (min-width: 992px) and (max-width: 1099.98px) {
+    .erp-filter-panel--members {
+        grid-template-columns: repeat(2, minmax(280px, 1fr));
     }
 }
 
