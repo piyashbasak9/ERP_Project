@@ -2,25 +2,9 @@
 {% load static %}
 {% block title %}Loan products{% endblock %}
 {% block content %}
-<div class="container-fluid py-3" id="loanProductGridConfig"
-     data-products-url="{% url 'loans:Module_Loans_products' %}"
-     data-edit-url="{% url 'loans:Module_Loans_product_edit' 0 %}"
-     data-activate-url="{% url 'loans:Module_Loans_product_activate' 0 %}"
-     data-deactivate-url="{% url 'loans:Module_Loans_product_deactivate' 0 %}">
-    <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
-        <div><span class="eyebrow">LOANS</span><h1 class="h3 mb-0">Loan products</h1></div>
-        <a class="btn btn-primary" href="{% url 'loans:Module_Loans_product_add' %}?popup=1" data-popup data-popup-title="Create loan product">Create product</a>
-    </div>
-    <div class="card card-body mb-3">
-        <div class="row g-2">
-            <div class="col-md-6"><label class="form-label" for="loan-product-search">Search</label><input id="loan-product-search" class="form-control" type="search"></div>
-            <div class="col-md-3"><label class="form-label" for="loan-product-status">Status</label><select id="loan-product-status" class="form-select"><option value="">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
-        </div>
-    </div>
-    <table id="loanProductGrid"></table>
-    <div id="loanProductPager"></div>
-</div>
+{% include 'partials/list_page.html' %}
 {% endblock %}
 {% block extra_js %}
+<script src="{% static 'js/list-page.js' %}"></script>
 <script src="{% static 'js/loan-product-grid.js' %}"></script>
 {% endblock %}

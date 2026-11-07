@@ -5,9 +5,12 @@ from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
+from django.utils.html import format_html, format_html_join
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from core.accounts.permission_utils import user_has_route_permission
 from core.audit.services import log_action
 from core.common.popup import popup_json_response, render_popup_form
 
@@ -46,52 +49,132 @@ def _form(request, form, title):
 
 @require_GET
 def product_list(request):
-    if "page" in request.GET or request.GET.get("format") == "json":
+    if request.GET.get("ajax") == "1" or request.GET.get("format") == "json":
         products = LoanProduct.objects.all()
         status = request.GET.get("status", "").strip()
         if status in {"active", "inactive"}:
             products = products.filter(is_active=status == "active")
+        code = request.GET.get("code", "").strip()
+        name = request.GET.get("name", "").strip()
         query = request.GET.get("searchString", request.GET.get("q", "")).strip()
-        if query:
+        if code:
+            products = products.filter(code__icontains=code)
+        if name:
+            products = products.filter(name__icontains=name)
+        if query and not code and not name:
             products = products.filter(
                 Q(code__icontains=query) | Q(name__icontains=query)
             )
         order_fields = {
             "code": "code",
             "name": "name",
+            "method": "interest_method",
+            "rate": "annual_interest_rate",
             "annual_interest_rate": "annual_interest_rate",
+            "amount": "min_amount",
+            "term": "min_term",
+            "frequency": "installment_frequency",
+            "status": "is_active",
             "is_active": "is_active",
         }
         order = order_fields.get(request.GET.get("sidx", "code"), "code")
         if request.GET.get("sord", "asc").lower() == "desc":
             order = f"-{order}"
         try:
-            page_size = min(max(int(request.GET.get("rows", 50)), 1), 100)
+            page_size = min(max(int(request.GET.get("rows", 20)), 1), 200)
         except (TypeError, ValueError):
-            page_size = 50
-        page_obj = Paginator(products.order_by(order), page_size).get_page(
+            page_size = 20
+        page_obj = Paginator(products.order_by(order, "pk"), page_size).get_page(
             request.GET.get("page", 1)
         )
+        can_edit = user_has_route_permission(
+            request.user, "Module_Loans_product_edit"
+        )
+        can_activate = user_has_route_permission(
+            request.user, "Module_Loans_product_activate"
+        )
+        can_deactivate = user_has_route_permission(
+            request.user, "Module_Loans_product_deactivate"
+        )
+        rows = []
+        for product in page_obj.object_list:
+            actions = []
+            if can_edit:
+                actions.append(format_html(
+                    '<a class="btn btn-sm btn-outline-primary" href="{}?popup=1" '
+                    'data-popup data-popup-title="Edit loan product">Edit</a>',
+                    reverse("loans:Module_Loans_product_edit", args=[product.pk]),
+                ))
+            can_toggle = can_deactivate if product.is_active else can_activate
+            if can_toggle:
+                action = "deactivate" if product.is_active else "activate"
+                label = "Deactivate" if product.is_active else "Activate"
+                actions.append(format_html(
+                    '<button class="btn btn-sm {}" type="button" data-toggle-product="{}">'
+                    '{}</button>',
+                    "btn-outline-danger" if product.is_active else "btn-outline-success",
+                    reverse(f"loans:Module_Loans_product_{action}", args=[product.pk]),
+                    label,
+                ))
+            rows.append({
+                "id": product.pk,
+                "code": product.code,
+                "name": product.name,
+                "method": product.get_interest_method_display(),
+                "rate": str(product.annual_interest_rate),
+                "amount": f"{product.min_amount:.2f} – {product.max_amount:.2f}",
+                "term": f"{product.min_term}–{product.max_term}",
+                "frequency": product.get_installment_frequency_display(),
+                "status": "Active" if product.is_active else "Inactive",
+                "active": product.is_active,
+                "actions": format_html_join(
+                    " ", "{}", ((action,) for action in actions)
+                ),
+            })
         return JsonResponse({
             "page": page_obj.number,
             "total": page_obj.paginator.num_pages,
             "records": page_obj.paginator.count,
-            "rows": [
-                {
-                    "id": product.pk,
-                    "code": product.code,
-                    "name": product.name,
-                    "method": product.get_interest_method_display(),
-                    "rate": str(product.annual_interest_rate),
-                    "amount": f"{product.min_amount:.2f} – {product.max_amount:.2f}",
-                    "term": f"{product.min_term}–{product.max_term}",
-                    "frequency": product.get_installment_frequency_display(),
-                    "active": product.is_active,
-                }
-                for product in page_obj.object_list
-            ],
+            "rows": rows,
         })
-    return render(request, "loans/product_list.html")
+    return render(request, "loans/product_list.html", {
+        "list_title": "Loan products",
+        "grid_url": request.path,
+        "filter_layout": "members",
+        "initial_page_text": "Page 1 of 1",
+        "add_url": (
+            reverse("loans:Module_Loans_product_add")
+            if user_has_route_permission(request.user, "Module_Loans_product_add")
+            else ""
+        ),
+        "add_title": "Create loan product",
+        "list_filters": [
+            {
+                "name": "code", "label": "Product code",
+                "value": request.GET.get("code", ""), "placeholder": "Code",
+            },
+            {
+                "name": "name", "label": "Product name",
+                "value": request.GET.get("name", ""), "placeholder": "Name",
+            },
+            {
+                "name": "status", "label": "Status", "type": "select",
+                "value": request.GET.get("status", ""),
+                "options": (("active", "Active"), ("inactive", "Inactive")),
+            },
+        ],
+        "list_columns": [
+            {"name": "code", "label": "Code", "width": 100},
+            {"name": "name", "label": "Name", "width": 190},
+            {"name": "method", "label": "Method", "width": 130},
+            {"name": "rate", "label": "Rate %", "width": 100, "align": "right"},
+            {"name": "amount", "label": "Amount range", "width": 160},
+            {"name": "term", "label": "Term range", "width": 100},
+            {"name": "frequency", "label": "Frequency", "width": 120},
+            {"name": "status", "label": "Status", "width": 100},
+            {"name": "actions", "label": "Actions", "width": 180},
+        ],
+    })
 
 
 @require_http_methods(["GET", "POST"])

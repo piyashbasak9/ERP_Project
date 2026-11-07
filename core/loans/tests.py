@@ -1345,6 +1345,21 @@ class LoanRouteTests(TestCase):
         self.user.is_superuser = True
         self.user.save(update_fields=["is_superuser"])
         self.client.force_login(self.user)
+        list_page = self.client.get(reverse("loans:Module_Loans_products"))
+        self.assertEqual(list_page.status_code, 200)
+        self.assertContains(list_page, "data-list-page")
+        self.assertContains(list_page, "erp-filter-panel--members")
+        self.assertContains(list_page, 'data-name="code"')
+        self.assertContains(list_page, 'data-name="name"')
+        self.assertContains(list_page, 'data-name="status"')
+        self.assertContains(list_page, "js/list-page.js")
+        self.assertContains(list_page, '<body class="erp-dense-body')
+        reloaded_page = self.client.get(
+            reverse("loans:Module_Loans_products"),
+            {"page": "2", "rows": "20", "sidx": "code", "sord": "asc"},
+        )
+        self.assertEqual(reloaded_page.status_code, 200)
+        self.assertContains(reloaded_page, "data-list-page")
         headers = {
             "HTTP_X_REQUESTED_WITH": "XMLHttpRequest",
             "HTTP_ACCEPT": "application/json",
@@ -1436,6 +1451,15 @@ class LoanRouteTests(TestCase):
             row for row in listed.json()["rows"] if row["id"] == product.pk
         )
         self.assertEqual(listed_product["name"], xss_payload)
+        grid_data = self.client.get(
+            reverse("loans:Module_Loans_products"),
+            {"ajax": "1", "code": "ROUTE-UI", "status": "active"},
+        )
+        self.assertEqual(grid_data.status_code, 200)
+        self.assertEqual(grid_data.json()["records"], 1)
+        self.assertEqual(grid_data.json()["rows"][0]["id"], product.pk)
+        self.assertIn("data-popup", grid_data.json()["rows"][0]["actions"])
+        self.assertIn("data-toggle-product", grid_data.json()["rows"][0]["actions"])
         deactivated = self.client.post(
             reverse("loans:Module_Loans_product_deactivate", args=[product.pk]),
             **headers,
