@@ -763,6 +763,70 @@ class SavingsViewTests(TestCase):
         )
         open_account.assert_called_once()
 
+    def test_transaction_register_uses_shared_grid_and_filters_latest_first(self):
+        member = Member.unscoped.create(
+            branch=self.branch,
+            member_code="SUI-TX-001",
+            first_name="Transaction",
+            last_name="Member",
+            status=Member.STATUS_ACTIVE,
+        )
+        account = SavingsService(self.request).open_account(
+            branch_id=self.branch.pk,
+            product_id=self.product.pk,
+            member_id=member.pk,
+            opened_at=date(2025, 1, 1),
+            opening_balance=Decimal("0.00"),
+            idempotency_key=uuid.uuid4(),
+        )
+        older = SavingsTransaction.unscoped.create(
+            branch=self.branch,
+            account=account,
+            transaction_type=SavingsTransaction.TYPE_WITHDRAWAL,
+            status=SavingsTransaction.STATUS_PENDING,
+            transaction_date=date(2025, 1, 2),
+            amount=Decimal("10.00"),
+            balance_before=Decimal("0.00"),
+            balance_after=Decimal("0.00"),
+            created_by=self.user,
+        )
+        newer = SavingsTransaction.unscoped.create(
+            branch=self.branch,
+            account=account,
+            transaction_type=SavingsTransaction.TYPE_WITHDRAWAL,
+            status=SavingsTransaction.STATUS_PENDING,
+            transaction_date=date(2025, 1, 3),
+            amount=Decimal("20.00"),
+            balance_before=Decimal("0.00"),
+            balance_after=Decimal("0.00"),
+            created_by=self.user,
+        )
+
+        page = self.client.get(reverse("savings:Module_Savings_transactions"))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'data-default-sort-name="date"')
+        self.assertContains(page, 'data-default-sort-order="desc"')
+        self.assertContains(page, '<body class="erp-dense-body')
+        self.assertContains(page, 'data-name="actions"')
+
+        grid_data = self.client.get(
+            reverse("savings:Module_Savings_transactions"),
+            {
+                "ajax": "1",
+                "account": account.account_number,
+                "status": SavingsTransaction.STATUS_PENDING,
+                "sidx": "date",
+                "sord": "desc",
+            },
+        )
+        self.assertEqual(grid_data.status_code, 200)
+        self.assertEqual(grid_data.json()["records"], 2)
+        rows = grid_data.json()["rows"]
+        self.assertEqual([row["id"] for row in rows], [newer.pk, older.pk])
+        self.assertEqual(rows[0]["account"], account.account_number)
+        self.assertIn("Statement", rows[0]["actions"])
+        self.assertIn("Approve", rows[0]["actions"])
+
     def test_account_statement_and_pagination_partial_render(self):
         for index in range(26):
             member = Member.unscoped.create(

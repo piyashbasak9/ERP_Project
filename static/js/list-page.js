@@ -57,8 +57,10 @@ $(function () {
     const query = new URLSearchParams(window.location.search);
     const requestedPage = Number(query.get("page")) || 1;
     const pageSize = Number(query.get("rows")) || 20;
-    const sortName = query.get("sidx") || columns[0].name;
-    const sortOrder = query.get("sord") === "desc" ? "desc" : "asc";
+    const sortName = query.get("sidx") || root.dataset.defaultSortName || columns[0].name;
+    const sortOrder = query.get("sord")
+        ? (query.get("sord") === "desc" ? "desc" : "asc")
+        : (root.dataset.defaultSortOrder === "desc" ? "desc" : "asc");
     query.delete("page");
     query.delete("rows");
     query.delete("sidx");

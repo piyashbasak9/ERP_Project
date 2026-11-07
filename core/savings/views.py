@@ -5,6 +5,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Q, Sum
+from django.middleware.csrf import get_token
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -536,19 +537,188 @@ def transaction_list(request):
         'created_by',
         'approved_by',
         'journal_entry',
-    ).order_by('-pk')
+    )
     status = request.GET.get('status', '').strip()
     if status in dict(SavingsTransaction.STATUS_CHOICES):
         transactions = transactions.filter(status=status)
     account_number = request.GET.get('account', '').strip()
     if account_number:
         transactions = transactions.filter(account__account_number=account_number)
-    page_obj = Paginator(transactions, 100).get_page(request.GET.get('page', 1))
+    sort_fields = {
+        'date': 'transaction_date',
+        'account': 'account__account_number',
+        'type': 'transaction_type',
+        'amount': 'amount',
+        'balance': 'balance_after',
+        'status': 'status',
+        'voucher': 'journal_entry__voucher_number',
+        'maker_checker': 'created_by__username',
+    }
+    sort_field = sort_fields.get(request.GET.get('sidx'), 'pk')
+    descending = request.GET.get('sord', 'desc').lower() == 'desc'
+    if sort_field == 'pk':
+        ordering = ['-pk']
+    else:
+        ordering = [f'-{sort_field}' if descending else sort_field, '-pk']
+    transactions = transactions.order_by(*ordering)
+    if request.GET.get('ajax') == '1':
+        try:
+            page_size = min(max(int(request.GET.get('rows', 20)), 1), 200)
+        except (TypeError, ValueError):
+            page_size = 20
+        page_obj = Paginator(transactions, page_size).get_page(
+            request.GET.get('page', 1)
+        )
+        can_approve = user_has_route_permission(
+            request.user, 'Module_Savings_approve_withdrawal'
+        )
+        can_reject = user_has_route_permission(
+            request.user, 'Module_Savings_rejection_form'
+        )
+        can_reverse = user_has_route_permission(
+            request.user, 'Module_Savings_reversal_form'
+        )
+        can_statement = user_has_route_permission(
+            request.user, 'Module_Savings_statement'
+        )
+        csrf_token = get_token(request)
+        rows = []
+        for item in page_obj.object_list:
+            actions = []
+            if can_statement:
+                actions.append(format_html(
+                    '<a class="btn btn-sm btn-outline-primary" href="{}">'
+                    'Statement</a>',
+                    reverse(
+                        'savings:Module_Savings_statement',
+                        args=[item.account_id],
+                    ),
+                ))
+            if item.status == SavingsTransaction.STATUS_PENDING:
+                if can_approve:
+                    actions.append(format_html(
+                        '<form class="d-inline" method="post" action="{}">'
+                        '<input type="hidden" name="csrfmiddlewaretoken" value="{}">'
+                        '<button class="btn btn-sm btn-outline-success" type="submit">'
+                        'Approve</button></form>',
+                        reverse(
+                            'savings:Module_Savings_approve_withdrawal',
+                            args=[item.pk],
+                        ),
+                        csrf_token,
+                    ))
+                if can_reject:
+                    actions.append(format_html(
+                        '<a class="btn btn-sm btn-outline-danger" href="{}?popup=1" '
+                        'data-popup data-popup-title="Reject withdrawal">Reject</a>',
+                        reverse(
+                            'savings:Module_Savings_rejection_form',
+                            args=[item.pk],
+                        ),
+                    ))
+            elif item.status == SavingsTransaction.STATUS_POSTED and can_reverse:
+                actions.append(format_html(
+                    '<a class="btn btn-sm btn-outline-danger" href="{}?popup=1" '
+                    'data-popup data-popup-title="Reverse savings transaction">'
+                    'Reverse</a>',
+                    reverse(
+                        'savings:Module_Savings_reversal_form',
+                        args=[item.pk],
+                    ),
+                ))
+            rows.append({
+                'id': item.pk,
+                'date': item.transaction_date.isoformat(),
+                'account': item.account.account_number,
+                'type': item.get_transaction_type_display(),
+                'amount': f'{item.amount:.2f}',
+                'balance': f'{item.balance_after:.2f}',
+                'status': item.get_status_display(),
+                'voucher': item.journal_entry.voucher_number if item.journal_entry_id else '—',
+                'maker_checker': (
+                    f'{item.created_by.get_username()} / {item.approved_by.get_username()}'
+                    if item.approved_by_id
+                    else item.created_by.get_username()
+                ),
+                'actions': format_html_join(
+                    ' ',
+                    '{}',
+                    ((action,) for action in actions),
+                ),
+            })
+        return JsonResponse({
+            'rows': rows,
+            'page': page_obj.number,
+            'total': page_obj.paginator.num_pages,
+            'records': page_obj.paginator.count,
+        })
+
+    page_obj = Paginator(transactions, 20).get_page(request.GET.get('page', 1))
+    list_actions = []
+    for route_name, url_name, title, label in [
+        (
+            'Module_Savings_deposit',
+            'Module_Savings_deposit',
+            'Savings deposit',
+            'Deposit',
+        ),
+        (
+            'Module_Savings_withdraw',
+            'Module_Savings_withdraw',
+            'Savings withdrawal',
+            'Withdraw',
+        ),
+        (
+            'Module_Savings_fee',
+            'Module_Savings_fee',
+            'Charge product fee',
+            'Charge fee',
+        ),
+        (
+            'Module_Savings_interest',
+            'Module_Savings_interest',
+            'Post savings interest',
+            'Post interest',
+        ),
+    ]:
+        if user_has_route_permission(request.user, route_name):
+            list_actions.append({
+                'url': reverse(f'savings:{url_name}') + '?popup=1',
+                'title': title,
+                'label': label,
+            })
     return render(request, 'savings/transaction_list.html', {
-        'page_obj': page_obj,
+        'list_title': 'Transaction register',
+        'grid_url': request.path,
+        'filter_layout': 'members',
+        'default_sort_name': 'date',
+        'default_sort_order': 'desc',
+        'initial_page_text': f'Page {page_obj.number} of {page_obj.paginator.num_pages}',
+        'list_actions': list_actions,
         'statuses': SavingsTransaction.STATUS_CHOICES,
         'selected_status': status,
         'account_number': account_number,
+        'list_filters': [
+            {
+                'name': 'account', 'label': 'Account number',
+                'value': account_number, 'placeholder': 'Account number',
+            },
+            {
+                'name': 'status', 'label': 'Status', 'type': 'select',
+                'value': status, 'options': SavingsTransaction.STATUS_CHOICES,
+            },
+        ],
+        'list_columns': [
+            {'name': 'date', 'label': 'Date', 'width': 120},
+            {'name': 'account', 'label': 'Account', 'width': 160},
+            {'name': 'type', 'label': 'Type', 'width': 130},
+            {'name': 'amount', 'label': 'Amount', 'width': 120, 'align': 'right'},
+            {'name': 'balance', 'label': 'Balance', 'width': 120, 'align': 'right'},
+            {'name': 'status', 'label': 'Status', 'width': 140},
+            {'name': 'voucher', 'label': 'Voucher', 'width': 120, 'hidden': True},
+            {'name': 'maker_checker', 'label': 'Maker / checker', 'width': 180, 'hidden': True},
+            {'name': 'actions', 'label': 'Actions', 'width': 210, 'sortable': False},
+        ],
     })
 
 

@@ -1,5 +1,5 @@
 {% load rbac %}
-<section class="erp-list-page" data-list-page data-grid-url="{{ grid_url }}" data-page-key="{{ request.path }}" data-user-key="{{ request.user.pk }}" data-performance-timers="{{ show_performance_timers|yesno:'true,false' }}">
+<section class="erp-list-page" data-list-page data-grid-url="{{ grid_url }}" data-page-key="{{ request.path }}" data-user-key="{{ request.user.pk }}" data-performance-timers="{{ show_performance_timers|yesno:'true,false' }}" data-default-sort-name="{{ default_sort_name }}" data-default-sort-order="{{ default_sort_order }}">
     <header class="erp-page-title">
         <h1>{{ list_title }}</h1>
         <div class="erp-page-tools">
@@ -8,6 +8,9 @@
                 <i class="bi bi-plus-lg" aria-hidden="true"></i>
             </a>
             {% endif %}
+            {% for action in list_actions %}
+            <a class="btn btn-sm btn-outline-primary" href="{{ action.url }}" data-popup data-popup-title="{{ action.title }}">{{ action.label }}</a>
+            {% endfor %}
             <button class="erp-icon-button" type="button" data-filter-toggle aria-expanded="true" aria-controls="listFilters" aria-label="Toggle filters" title="Toggle filters">
                 <i class="bi bi-search" aria-hidden="true"></i><span class="filter-count" data-filter-count hidden></span>
             </button>
