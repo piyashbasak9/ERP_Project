@@ -109,7 +109,8 @@
                 {% can 'Module_Group_list' as can_groups %}
                 {% can 'Module_Staff_list' as can_staff %}
                 {% can 'Module_BranchHoliday_list' as can_holidays %}
-                {% if can_view_branches or can_view_branch_tree or can_centers or can_groups or can_staff or can_holidays %}
+                {% can 'Module_Branch_day_end_checklist' as can_day_end %}
+                {% if can_view_branches or can_view_branch_tree or can_centers or can_groups or can_staff or can_holidays or can_day_end %}
                 <li class="dropdown">
                     <button class="erp-menu-link dropdown-toggle{% if '/branch/' in request.path and '/members/' not in request.path %} active{% endif %}" type="button" data-bs-toggle="dropdown" aria-expanded="false">Organization</button>
                     <ul class="dropdown-menu">
@@ -119,6 +120,7 @@
                         {% if can_groups %}<li><a class="dropdown-item" href="{% url 'branch:Module_Group_list' %}">Groups</a></li>{% endif %}
                         {% if can_staff %}<li><a class="dropdown-item" href="{% url 'branch:Module_Staff_list' %}">Staff</a></li>{% endif %}
                         {% if can_holidays %}<li><a class="dropdown-item" href="{% url 'branch:Module_BranchHoliday_list' %}">Branch holidays</a></li>{% endif %}
+                        {% if can_day_end %}<li><a class="dropdown-item" href="{% url 'branch:Module_Branch_day_end_checklist' %}">Day-end checklist</a></li>{% endif %}
                     </ul>
                 </li>
                 {% endif %}
@@ -128,7 +130,8 @@
                 {% can 'Module_Savings_accounts' as can_savings_accounts %}
                 {% can 'Module_Savings_transactions' as can_savings_transactions %}
                 {% can 'Module_Savings_balance_report' as can_savings_report %}
-                {% if can_savings_products or can_savings_accounts or can_savings_transactions or can_savings_report %}
+                {% can 'Module_Savings_reconciliation' as can_savings_reconciliation %}
+                {% if can_savings_products or can_savings_accounts or can_savings_transactions or can_savings_report or can_savings_reconciliation %}
                 <li class="dropdown">
                     <button class="erp-menu-link dropdown-toggle{% if '/savings/' in request.path %} active{% endif %}" type="button" data-bs-toggle="dropdown" aria-expanded="false">Savings</button>
                     <ul class="dropdown-menu">
@@ -136,6 +139,7 @@
                         {% if can_savings_accounts %}<li><a class="dropdown-item" href="{% url 'savings:Module_Savings_accounts' %}">Accounts</a></li>{% endif %}
                         {% if can_savings_transactions %}<li><a class="dropdown-item" href="{% url 'savings:Module_Savings_transactions' %}">Transactions</a></li>{% endif %}
                         {% if can_savings_report %}<li><a class="dropdown-item" href="{% url 'savings:Module_Savings_balance_report' %}">Balance report</a></li>{% endif %}
+                        {% if can_savings_reconciliation %}<li><a class="dropdown-item" href="{% url 'savings:Module_Savings_reconciliation' %}">Reconciliation report</a></li>{% endif %}
                     </ul>
                 </li>
                 {% endif %}
@@ -146,7 +150,8 @@
                 {% can 'Module_Loans_classification' as can_loan_classification %}
                 {% can 'Module_Loans_approval_tiers' as can_loan_approval_tiers %}
                 {% can 'Module_Loans_par_buckets' as can_loan_par_buckets %}
-                {% if can_loan_products or can_loan_applications or can_loan_disbursements or can_loan_portfolio or can_loan_classification or can_loan_approval_tiers or can_loan_par_buckets %}
+                {% can 'Module_Loans_repayments' as can_loan_repayments %}
+                {% if can_loan_products or can_loan_applications or can_loan_disbursements or can_loan_portfolio or can_loan_classification or can_loan_approval_tiers or can_loan_par_buckets or can_loan_repayments %}
                 <li class="dropdown">
                     <button class="erp-menu-link dropdown-toggle{% if '/loans/' in request.path %} active{% endif %}" type="button" data-bs-toggle="dropdown" aria-expanded="false">Loans</button>
                     <ul class="dropdown-menu">
@@ -157,19 +162,26 @@
                         {% if can_loan_classification %}<li><a class="dropdown-item" href="{% url 'loans:Module_Loans_classification' %}">Classification report</a></li>{% endif %}
                         {% if can_loan_approval_tiers %}<li><a class="dropdown-item" href="{% url 'loans:Module_Loans_approval_tiers' %}">Approval tiers</a></li>{% endif %}
                         {% if can_loan_par_buckets %}<li><a class="dropdown-item" href="{% url 'loans:Module_Loans_par_buckets' %}">PAR buckets</a></li>{% endif %}
+                        {% if can_loan_repayments %}<li><a class="dropdown-item" href="{% url 'loans:Module_Loans_repayments' %}">Repayments</a></li>{% endif %}
                     </ul>
                 </li>
                 {% endif %}
                 {% can 'Module_Collections_sheet_list' as can_collection_sheets %}
                 {% can 'Module_Collections_reconciliation_list' as can_collection_reconciliation %}
                 {% can 'Module_Collections_report_daily' as can_collection_reports %}
-                {% if can_collection_sheets or can_collection_reconciliation or can_collection_reports %}
+                {% can 'Module_Collections_report_performance' as can_collection_performance %}
+                {% can 'Module_Collections_report_efficiency' as can_collection_efficiency %}
+                {% can 'Module_Collections_report_variances' as can_collection_variances %}
+                {% if can_collection_sheets or can_collection_reconciliation or can_collection_reports or can_collection_performance or can_collection_efficiency or can_collection_variances %}
                 <li class="dropdown">
                     <button class="erp-menu-link dropdown-toggle{% if '/collections/' in request.path %} active{% endif %}" type="button" data-bs-toggle="dropdown" aria-expanded="false">Collections</button>
                     <ul class="dropdown-menu">
                         {% if can_collection_sheets %}<li><a class="dropdown-item" href="{% url 'collections:Module_Collections_sheet_list' %}">Collection sheets</a></li>{% endif %}
                         {% if can_collection_reconciliation %}<li><a class="dropdown-item" href="{% url 'collections:Module_Collections_reconciliation_list' %}">Reconciliation</a></li>{% endif %}
                         {% if can_collection_reports %}<li><a class="dropdown-item" href="{% url 'collections:Module_Collections_report_daily' %}">Collection reports</a></li>{% endif %}
+                        {% if can_collection_performance %}<li><a class="dropdown-item" href="{% url 'collections:Module_Collections_report_performance' %}">Collector performance</a></li>{% endif %}
+                        {% if can_collection_efficiency %}<li><a class="dropdown-item" href="{% url 'collections:Module_Collections_report_efficiency' %}">Collection efficiency</a></li>{% endif %}
+                        {% if can_collection_variances %}<li><a class="dropdown-item" href="{% url 'collections:Module_Collections_report_variances' %}">Shortage and excess</a></li>{% endif %}
                     </ul>
                 </li>
                 {% endif %}
@@ -177,7 +189,9 @@
                 {% can 'Module_Accounting_journal_list' as can_journals %}
                 {% can 'Module_Accounting_trial_balance' as can_trial_balance %}
                 {% can 'Module_Accounting_fiscal_years' as can_fiscal_years %}
-                {% if can_accounting_accounts or can_journals or can_trial_balance or can_fiscal_years %}
+                {% can 'Module_Accounting_system_accounts' as can_system_accounts %}
+                {% can 'Module_Accounting_reconciliation_list' as can_accounting_reconciliation %}
+                {% if can_accounting_accounts or can_journals or can_trial_balance or can_fiscal_years or can_system_accounts or can_accounting_reconciliation %}
                 <li class="dropdown">
                     <button class="erp-menu-link dropdown-toggle{% if '/accounting/' in request.path %} active{% endif %}" type="button" data-bs-toggle="dropdown" aria-expanded="false">Accounting</button>
                     <ul class="dropdown-menu">
@@ -185,6 +199,8 @@
                         {% if can_journals %}<li><a class="dropdown-item" href="{% url 'accounting:Module_Accounting_journal_list' %}">Journal entries</a></li>{% endif %}
                         {% if can_trial_balance %}<li><a class="dropdown-item" href="{% url 'accounting:Module_Accounting_trial_balance' %}">Trial balance</a></li>{% endif %}
                         {% if can_fiscal_years %}<li><a class="dropdown-item" href="{% url 'accounting:Module_Accounting_fiscal_years' %}">Fiscal years</a></li>{% endif %}
+                        {% if can_system_accounts %}<li><a class="dropdown-item" href="{% url 'accounting:Module_Accounting_system_accounts' %}">System account mappings</a></li>{% endif %}
+                        {% if can_accounting_reconciliation %}<li><a class="dropdown-item" href="{% url 'accounting:Module_Accounting_reconciliation_list' %}">Reconciliation</a></li>{% endif %}
                     </ul>
                 </li>
                 {% endif %}
@@ -194,7 +210,9 @@
                 {% can 'Module_Auth_list_users' as can_list_users %}
                 {% can 'Module_Settings_index' as can_settings %}
                 {% can 'Module_Audit_logs' as can_audit %}
-                {% if can_list_roles or can_list_users or can_settings or can_audit %}
+                {% can 'Module_Audit_events' as can_audit_events %}
+                {% can 'Module_Audit_dashboard' as can_audit_dashboard %}
+                {% if can_list_roles or can_list_users or can_settings or can_audit or can_audit_events or can_audit_dashboard %}
                 <li class="dropdown">
                     <button class="erp-menu-link dropdown-toggle{% if '/accounts/' in request.path or '/settings/' in request.path or '/audit/' in request.path %} active{% endif %}" type="button" data-bs-toggle="dropdown" aria-expanded="false">Administration</button>
                     <ul class="dropdown-menu">
@@ -202,9 +220,15 @@
                         {% if can_list_users %}<li><a class="dropdown-item" href="{% url 'accounts:Module_Auth_list_users' %}">Users</a></li>{% endif %}
                         {% if can_settings %}<li><a class="dropdown-item" href="{% url 'configuration:Module_Settings_index' %}">Settings</a></li>{% endif %}
                         {% if can_audit %}<li><a class="dropdown-item" href="{% url 'audit:Module_Audit_logs' %}">Audit</a></li>{% endif %}
+                        {% if can_audit_events %}<li><a class="dropdown-item" href="{% url 'audit:Module_Audit_events' %}">Audit events</a></li>{% endif %}
+                        {% if can_audit_dashboard %}<li><a class="dropdown-item" href="{% url 'audit:Module_Audit_dashboard' %}">Audit dashboard</a></li>{% endif %}
                     </ul>
                 </li>
                 {% endif %}
+                {% can 'Module_Import_list' as can_imports %}
+                {% if can_imports %}<li><a class="erp-menu-link{% if '/imports/' in request.path %} active{% endif %}" href="{% url 'bulk_imports:Module_Import_list' %}">Imports</a></li>{% endif %}
+                {% can 'Module_Notifications_list' as can_notifications %}
+                {% if can_notifications %}<li><a class="erp-menu-link{% if '/notifications/' in request.path %} active{% endif %}" href="{% url 'notifications:Module_Notifications_list' %}">Notifications</a></li>{% endif %}
             </ul>
         </div>
     </nav>

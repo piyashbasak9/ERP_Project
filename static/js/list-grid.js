@@ -90,7 +90,7 @@ $(function () {
             autoencode: true,
             loadonce: true,
             sortname: "column_0",
-            sortorder: "asc",
+            sortorder: source.dataset.defaultSortOrder === "desc" ? "desc" : "asc",
             jsonReader: {id: "id"}
         });
 

@@ -435,7 +435,7 @@ def transaction_list(request):
         'created_by',
         'approved_by',
         'journal_entry',
-    )
+    ).order_by('-pk')
     status = request.GET.get('status', '').strip()
     if status in dict(SavingsTransaction.STATUS_CHOICES):
         transactions = transactions.filter(status=status)
