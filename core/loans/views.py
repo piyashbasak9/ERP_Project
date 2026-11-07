@@ -4,6 +4,7 @@ from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -251,7 +252,200 @@ def application_list(request):
     applications = LoanApplication.objects.select_related(
         "branch", "member", "product", "created_by", "reviewed_by"
     )
-    return render(request, "loans/application_list.html", {"applications": applications})
+    code = request.GET.get("code", "").strip()
+    name = request.GET.get("name", "").strip()
+    if code:
+        applications = applications.filter(member__member_code__icontains=code)
+    if name:
+        applications = applications.filter(
+            Q(member__first_name__icontains=name)
+            | Q(member__last_name__icontains=name)
+        )
+    status = request.GET.get("status", "")
+    if status in dict(LoanApplication.STATUS_CHOICES):
+        applications = applications.filter(status=status)
+
+    if request.GET.get("ajax") == "1":
+        order_fields = {
+            "member_code": "member__member_code",
+            "full_name": "member__first_name",
+            "branch": "branch__code",
+            "product": "product__name",
+            "requested_amount": "requested_amount",
+            "approved_amount": "approved_amount",
+            "term": "term",
+            "cycle_number": "cycle_number",
+            "status": "status",
+            "maker_checker": "created_by__username",
+            "created_at": "created_at",
+        }
+        order = order_fields.get(request.GET.get("sidx"), "created_at")
+        if request.GET.get("sord", "desc").lower() != "asc":
+            order = f"-{order}"
+        try:
+            page_size = min(max(int(request.GET.get("rows", 20)), 1), 200)
+        except (TypeError, ValueError):
+            page_size = 20
+        page_obj = Paginator(
+            applications.order_by(order, "pk"),
+            page_size,
+        ).get_page(request.GET.get("page", 1))
+
+        permissions = {
+            route: user_has_route_permission(request.user, route)
+            for route in (
+                "Module_Loans_application_submit",
+                "Module_Loans_application_review",
+                "Module_Loans_application_cancel",
+                "Module_Loans_disbursement_add",
+            )
+        }
+        csrf_token = get_token(request)
+        rows = []
+        for application in page_obj.object_list:
+            actions = []
+            if (
+                application.status in {
+                    LoanApplication.STATUS_DRAFT,
+                    LoanApplication.STATUS_RETURNED,
+                }
+                and permissions["Module_Loans_application_submit"]
+            ):
+                actions.append(format_html(
+                    '<form class="d-inline" method="post" action="{}">'
+                    '<input type="hidden" name="csrfmiddlewaretoken" value="{}">'
+                    '<button class="btn btn-sm btn-outline-primary" type="submit">Submit</button>'
+                    '</form>',
+                    reverse(
+                        "loans:Module_Loans_application_submit",
+                        args=[application.pk],
+                    ),
+                    csrf_token,
+                ))
+            if (
+                application.status == LoanApplication.STATUS_SUBMITTED
+                and permissions["Module_Loans_application_review"]
+            ):
+                actions.append(format_html(
+                    '<a class="btn btn-sm btn-outline-primary" href="{}?popup=1" '
+                    'data-popup data-popup-title="Review loan application">Review</a>',
+                    reverse(
+                        "loans:Module_Loans_application_review",
+                        args=[application.pk],
+                    ),
+                ))
+            if (
+                application.status == LoanApplication.STATUS_APPROVED
+                and permissions["Module_Loans_disbursement_add"]
+            ):
+                actions.append(format_html(
+                    '<a class="btn btn-sm btn-outline-success" href="{}?popup=1" '
+                    'data-popup data-popup-title="Disburse loan">Disburse</a>',
+                    reverse(
+                        "loans:Module_Loans_disbursement_add",
+                        args=[application.pk],
+                    ),
+                ))
+            if (
+                application.status in {
+                    LoanApplication.STATUS_DRAFT,
+                    LoanApplication.STATUS_SUBMITTED,
+                    LoanApplication.STATUS_APPROVED,
+                }
+                and permissions["Module_Loans_application_cancel"]
+            ):
+                actions.append(format_html(
+                    '<form class="d-inline" method="post" action="{}">'
+                    '<input type="hidden" name="csrfmiddlewaretoken" value="{}">'
+                    '<button class="btn btn-sm btn-outline-danger" type="submit">Cancel</button>'
+                    '</form>',
+                    reverse(
+                        "loans:Module_Loans_application_cancel",
+                        args=[application.pk],
+                    ),
+                    csrf_token,
+                ))
+            rows.append({
+                "id": application.pk,
+                "member_code": application.member.member_code,
+                "full_name": application.member.full_name,
+                "branch": application.branch.code,
+                "product": application.product.name,
+                "requested_amount": str(application.requested_amount),
+                "approved_amount": (
+                    str(application.approved_amount)
+                    if application.approved_amount is not None
+                    else "—"
+                ),
+                "term": application.term,
+                "cycle_number": application.cycle_number,
+                "status": application.get_status_display(),
+                "maker_checker": (
+                    f"{application.created_by}"
+                    + (
+                        f" / {application.reviewed_by}"
+                        if application.reviewed_by_id
+                        else ""
+                    )
+                ),
+                "created_at": timezone.localtime(application.created_at).strftime(
+                    "%Y-%m-%d %H:%M"
+                ),
+                "actions": format_html_join(
+                    " ", "{}", ((action,) for action in actions)
+                ),
+            })
+        return JsonResponse({
+            "rows": rows,
+            "page": page_obj.number,
+            "total": page_obj.paginator.num_pages,
+            "records": page_obj.paginator.count,
+        })
+
+    return render(request, "loans/application_list.html", {
+        "list_title": "Loan applications",
+        "grid_url": request.path,
+        "filter_layout": "members",
+        "default_sort_name": "created_at",
+        "default_sort_order": "desc",
+        "initial_page_text": "Page 1 of 1",
+        "add_url": (
+            reverse("loans:Module_Loans_application_add")
+            if user_has_route_permission(
+                request.user, "Module_Loans_application_add"
+            )
+            else ""
+        ),
+        "add_title": "New loan application",
+        "list_filters": [
+            {
+                "name": "code", "label": "Member code",
+                "value": code, "placeholder": "Member code",
+            },
+            {
+                "name": "name", "label": "Name",
+                "value": name, "placeholder": "Member name",
+            },
+            {
+                "name": "status", "label": "Status", "type": "select",
+                "value": status, "options": LoanApplication.STATUS_CHOICES,
+            },
+        ],
+        "list_columns": [
+            {"name": "member_code", "label": "Member code", "width": 130},
+            {"name": "full_name", "label": "Name", "width": 190},
+            {"name": "branch", "label": "Branch", "width": 100},
+            {"name": "product", "label": "Product", "width": 170},
+            {"name": "requested_amount", "label": "Requested", "width": 120, "align": "right"},
+            {"name": "approved_amount", "label": "Approved", "width": 120, "align": "right"},
+            {"name": "term", "label": "Term", "width": 80},
+            {"name": "cycle_number", "label": "Cycle", "width": 80},
+            {"name": "status", "label": "Status", "width": 110},
+            {"name": "maker_checker", "label": "Maker / checker", "width": 170},
+            {"name": "created_at", "label": "Created at", "width": 150, "hidden": True},
+            {"name": "actions", "label": "Actions", "width": 250},
+        ],
+    })
 
 
 @require_GET

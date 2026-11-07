@@ -1528,3 +1528,62 @@ class LoanRouteTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "OTHER-LON")
+
+    def test_application_list_uses_member_grid_and_filters(self):
+        self.user.is_superuser = True
+        self.user.save(update_fields=["is_superuser"])
+        member = Member.unscoped.create(
+            branch=self.branch,
+            member_code="APP-001",
+            first_name="Loan",
+            last_name="Applicant",
+            status=Member.STATUS_ACTIVE,
+        )
+        product = LoanProduct.objects.create(
+            code="APP-PROD",
+            name="Application product",
+            interest_method=LoanProduct.METHOD_FLAT,
+            annual_interest_rate=Decimal("12.0000"),
+            min_amount=Decimal("100.00"),
+            max_amount=Decimal("10000.00"),
+            min_term=1,
+            max_term=24,
+            installment_frequency=LoanProduct.FREQUENCY_MONTHLY,
+            requires_verified_kyc=False,
+        )
+        application = LoanApplication.unscoped.create(
+            branch=self.branch,
+            member=member,
+            product=product,
+            requested_amount=Decimal("1000.00"),
+            term=12,
+            purpose="Application list regression test",
+            status=LoanApplication.STATUS_SUBMITTED,
+            created_by=self.user,
+            idempotency_key=uuid.uuid4(),
+        )
+
+        list_url = reverse("loans:Module_Loans_applications")
+        page = self.client.get(list_url)
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "data-list-page")
+        self.assertContains(page, "erp-filter-panel--members")
+        self.assertContains(page, '<body class="erp-dense-body')
+        self.assertContains(page, "js/list-page.js")
+
+        response = self.client.get(
+            list_url,
+            {
+                "ajax": "1",
+                "code": "APP-001",
+                "name": "Applicant",
+                "status": LoanApplication.STATUS_SUBMITTED,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["records"], 1)
+        row = response.json()["rows"][0]
+        self.assertEqual(row["id"], application.pk)
+        self.assertEqual(row["full_name"], "Loan Applicant")
+        self.assertIn("Review", row["actions"])
+        self.assertIn("Cancel", row["actions"])
