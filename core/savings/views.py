@@ -54,60 +54,161 @@ def _add_validation_error(form, error):
 
 @require_GET
 def product_list(request):
-    if 'page' in request.GET or request.GET.get('format') == 'json':
+    if request.GET.get('ajax') == '1' or request.GET.get('format') == 'json':
         products = SavingsProduct.objects.all()
         status = request.GET.get('status', '').strip()
         if status in {'active', 'inactive'}:
             products = products.filter(is_active=status == 'active')
-        search = request.GET.get('searchString', request.GET.get('q', '')).strip()
-        if search:
+        code = request.GET.get('code', '').strip()
+        name = request.GET.get('name', '').strip()
+        search = request.GET.get(
+            'searchString',
+            request.GET.get('q', ''),
+        ).strip()
+        if code:
+            products = products.filter(code__icontains=code)
+        if name:
+            products = products.filter(name__icontains=name)
+        if search and not code and not name:
             products = products.filter(
                 Q(code__icontains=search) | Q(name__icontains=search)
             )
         order_fields = {
             'code': 'code',
             'name': 'name',
-            'annual_interest_rate': 'annual_interest_rate',
-            'is_active': 'is_active',
+            'type': 'savings_type',
+            'rate': 'annual_interest_rate',
+            'method': 'interest_method',
+            'frequency': 'posting_frequency',
+            'opening_minimum': 'minimum_opening_balance',
+            'minimum': 'minimum_balance',
+            'withdrawal_limit': 'maximum_withdrawal',
+            'fee': 'fee_amount',
+            'status': 'is_active',
         }
         order = order_fields.get(request.GET.get('sidx', 'code'), 'code')
         if request.GET.get('sord', 'asc').lower() == 'desc':
             order = f'-{order}'
         try:
-            page_size = min(max(int(request.GET.get('rows', 50)), 1), 100)
+            page_size = min(max(int(request.GET.get('rows', 20)), 1), 200)
         except (TypeError, ValueError):
-            page_size = 50
-        page_obj = Paginator(products.order_by(order), page_size).get_page(
+            page_size = 20
+        page_obj = Paginator(products.order_by(order, 'pk'), page_size).get_page(
             request.GET.get('page', 1)
         )
+        can_edit = user_has_route_permission(
+            request.user, 'Module_Savings_product_edit'
+        )
+        can_activate = user_has_route_permission(
+            request.user, 'Module_Savings_product_activate'
+        )
+        can_deactivate = user_has_route_permission(
+            request.user, 'Module_Savings_product_deactivate'
+        )
+        rows = []
+        for product in page_obj.object_list:
+            actions = []
+            if can_edit:
+                actions.append(format_html(
+                    '<a href="{}?popup=1" data-popup '
+                    'data-popup-title="Edit savings product">Edit</a>',
+                    reverse(
+                        'savings:Module_Savings_product_edit',
+                        args=[product.pk],
+                    ),
+                ))
+            if product.is_active and can_deactivate:
+                actions.append(format_html(
+                    '<button class="btn btn-sm btn-outline-danger" '
+                    'type="button" data-toggle-product="{}">Deactivate</button>',
+                    reverse(
+                        'savings:Module_Savings_product_deactivate',
+                        args=[product.pk],
+                    ),
+                ))
+            elif not product.is_active and can_activate:
+                actions.append(format_html(
+                    '<button class="btn btn-sm btn-outline-success" '
+                    'type="button" data-toggle-product="{}">Activate</button>',
+                    reverse(
+                        'savings:Module_Savings_product_activate',
+                        args=[product.pk],
+                    ),
+                ))
+            rows.append({
+                'id': product.pk,
+                'code': product.code,
+                'name': product.name,
+                'type': product.get_savings_type_display(),
+                'rate': str(product.annual_interest_rate),
+                'method': product.get_interest_method_display(),
+                'frequency': product.get_posting_frequency_display(),
+                'opening_minimum': f'{product.minimum_opening_balance:.2f}',
+                'minimum': f'{product.minimum_balance:.2f}',
+                'withdrawal_limit': (
+                    f'{product.maximum_withdrawal:.2f}'
+                    if product.maximum_withdrawal is not None
+                    else '—'
+                ),
+                'fee': f'{product.fee_amount:.2f}',
+                'status': 'Active' if product.is_active else 'Inactive',
+                'actions': format_html_join(' | ', '{}', ((action,) for action in actions)),
+            })
         return JsonResponse({
             'page': page_obj.number,
             'total': page_obj.paginator.num_pages,
             'records': page_obj.paginator.count,
-            'rows': [
-                {
-                    'id': product.pk,
-                    'code': product.code,
-                    'name': product.name,
-                    'type': product.get_savings_type_display(),
-                    'rate': str(product.annual_interest_rate),
-                    'method': product.get_interest_method_display(),
-                    'frequency': product.get_posting_frequency_display(),
-                    'opening_minimum': f'{product.minimum_opening_balance:.2f}',
-                    'minimum': f'{product.minimum_balance:.2f}',
-                    'withdrawal_limit': (
-                        f'{product.maximum_withdrawal:.2f}'
-                        if product.maximum_withdrawal is not None
-                        else '—'
-                    ),
-                    'fee': f'{product.fee_amount:.2f}',
-                    'active': product.is_active,
-                }
-                for product in page_obj.object_list
-            ],
+            'rows': rows,
         })
     products = SavingsProduct.objects.order_by('code')
-    return render(request, 'savings/product_list.html', {'products': products})
+    initial_page = Paginator(products, 20).get_page(1)
+    return render(request, 'savings/product_list.html', {
+        'list_title': 'Savings products',
+        'grid_url': request.path,
+        'filter_layout': 'members',
+        'initial_page_text': (
+            f'Page {initial_page.number} of {initial_page.paginator.num_pages}'
+        ),
+        'add_url': (
+            reverse('savings:Module_Savings_product_add')
+            if user_has_route_permission(
+                request.user, 'Module_Savings_product_add'
+            )
+            else ''
+        ),
+        'add_title': 'Create savings product',
+        'list_filters': [
+            {
+                'name': 'code', 'label': 'Product code',
+                'value': request.GET.get('code', ''),
+                'placeholder': 'Product code',
+            },
+            {
+                'name': 'name', 'label': 'Name',
+                'value': request.GET.get('name', ''),
+                'placeholder': 'Product name',
+            },
+            {
+                'name': 'status', 'label': 'Status', 'type': 'select',
+                'value': request.GET.get('status', ''),
+                'options': [('active', 'Active'), ('inactive', 'Inactive')],
+            },
+        ],
+        'list_columns': [
+            {'name': 'code', 'label': 'Product code', 'width': 130},
+            {'name': 'name', 'label': 'Name', 'width': 200},
+            {'name': 'type', 'label': 'Type', 'width': 130},
+            {'name': 'rate', 'label': 'Rate %', 'width': 110, 'align': 'right'},
+            {'name': 'method', 'label': 'Interest method', 'width': 160, 'hidden': True},
+            {'name': 'frequency', 'label': 'Posting', 'width': 120, 'hidden': True},
+            {'name': 'opening_minimum', 'label': 'Opening min', 'width': 130, 'align': 'right', 'hidden': True},
+            {'name': 'minimum', 'label': 'Min balance', 'width': 130, 'align': 'right', 'hidden': True},
+            {'name': 'withdrawal_limit', 'label': 'Withdrawal max', 'width': 140, 'align': 'right', 'hidden': True},
+            {'name': 'fee', 'label': 'Fee', 'width': 110, 'align': 'right'},
+            {'name': 'status', 'label': 'Status', 'width': 100},
+            {'name': 'actions', 'label': 'Actions', 'width': 150, 'sortable': False},
+        ],
+    })
 
 
 @require_http_methods(['GET', 'POST'])

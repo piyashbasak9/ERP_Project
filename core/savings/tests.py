@@ -849,6 +849,22 @@ class SavingsViewTests(TestCase):
         self.assertIn("autoencode: true", Path(script_path).read_text(encoding="utf-8"))
 
     def test_savings_product_crud_status_filter_and_audit(self):
+        list_page = self.client.get(reverse("savings:Module_Savings_products"))
+        self.assertEqual(list_page.status_code, 200)
+        self.assertContains(list_page, 'data-list-page')
+        self.assertContains(list_page, 'data-name="code"')
+        self.assertContains(list_page, 'data-name="name"')
+        self.assertContains(list_page, 'data-name="status"')
+        self.assertContains(list_page, 'data-name="method" data-width="160" data-hidden="true"')
+        self.assertContains(list_page, "js/list-page.js")
+        self.assertContains(list_page, '<body class="erp-dense-body')
+        paged_list_page = self.client.get(
+            reverse("savings:Module_Savings_products"),
+            {"page": 1, "rows": 20, "sidx": "code", "sord": "asc"},
+        )
+        self.assertEqual(paged_list_page.status_code, 200)
+        self.assertContains(paged_list_page, 'data-list-page')
+
         create_url = (
             reverse("savings:Module_Savings_product_add") + "?popup=1"
         )
@@ -915,6 +931,19 @@ class SavingsViewTests(TestCase):
             {"format": "json", "searchString": "UI-SPEC", "status": "active"},
         )
         self.assertEqual(listed.json()["records"], 1)
+        grid_listed = self.client.get(
+            reverse("savings:Module_Savings_products"),
+            {
+                "ajax": "1",
+                "page": 1,
+                "rows": 20,
+                "code": "UI-SPEC",
+                "name": "Popup-managed",
+                "status": "active",
+            },
+        )
+        self.assertEqual(grid_listed.status_code, 200)
+        self.assertEqual(grid_listed.json()["records"], 1)
         listed_product = next(
             row for row in listed.json()["rows"] if row["id"] == product.pk
         )
