@@ -287,16 +287,15 @@ class LoanWorkflowTests(TransactionTestCase):
             idempotency_key=uuid.uuid4(),
         )
 
-    def test_maker_checker_disbursement_posts_once_with_balanced_ledger(self):
+    def test_single_user_can_review_and_disburse_application(self):
         application = self.create_submitted_application()
-        with self.assertRaises(ValidationError):
-            self.service_as(self.maker).review(
-                application_id=application.pk,
-                decision=LoanApplication.STATUS_APPROVED,
-                comment="Self approval",
-            )
-
-        self.approve_application(application)
+        approved = self.service_as(self.maker).review(
+            application_id=application.pk,
+            decision=LoanApplication.STATUS_APPROVED,
+            comment="Reviewed by the sole system user",
+            approved_amount=application.requested_amount,
+        )
+        self.assertEqual(approved.reviewed_by_id, self.maker.pk)
         loan = self.disburse(application)
         replay = self.service_as(self.maker).disburse(
             application_id=application.pk,
@@ -311,6 +310,13 @@ class LoanWorkflowTests(TransactionTestCase):
         self.assertEqual(
             sum(line.debit for line in loan.journal_entry.lines.all()),
             Decimal("12000.00"),
+        )
+        self.assertTrue(
+            AuditLog.objects.filter(
+                entity_name="LoanApplication",
+                entity_id=str(application.pk),
+                action="Approved",
+            ).exists()
         )
         self.assertTrue(
             AuditLog.objects.filter(

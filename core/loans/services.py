@@ -424,8 +424,6 @@ class LoanService:
         self._ensure_access(application.branch_id)
         if application.status != LoanApplication.STATUS_SUBMITTED:
             raise ValidationError("Only submitted applications can be reviewed.")
-        if application.created_by_id == self.request.user.pk:
-            raise ValidationError("The application maker cannot review their own application.")
         if not comment.strip():
             raise ValidationError({"comment": "A review comment is required."})
         if decision not in {
@@ -490,8 +488,6 @@ class LoanService:
             return existing
         if application.status != LoanApplication.STATUS_APPROVED:
             raise ValidationError("Only approved applications can be disbursed.")
-        if application.reviewed_by_id == self.request.user.pk:
-            raise ValidationError("The approver cannot disburse the same application.")
         if channel not in {"cash_in_hand", "bank_accounts"}:
             raise ValidationError("Select cash or bank disbursement.")
         amount = application.approved_amount
