@@ -1,15 +1,23 @@
+from decimal import Decimal
+
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
+from django.db.models import Sum
 from django.forms import formset_factory
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
+from django.utils.html import format_html, format_html_join
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from core.accounts.permission_utils import user_has_route_permission
 from core.audit.services import log_action
 from core.common.popup import popup_json_response, render_popup_form
+from core.common.templatetags.user_formatting import config_money
+from core.configuration.services import get_system_configuration
 
 from .forms import (
     AccountForm,
@@ -29,6 +37,7 @@ from .models import (
     AccountReconciliation,
     FiscalYear,
     JournalEntry,
+    JournalLine,
     SystemAccountMapping,
 )
 from .services import JournalService, ReconciliationService, build_trial_balance
@@ -44,8 +53,158 @@ JournalLineFormSet = formset_factory(
 
 @require_GET
 def account_list(request):
+    branch_ids = request.user.accessible_branch_ids(request.active_branch_id)
     accounts = Account.objects.select_related('parent').all()
-    return render(request, 'accounting/account_list.html', {'accounts': accounts})
+    code = request.GET.get('code', '').strip()
+    name = request.GET.get('name', '').strip()
+    if code:
+        accounts = accounts.filter(code__icontains=code)
+    if name:
+        accounts = accounts.filter(name__icontains=name)
+    account_type = request.GET.get('type', '')
+    if account_type in dict(Account.ACCOUNT_TYPE_CHOICES):
+        accounts = accounts.filter(account_type=account_type)
+    status = request.GET.get('status', '')
+    if status in {'active', 'inactive'}:
+        accounts = accounts.filter(is_active=status == 'active')
+
+    order_fields = {
+        'code': 'code',
+        'name': 'name',
+        'parent': 'parent__name',
+        'account_type': 'account_type',
+        'normal_balance': 'normal_balance',
+        'posting': 'allows_direct_posting',
+        'status': 'is_active',
+    }
+    order = order_fields.get(request.GET.get('sidx', 'code'), 'code')
+    if request.GET.get('sord', 'asc').lower() == 'desc':
+        order = f'-{order}'
+    try:
+        page_size = min(max(int(request.GET.get('rows', 20)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 20
+    paginator = Paginator(accounts.order_by(order, 'pk'), page_size)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+
+    balances = {
+        row['account_id']: (
+            row['debit'] or Decimal('0.00'),
+            row['credit'] or Decimal('0.00'),
+        )
+        for row in JournalLine.objects.filter(
+            entry__branch_id__in=branch_ids,
+            entry__status=JournalEntry.STATUS_POSTED,
+        ).values('account_id').annotate(
+            debit=Sum('debit'),
+            credit=Sum('credit'),
+        )
+    }
+    system_configuration = get_system_configuration()
+
+    def account_balance(account):
+        debit, credit = balances.get(
+            account.pk, (Decimal('0.00'), Decimal('0.00'))
+        )
+        return (
+            debit - credit
+            if account.normal_balance == Account.DEBIT
+            else credit - debit
+        )
+
+    if request.GET.get('ajax') == '1':
+        can_edit = user_has_route_permission(
+            request.user, 'Module_Accounting_account_edit'
+        )
+        rows = []
+        for account in page_obj.object_list:
+            actions = []
+            if can_edit:
+                actions.append(format_html(
+                    '<a href="{}?popup=1" data-popup data-popup-title="Edit account">'
+                    'Edit</a>',
+                    reverse(
+                        'accounting:Module_Accounting_account_edit',
+                        args=[account.pk],
+                    ),
+                ))
+            rows.append({
+                'id': account.pk,
+                'code': account.code,
+                'name': account.name,
+                'parent': str(account.parent) if account.parent_id else '—',
+                'account_type': account.get_account_type_display(),
+                'normal_balance': account.get_normal_balance_display(),
+                'current_balance': config_money(
+                    account_balance(account), system_configuration
+                ),
+                'posting': (
+                    'Direct' if account.allows_direct_posting else 'Control'
+                ),
+                'status': 'Active' if account.is_active else 'Inactive',
+                'actions': format_html_join(
+                    ' | ', '{}', ((action,) for action in actions)
+                ),
+            })
+        return JsonResponse({
+            'rows': rows,
+            'page': page_obj.number,
+            'total': paginator.num_pages,
+            'records': paginator.count,
+        })
+
+    return render(request, 'accounting/account_list.html', {
+        'list_title': 'Chart of accounts',
+        'grid_url': request.path,
+        'filter_layout': 'members',
+        'default_sort_name': 'code',
+        'default_sort_order': 'asc',
+        'initial_page_text': f'Page {page_obj.number} of {paginator.num_pages}',
+        'add_url': (
+            reverse('accounting:Module_Accounting_account_add')
+            if user_has_route_permission(
+                request.user, 'Module_Accounting_account_add'
+            )
+            else ''
+        ),
+        'add_title': 'Create account',
+        'list_filters': [
+            {
+                'name': 'code', 'label': 'Account code',
+                'value': code, 'placeholder': 'Account code',
+            },
+            {
+                'name': 'name', 'label': 'Name',
+                'value': name, 'placeholder': 'Account name',
+            },
+            {
+                'name': 'type', 'label': 'Type', 'type': 'select',
+                'value': account_type, 'options': Account.ACCOUNT_TYPE_CHOICES,
+            },
+            {
+                'name': 'status', 'label': 'Status', 'type': 'select',
+                'value': status,
+                'options': (('active', 'Active'), ('inactive', 'Inactive')),
+            },
+        ],
+        'list_columns': [
+            {'name': 'code', 'label': 'Code', 'width': 110},
+            {'name': 'name', 'label': 'Name', 'width': 190},
+            {'name': 'parent', 'label': 'Parent', 'width': 190},
+            {'name': 'account_type', 'label': 'Type', 'width': 110},
+            {
+                'name': 'normal_balance', 'label': 'Normal balance',
+                'width': 130,
+            },
+            {
+                'name': 'current_balance', 'label': 'Current balance',
+                'width': 150, 'align': 'right', 'sortable': False,
+            },
+            {'name': 'posting', 'label': 'Posting', 'width': 90},
+            {'name': 'status', 'label': 'Status', 'width': 100},
+            {'name': 'actions', 'label': 'Actions', 'width': 90},
+        ],
+    })
 
 
 @require_http_methods(['GET', 'POST'])

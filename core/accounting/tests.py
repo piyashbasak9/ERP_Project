@@ -289,10 +289,49 @@ class AccountingViewTests(TestCase):
 
         self.assertEqual(account_response.status_code, 200)
         self.assertContains(account_response, 'Chart of accounts')
+        self.assertContains(account_response, 'data-list-page')
+        self.assertContains(account_response, 'erp-filter-panel--members')
+        self.assertContains(account_response, 'data-name="current_balance"')
+        self.assertContains(account_response, '<body class="erp-dense-body')
         self.assertEqual(fiscal_response.status_code, 200)
         self.assertContains(fiscal_response, 'Annual period')
         self.assertEqual(mapping_response.status_code, 200)
         self.assertEqual(reconciliation_response.status_code, 200)
+
+    def test_account_list_shows_posted_balances_by_normal_balance(self):
+        request = RequestFactory().post('/accounting/journal-entries/')
+        request.user = self.user
+        request.active_branch_id = None
+        service = JournalService(request)
+        entry = service.create_entry(
+            branch_id=self.branch.pk,
+            journal_date=date(2025, 2, 1),
+            narration='Account list balance test',
+        )
+        service.add_line(
+            entry_id=entry.pk,
+            account_id=self.cash.pk,
+            debit=Decimal('25000.00'),
+        )
+        service.add_line(
+            entry_id=entry.pk,
+            account_id=self.income.pk,
+            credit=Decimal('25000.00'),
+        )
+        service.post(entry_id=entry.pk)
+
+        response = self.client.get(
+            reverse('accounting:Module_Accounting_account_list'),
+            {'ajax': '1'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        rows = {row['id']: row for row in response.json()['rows']}
+        self.assertEqual(
+            rows[self.cash.pk]['current_balance'],
+            rows[self.income.pk]['current_balance'],
+        )
+        self.assertIn('25,000.00', rows[self.cash.pk]['current_balance'])
 
     def test_accounting_navigation_is_permission_aware(self):
         response = self.client.get('/')

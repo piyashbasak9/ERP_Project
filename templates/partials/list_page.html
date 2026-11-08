@@ -65,7 +65,7 @@
 
     <div class="erp-list-grid-wrap">
         <table class="erp-list-grid" data-list-grid aria-label="{{ list_title }}">
-            <thead><tr>{% for column in list_columns %}<th data-name="{{ column.name }}" data-width="{{ column.width|default:140 }}" data-hidden="{{ column.hidden|yesno:'true,false' }}" {% if column.align %}data-align="{{ column.align }}"{% endif %}>{{ column.label }}</th>{% endfor %}</tr></thead>
+            <thead><tr>{% for column in list_columns %}<th data-name="{{ column.name }}" data-width="{{ column.width|default:140 }}" data-hidden="{{ column.hidden|yesno:'true,false' }}" data-sortable="{{ column.sortable|default_if_none:'true'|yesno:'true,false' }}" {% if column.align %}data-align="{{ column.align }}"{% endif %}>{{ column.label }}</th>{% endfor %}</tr></thead>
             <tbody></tbody>
         </table>
         <div id="jqgrid-pager-{{ request.user.pk }}" data-jqgrid-pager hidden aria-hidden="true"></div>

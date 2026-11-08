@@ -18,7 +18,7 @@ $(function () {
             name,
             label: cell.textContent.trim(),
             width: Number(cell.dataset.width) || 140,
-            sortable: name !== "actions",
+            sortable: name !== "actions" && cell.dataset.sortable !== "false",
             align: cell.dataset.align || "left",
             resizable: true,
             title: true,
