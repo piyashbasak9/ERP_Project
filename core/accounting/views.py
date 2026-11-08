@@ -6,10 +6,11 @@ from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Sum
 from django.forms import formset_factory
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.utils.html import format_html, format_html_join
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
@@ -356,15 +357,155 @@ def close_period(request, pk):
 def journal_entry_list(request):
     queryset = JournalEntry.objects.select_related(
         'branch', 'created_by', 'posted_by', 'fiscal_year', 'period'
-    ).prefetch_related('lines')
+    ).annotate(
+        debit_total=Sum('lines__debit'),
+        credit_total=Sum('lines__credit'),
+    )
+    voucher = request.GET.get('voucher', '').strip()
+    if voucher:
+        queryset = queryset.filter(voucher_number__icontains=voucher)
+    branch = request.GET.get('branch', '').strip()
+    if branch:
+        queryset = queryset.filter(branch__code__icontains=branch)
+    narration = request.GET.get('narration', '').strip()
+    if narration:
+        queryset = queryset.filter(narration__icontains=narration)
     status = request.GET.get('status', '').strip()
     if status in dict(JournalEntry.STATUS_CHOICES):
         queryset = queryset.filter(status=status)
-    page_obj = Paginator(queryset, 100).get_page(request.GET.get('page', 1))
+    date_from = request.GET.get('date_from', '').strip()
+    date_to = request.GET.get('date_to', '').strip()
+    try:
+        parsed_date_from = parse_date(date_from) if date_from else None
+        parsed_date_to = parse_date(date_to) if date_to else None
+    except ValueError:
+        return HttpResponseBadRequest('Journal dates must use YYYY-MM-DD format.')
+    if (date_from and parsed_date_from is None) or (
+        date_to and parsed_date_to is None
+    ):
+        return HttpResponseBadRequest('Journal dates must use YYYY-MM-DD format.')
+    if parsed_date_from and parsed_date_to and parsed_date_from > parsed_date_to:
+        return HttpResponseBadRequest('The start date must be on or before the end date.')
+    if parsed_date_from:
+        queryset = queryset.filter(journal_date__gte=parsed_date_from)
+    if parsed_date_to:
+        queryset = queryset.filter(journal_date__lte=parsed_date_to)
+
+    order_fields = {
+        'journal_date': 'journal_date',
+        'voucher_number': 'voucher_number',
+        'branch': 'branch__code',
+        'narration': 'narration',
+        'status': 'status',
+        'debit': 'debit_total',
+        'credit': 'credit_total',
+    }
+    order = order_fields.get(request.GET.get('sidx', 'journal_date'), 'journal_date')
+    if request.GET.get('sord', 'desc').lower() == 'desc':
+        order = f'-{order}'
+    try:
+        page_size = min(max(int(request.GET.get('rows', 20)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 20
+    paginator = Paginator(queryset.order_by(order, '-pk'), page_size)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+
+    if request.GET.get('ajax') == '1':
+        can_view = user_has_route_permission(
+            request.user, 'Module_Accounting_journal_detail'
+        )
+        rows = []
+        system_configuration = get_system_configuration()
+        for entry in page_obj.object_list:
+            actions = []
+            if can_view:
+                actions.append(format_html(
+                    '<a href="{}">View</a>',
+                    reverse(
+                        'accounting:Module_Accounting_journal_detail',
+                        args=[entry.pk],
+                    ),
+                ))
+            rows.append({
+                'id': entry.pk,
+                'journal_date': entry.journal_date.isoformat(),
+                'voucher_number': entry.voucher_number,
+                'branch': entry.branch.code,
+                'narration': entry.narration,
+                'status': entry.get_status_display(),
+                'debit': config_money(
+                    entry.debit_total or Decimal('0.00'), system_configuration
+                ),
+                'credit': config_money(
+                    entry.credit_total or Decimal('0.00'), system_configuration
+                ),
+                'actions': format_html_join(
+                    ' | ', '{}', ((action,) for action in actions)
+                ),
+            })
+        return JsonResponse({
+            'rows': rows,
+            'page': page_obj.number,
+            'total': paginator.num_pages,
+            'records': paginator.count,
+        })
+
     return render(request, 'accounting/journal_entry_list.html', {
-        'page_obj': page_obj,
-        'selected_status': status,
-        'statuses': JournalEntry.STATUS_CHOICES,
+        'list_title': 'Journal entries',
+        'grid_url': request.path,
+        'filter_layout': 'members',
+        'default_sort_name': 'journal_date',
+        'default_sort_order': 'desc',
+        'initial_page_text': f'Page {page_obj.number} of {paginator.num_pages}',
+        'list_actions': [],
+        'add_url': (
+            reverse('accounting:Module_Accounting_journal_add')
+            if user_has_route_permission(
+                request.user, 'Module_Accounting_journal_add'
+            )
+            else ''
+        ),
+        'add_title': 'Create journal entry',
+        'list_filters': [
+            {
+                'name': 'voucher', 'label': 'Voucher number',
+                'value': voucher, 'placeholder': 'Voucher number',
+            },
+            {
+                'name': 'branch', 'label': 'Branch code',
+                'value': branch, 'placeholder': 'Branch code',
+            },
+            {
+                'name': 'narration', 'label': 'Narration',
+                'value': narration, 'placeholder': 'Narration',
+            },
+            {
+                'name': 'date', 'label': 'Journal date',
+                'type': 'date-range',
+                'from_name': 'date_from', 'from_value': date_from,
+                'to_name': 'date_to', 'to_value': date_to,
+            },
+            {
+                'name': 'status', 'label': 'Status', 'type': 'select',
+                'value': status, 'options': JournalEntry.STATUS_CHOICES,
+            },
+        ],
+        'list_columns': [
+            {'name': 'journal_date', 'label': 'Date', 'width': 110},
+            {'name': 'voucher_number', 'label': 'Voucher', 'width': 150},
+            {'name': 'branch', 'label': 'Branch', 'width': 110},
+            {'name': 'narration', 'label': 'Narration', 'width': 260},
+            {'name': 'status', 'label': 'Status', 'width': 130},
+            {
+                'name': 'debit', 'label': 'Debit', 'width': 140,
+                'align': 'right',
+            },
+            {
+                'name': 'credit', 'label': 'Credit', 'width': 140,
+                'align': 'right',
+            },
+            {'name': 'actions', 'label': 'Actions', 'width': 90},
+        ],
     })
 
 

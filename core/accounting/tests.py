@@ -265,6 +265,7 @@ class AccountingViewTests(TestCase):
         route_names = [
             'Module_Accounting_account_list',
             'Module_Accounting_fiscal_years',
+            'Module_Accounting_journal_list',
             'Module_Accounting_journal_add',
             'Module_Accounting_journal_detail',
             'Module_Accounting_journal_post',
@@ -332,6 +333,63 @@ class AccountingViewTests(TestCase):
             rows[self.income.pk]['current_balance'],
         )
         self.assertIn('25,000.00', rows[self.cash.pk]['current_balance'])
+
+    def test_journal_list_uses_shared_grid_and_filters_entries(self):
+        request = RequestFactory().post('/accounting/journal-entries/')
+        request.user = self.user
+        request.active_branch_id = None
+        service = JournalService(request)
+        entry = service.create_entry(
+            branch_id=self.branch.pk,
+            journal_date=date(2025, 2, 1),
+            narration='Filtered journal entry',
+        )
+        service.add_line(
+            entry_id=entry.pk,
+            account_id=self.cash.pk,
+            debit=Decimal('25000.00'),
+        )
+        service.add_line(
+            entry_id=entry.pk,
+            account_id=self.income.pk,
+            credit=Decimal('25000.00'),
+        )
+        filters = {
+            'voucher': entry.voucher_number,
+            'branch': self.branch.code,
+            'narration': 'Filtered',
+            'date_from': '2025-02-01',
+            'date_to': '2025-02-28',
+            'status': JournalEntry.STATUS_DRAFT,
+        }
+
+        page = self.client.get(
+            reverse('accounting:Module_Accounting_journal_list'),
+            filters,
+        )
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'data-list-page')
+        self.assertContains(page, 'erp-filter-panel--members')
+        self.assertContains(page, 'data-name="debit"')
+        self.assertContains(page, '<body class="erp-dense-body')
+
+        response = self.client.get(
+            reverse('accounting:Module_Accounting_journal_list'),
+            {**filters, 'ajax': '1'},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['records'], 1)
+        self.assertEqual(data['rows'][0]['voucher_number'], entry.voucher_number)
+        self.assertEqual(data['rows'][0]['status'], 'Draft')
+        self.assertIn('25,000.00', data['rows'][0]['debit'])
+        self.assertIn('25,000.00', data['rows'][0]['credit'])
+
+        invalid_date = self.client.get(
+            reverse('accounting:Module_Accounting_journal_list'),
+            {'date_from': '2025-02-31'},
+        )
+        self.assertEqual(invalid_date.status_code, 400)
 
     def test_accounting_navigation_is_permission_aware(self):
         response = self.client.get('/')
