@@ -1593,3 +1593,62 @@ class LoanRouteTests(TestCase):
         self.assertEqual(row["full_name"], "Loan Applicant")
         self.assertIn("Review", row["actions"])
         self.assertIn("Cancel", row["actions"])
+
+    def test_loan_list_pages_use_shared_grid_and_json_endpoints(self):
+        self.user.is_superuser = True
+        self.user.save(update_fields=["is_superuser"])
+        role = Role.objects.create(name="loan-list-tier-reviewer")
+        tier = LoanApprovalTier.objects.create(
+            branch_type="branch",
+            branch=self.branch,
+            role=role,
+            amount_limit=Decimal("25000.00"),
+        )
+        bucket = LoanPARBucket.objects.create(
+            name="Loan list PAR test",
+            minimum_days=1,
+            maximum_days=30,
+            provision_rate=Decimal("5.0000"),
+        )
+        route_names = (
+            "Module_Loans_disbursements",
+            "Module_Loans_portfolio",
+            "Module_Loans_approval_tiers",
+            "Module_Loans_par_buckets",
+            "Module_Loans_repayments",
+        )
+        for route_name in route_names:
+            with self.subTest(route_name=route_name):
+                page = self.client.get(reverse(f"loans:{route_name}"))
+                self.assertEqual(page.status_code, 200)
+                self.assertContains(page, "data-list-page")
+                self.assertContains(page, "erp-filter-panel--members")
+                self.assertContains(page, "js/list-page.js")
+                self.assertContains(page, '<body class="erp-dense-body')
+
+                grid = self.client.get(
+                    reverse(f"loans:{route_name}"), {"ajax": "1"}
+                )
+                self.assertEqual(grid.status_code, 200)
+                self.assertEqual(
+                    set(grid.json()),
+                    {"rows", "page", "total", "records"},
+                )
+
+        tier_grid = self.client.get(
+            reverse("loans:Module_Loans_approval_tiers"),
+            {"ajax": "1", "role": role.name, "active": "true"},
+        )
+        self.assertEqual(tier_grid.json()["records"], 1)
+        tier_row = tier_grid.json()["rows"][0]
+        self.assertEqual(tier_row["role"], role.name)
+        self.assertIn("Edit", tier_row["actions"])
+
+        bucket_grid = self.client.get(
+            reverse("loans:Module_Loans_par_buckets"),
+            {"ajax": "1", "name": bucket.name, "active": "true"},
+        )
+        self.assertEqual(bucket_grid.json()["records"], 1)
+        self.assertEqual(
+            bucket_grid.json()["rows"][0]["name"], bucket.name
+        )
