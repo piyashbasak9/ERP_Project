@@ -858,6 +858,97 @@ class CollectionRouteTests(CollectionFixture, TestCase):
         UserRole.objects.create(user=self.manager, role=self.role)
         self.client.force_login(self.manager)
 
+    def test_collection_list_pages_use_shared_grid_and_preserve_actions(self):
+        from core.accounts.models import Permission
+
+        route_names = (
+            "Module_Collections_sheet_list",
+            "Module_Collections_reconciliation_list",
+            "Module_Collections_sheet_generate",
+            "Module_Collections_sheet_detail",
+            "Module_Collections_sheet_post",
+        )
+        RolePermission.objects.bulk_create(
+            [
+                RolePermission(role=self.role, permission=permission)
+                for permission in Permission.objects.filter(
+                    route_name__in=route_names
+                )
+            ]
+        )
+        sheet, _ = self.prepare_sheet(amount=Decimal("0.00"))
+        submitted_sheet = self.service_as(self.manager).generate(
+            center_id=self.center.pk,
+            collection_date=self.installment.due_date + timedelta(days=1),
+            idempotency_key=uuid.uuid4(),
+        )
+        self.service_as(self.collector).start(sheet_id=submitted_sheet.pk)
+        submitted_item = CollectionSheetItem.unscoped.get(
+            sheet=submitted_sheet, member=self.member
+        )
+        self.service_as(self.collector).record_collection(
+            sheet_id=submitted_sheet.pk,
+            item_id=submitted_item.pk,
+            collected_amount=(
+                submitted_item.expected_installment
+                + submitted_item.expected_overdue
+            ),
+            savings_amount=ZERO,
+            reason="",
+        )
+        self.service_as(self.collector).submit(sheet_id=submitted_sheet.pk)
+
+        sheets_url = reverse("collections:Module_Collections_sheet_list")
+        sheets_page = self.client.get(sheets_url)
+        self.assertEqual(sheets_page.status_code, 200)
+        self.assertContains(sheets_page, "data-list-page")
+        self.assertContains(sheets_page, "erp-filter-panel--members")
+        self.assertContains(sheets_page, '<body class="erp-dense-body')
+        self.assertContains(sheets_page, "js/list-page.js")
+        self.assertContains(sheets_page, "Generate sheet")
+
+        sheets_grid = self.client.get(
+            sheets_url,
+            {
+                "ajax": "1",
+                "search": "COL-CENTER",
+                "status": CollectionSheet.STATUS_RECONCILED,
+            },
+        )
+        self.assertEqual(sheets_grid.status_code, 200)
+        self.assertEqual(sheets_grid.json()["records"], 1)
+        sheet_row = sheets_grid.json()["rows"][0]
+        self.assertEqual(sheet_row["id"], sheet.pk)
+        self.assertIn("Open", sheet_row["actions"])
+        self.assertIn("detail_url", sheet_row)
+
+        reconciliation_url = reverse(
+            "collections:Module_Collections_reconciliation_list"
+        )
+        reconciliation_page = self.client.get(reconciliation_url)
+        self.assertEqual(reconciliation_page.status_code, 200)
+        self.assertContains(reconciliation_page, "data-list-page")
+        self.assertContains(reconciliation_page, "erp-filter-panel--members")
+        self.assertContains(reconciliation_page, "js/collections-reconciliation.js")
+
+        reconciliation_grid = self.client.get(
+            reconciliation_url,
+            {"ajax": "1", "search": "COL-CENTER"},
+        )
+        self.assertEqual(reconciliation_grid.status_code, 200)
+        self.assertEqual(reconciliation_grid.json()["records"], 2)
+        rows_by_status = {
+            row["status"]: row for row in reconciliation_grid.json()["rows"]
+        }
+        reconcile_action = rows_by_status["Submitted"]["actions"]
+        self.assertIn("Reconcile", reconcile_action)
+        self.assertIn('name="cash_received"', reconcile_action)
+        self.assertIn("csrfmiddlewaretoken", reconcile_action)
+        post_action = rows_by_status["Reconciled"]["actions"]
+        self.assertIn("Post", post_action)
+        self.assertIn('data-reconcile-form', post_action)
+        self.assertIn("csrfmiddlewaretoken", post_action)
+
     def test_every_collection_route_requires_its_explicit_permission(self):
         self.client.logout()
         self.client.force_login(self.other_poster)
@@ -1037,6 +1128,18 @@ class CollectionRouteTests(CollectionFixture, TestCase):
         )
         response = self.client.get(reverse("collections:Module_Collections_sheet_list"))
         self.assertNotContains(response, "Private Branch B Center")
+        sheet_grid = self.client.get(
+            reverse("collections:Module_Collections_sheet_list"),
+            {"ajax": "1"},
+        )
+        self.assertNotContains(sheet_grid, "Private Branch B Center")
+        reconciliation_grid = self.client.get(
+            reverse("collections:Module_Collections_reconciliation_list"),
+            {"ajax": "1"},
+        )
+        self.assertNotContains(
+            reconciliation_grid, "Private Branch B Center"
+        )
         self.assertEqual(
             self.client.get(
                 reverse("collections:Module_Collections_sheet_detail", args=[sheet_b.pk])

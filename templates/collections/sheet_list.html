@@ -2,21 +2,8 @@
 {% load static %}
 {% block title %}Collection sheets{% endblock %}
 {% block content %}
-<div class="container-fluid py-3" id="collectionSheetPage" data-grid-url="{% url 'collections:Module_Collections_sheet_list' %}">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-        <div><span class="eyebrow">COLLECTIONS</span><h1 class="h3 mb-0">Collection sheets</h1></div>
-        <a class="btn btn-primary" href="{% url 'collections:Module_Collections_sheet_generate' %}?popup=1" data-popup data-popup-title="Generate collection sheet">Generate sheet</a>
-    </div>
-    <div class="card card-body mb-3">
-        <div class="row g-2">
-            <div class="col-md-6"><label class="form-label" for="collection-search">Search</label><input id="collection-search" class="form-control" type="search"></div>
-            <div class="col-md-3"><label class="form-label" for="collection-status">Status</label><select id="collection-status" class="form-select"><option value="">All statuses</option>{% for key, label in statuses %}<option value="{{ key }}" {% if selected_status == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
-        </div>
-    </div>
-    <div class="table-responsive"><table id="collectionGrid"></table></div>
-    <div id="collectionPager"></div>
-</div>
+{% include 'partials/list_page.html' %}
 {% endblock %}
 {% block extra_js %}
-<script src="{% static 'js/collections-sheet-list.js' %}"></script>
+<script src="{% static 'js/list-page.js' %}"></script>
 {% endblock %}

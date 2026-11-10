@@ -5,12 +5,16 @@ from decimal import Decimal
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db.models import Q, Sum
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_date
+from django.utils.html import format_html
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from core.accounts.permission_utils import user_has_route_permission
 from core.common.popup import popup_json_response, render_popup_form
 
 from .forms import (
@@ -30,15 +34,37 @@ from .services import CollectionService
 ZERO = Decimal("0.00")
 
 
+def _collections_grid_page(
+    request, queryset, order_fields, default_sort, default_order="asc"
+):
+    order = order_fields.get(request.GET.get("sidx", default_sort), default_sort)
+    sort_order = request.GET.get("sord", default_order).lower()
+    if sort_order not in {"asc", "desc"}:
+        sort_order = default_order
+    if sort_order == "desc":
+        order = f"-{order}"
+    try:
+        page_size = min(max(int(request.GET.get("rows", 20)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 20
+    paginator = Paginator(queryset.order_by(order, "-pk"), page_size)
+    return paginator, paginator.get_page(request.GET.get("page", 1))
+
+
 @require_GET
 def sheet_list(request):
     queryset = CollectionSheet.objects.select_related(
         "branch", "center", "group", "field_officer"
+    ).annotate(
+        total_collected=Sum("items__collected_amount")
+        + Sum("items__savings_amount")
     )
-    status = request.GET.get("status", "")
+    status = request.GET.get("status", "").strip()
     if status in dict(CollectionSheet.STATUS_CHOICES):
         queryset = queryset.filter(status=status)
-    search = request.GET.get("searchString", "").strip()
+    search = request.GET.get(
+        "search", request.GET.get("searchString", "")
+    ).strip()
     if search:
         queryset = queryset.filter(
             Q(center__name__icontains=search)
@@ -46,11 +72,17 @@ def sheet_list(request):
             | Q(field_officer__full_name__icontains=search)
             | Q(group__name__icontains=search)
         )
-    if request.GET.get("format") == "json":
-        page = max(1, int(request.GET.get("page", 1)))
-        page_size = min(100, max(1, int(request.GET.get("rows", 25))))
-        paginator = Paginator(queryset.order_by("-collection_date", "-pk"), page_size)
-        page_obj = paginator.get_page(page)
+    if request.GET.get("ajax") == "1" or request.GET.get("format") == "json":
+        order_fields = {
+            "collection_date": "collection_date",
+            "center": "center__name",
+            "group": "group__name",
+            "field_officer": "field_officer__full_name",
+            "status": "status",
+        }
+        paginator, page_obj = _collections_grid_page(
+            request, queryset, order_fields, "collection_date", "desc"
+        )
         return JsonResponse(
             {
                 "page": page_obj.number,
@@ -65,10 +97,17 @@ def sheet_list(request):
                         "collection_date": sheet.collection_date.isoformat(),
                         "status": sheet.get_status_display(),
                         "status_key": sheet.status,
-                        "total_collected": str(_sheet_total(sheet)),
+                        "total_collected": str(sheet.total_collected or ZERO),
                         "detail_url": reverse(
                             "collections:Module_Collections_sheet_detail",
                             args=[sheet.pk],
+                        ),
+                        "actions": format_html(
+                            '<a class="btn btn-sm btn-outline-primary" href="{}">Open</a>',
+                            reverse(
+                                "collections:Module_Collections_sheet_detail",
+                                args=[sheet.pk],
+                            ),
                         ),
                     }
                     for sheet in page_obj
@@ -79,6 +118,60 @@ def sheet_list(request):
         request,
         "collections/sheet_list.html",
         {
+            "grid_url": request.path,
+            "list_title": "Collection sheets",
+            "filter_layout": "members",
+            "default_sort_name": "collection_date",
+            "default_sort_order": "desc",
+            "initial_page_text": "Page 1 of 1",
+            "list_actions": [],
+            "add_url": (
+                reverse("collections:Module_Collections_sheet_generate")
+                if user_has_route_permission(
+                    request.user, "Module_Collections_sheet_generate"
+                )
+                else ""
+            ),
+            "add_title": "Generate sheet",
+            "list_filters": [
+                {
+                    "name": "search",
+                    "label": "Search",
+                    "value": search,
+                    "placeholder": "Center, group, or field officer",
+                },
+                {
+                    "name": "status",
+                    "label": "Status",
+                    "type": "select",
+                    "value": status,
+                    "options": CollectionSheet.STATUS_CHOICES,
+                },
+            ],
+            "list_columns": [
+                {"name": "collection_date", "label": "Date", "width": 120},
+                {"name": "center", "label": "Center", "width": 180},
+                {"name": "group", "label": "Group", "width": 140},
+                {
+                    "name": "field_officer",
+                    "label": "Field officer",
+                    "width": 180,
+                },
+                {"name": "status", "label": "Status", "width": 120},
+                {
+                    "name": "total_collected",
+                    "label": "Collected",
+                    "width": 140,
+                    "align": "right",
+                    "sortable": False,
+                },
+                {
+                    "name": "actions",
+                    "label": "Open",
+                    "width": 90,
+                    "sortable": False,
+                },
+            ],
             "statuses": CollectionSheet.STATUS_CHOICES,
             "selected_status": status,
         },
@@ -221,12 +314,185 @@ def reconciliation_list(request):
             CollectionSheet.STATUS_RECONCILED,
             CollectionSheet.STATUS_POSTED,
         ]
+    ).annotate(
+        total_collected=Sum("items__collected_amount")
+        + Sum("items__savings_amount")
     )
-    sheets = [
-        {"sheet": sheet, "collected": _sheet_total(sheet)}
-        for sheet in queryset
-    ]
-    return render(request, "collections/reconciliation_list.html", {"sheets": sheets})
+    search = request.GET.get("search", "").strip()
+    status = request.GET.get("status", "").strip()
+    date_from = request.GET.get("date_from", "").strip()
+    date_to = request.GET.get("date_to", "").strip()
+    if search:
+        queryset = queryset.filter(
+            Q(center__name__icontains=search)
+            | Q(center__code__icontains=search)
+            | Q(field_officer__full_name__icontains=search)
+            | Q(group__name__icontains=search)
+        )
+    if status in {
+        CollectionSheet.STATUS_SUBMITTED,
+        CollectionSheet.STATUS_RECONCILED,
+        CollectionSheet.STATUS_POSTED,
+    }:
+        queryset = queryset.filter(status=status)
+    try:
+        parsed_date_from = parse_date(date_from) if date_from else None
+        parsed_date_to = parse_date(date_to) if date_to else None
+    except ValueError:
+        return HttpResponseBadRequest("Dates must use YYYY-MM-DD format.")
+    if (date_from and parsed_date_from is None) or (
+        date_to and parsed_date_to is None
+    ):
+        return HttpResponseBadRequest("Dates must use YYYY-MM-DD format.")
+    if parsed_date_from and parsed_date_to and parsed_date_from > parsed_date_to:
+        return HttpResponseBadRequest(
+            "The start date must be on or before the end date."
+        )
+    if parsed_date_from:
+        queryset = queryset.filter(collection_date__gte=parsed_date_from)
+    if parsed_date_to:
+        queryset = queryset.filter(collection_date__lte=parsed_date_to)
+
+    if request.GET.get("ajax") == "1":
+        order_fields = {
+            "collection_date": "collection_date",
+            "center": "center__name",
+            "field_officer": "field_officer__full_name",
+            "status": "status",
+        }
+        paginator, page_obj = _collections_grid_page(
+            request, queryset, order_fields, "collection_date", "desc"
+        )
+        rows = []
+        token = get_token(request)
+        for sheet in page_obj:
+            if sheet.status == CollectionSheet.STATUS_SUBMITTED:
+                actions = format_html(
+                    '<form method="post" action="{}" data-reconcile-form '
+                    'class="d-flex gap-2 align-items-center">'
+                    '<input type="hidden" name="csrfmiddlewaretoken" value="{}">'
+                    '<input class="form-control form-control-sm" name="cash_received" '
+                    'type="number" min="0" step="0.01" required aria-label="Cash received">'
+                    '<button class="btn btn-sm btn-primary" type="submit">Reconcile</button>'
+                    "</form>",
+                    reverse(
+                        "collections:Module_Collections_sheet_reconcile",
+                        args=[sheet.pk],
+                    ),
+                    token,
+                )
+            elif sheet.status == CollectionSheet.STATUS_RECONCILED:
+                actions = format_html(
+                    '<span class="small me-2">Cash {}, shortage {}, excess {}</span>'
+                    '<form method="post" action="{}" data-reconcile-form class="d-inline">'
+                    '<input type="hidden" name="csrfmiddlewaretoken" value="{}">'
+                    '<input type="hidden" name="idempotency_key" value="{}">'
+                    '<button class="btn btn-sm btn-success" type="submit">Post</button>'
+                    "</form>",
+                    sheet.cash_received,
+                    sheet.cash_shortage,
+                    sheet.cash_excess,
+                    reverse(
+                        "collections:Module_Collections_sheet_post",
+                        args=[sheet.pk],
+                    ),
+                    token,
+                    sheet.idempotency_key,
+                )
+            else:
+                actions = format_html(
+                    '<a class="btn btn-sm btn-outline-primary" href="{}">View</a>',
+                    reverse(
+                        "collections:Module_Collections_sheet_detail",
+                        args=[sheet.pk],
+                    ),
+                )
+            rows.append(
+                {
+                    "id": sheet.pk,
+                    "collection_date": sheet.collection_date.isoformat(),
+                    "center": sheet.center.name,
+                    "field_officer": sheet.field_officer.full_name,
+                    "status": sheet.get_status_display(),
+                    "collected": str(sheet.total_collected or ZERO),
+                    "actions": actions,
+                }
+            )
+        return JsonResponse(
+            {
+                "rows": rows,
+                "page": page_obj.number,
+                "total": paginator.num_pages,
+                "records": paginator.count,
+            }
+        )
+
+    return render(
+        request,
+        "collections/reconciliation_list.html",
+        {
+            "grid_url": request.path,
+            "list_title": "Cash reconciliation",
+            "filter_layout": "members",
+            "default_sort_name": "collection_date",
+            "default_sort_order": "desc",
+            "initial_page_text": "Page 1 of 1",
+            "list_actions": [],
+            "add_url": "",
+            "add_title": "",
+            "list_filters": [
+                {
+                    "name": "search",
+                    "label": "Search",
+                    "value": search,
+                    "placeholder": "Center, group, or field officer",
+                },
+                {
+                    "name": "status",
+                    "label": "Status",
+                    "type": "select",
+                    "value": status,
+                    "options": (
+                        (CollectionSheet.STATUS_SUBMITTED, "Submitted"),
+                        (CollectionSheet.STATUS_RECONCILED, "Reconciled"),
+                        (CollectionSheet.STATUS_POSTED, "Posted"),
+                    ),
+                },
+                {
+                    "name": "collection_date",
+                    "label": "Collection date",
+                    "type": "date-range",
+                    "from_name": "date_from",
+                    "from_value": date_from,
+                    "to_name": "date_to",
+                    "to_value": date_to,
+                },
+            ],
+            "list_columns": [
+                {"name": "collection_date", "label": "Date", "width": 120},
+                {"name": "center", "label": "Center", "width": 180},
+                {
+                    "name": "field_officer",
+                    "label": "Field officer",
+                    "width": 180,
+                },
+                {"name": "status", "label": "Status", "width": 120},
+                {
+                    "name": "collected",
+                    "label": "Collected",
+                    "width": 140,
+                    "align": "right",
+                    "sortable": False,
+                },
+                {
+                    "name": "actions",
+                    "label": "Cash received / posting",
+                    "width": 360,
+                    "sortable": False,
+                },
+            ],
+        },
+    )
 
 
 @require_POST
