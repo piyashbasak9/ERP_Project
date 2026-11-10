@@ -1,13 +1,16 @@
 from django.contrib import messages
 from django.contrib.auth import get_user_model, logout
 from django.contrib.auth.views import LoginView, LogoutView
+from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Count, OuterRef, Q, Subquery
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
+from django.utils.html import format_html, format_html_join
 from django.views.decorators.http import require_POST
 
+from core.accounts.permission_utils import user_has_route_permission
 from core.common.popup import popup_json_response, render_popup_form
 
 from .forms import RoleForm, UserCreationForm, UserEditForm
@@ -112,13 +115,84 @@ def create_user(request):
 
 
 def list_roles(request):
-    roles = Role.objects.prefetch_related('permissions').all()
-    roles_list = [{
-        'id': role.id,
-        'name': role.name,
-        'perm_count': role.permissions.count(),
-    } for role in roles]
-    return render(request, 'accounts/list_roles.html', {'roles': roles_list})
+    roles = Role.objects.annotate(permission_count=Count('permissions'))
+    name = request.GET.get('name', '').strip()
+    if name:
+        roles = roles.filter(name__icontains=name)
+
+    order_fields = {
+        'name': 'name',
+        'permission_count': 'permission_count',
+    }
+    order = order_fields.get(request.GET.get('sidx', 'name'), 'name')
+    if request.GET.get('sord', 'asc').lower() == 'desc':
+        order = f'-{order}'
+    try:
+        page_size = min(max(int(request.GET.get('rows', 20)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 20
+    paginator = Paginator(roles.order_by(order, 'pk'), page_size)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+
+    if request.GET.get('ajax') == '1':
+        can_edit = user_has_route_permission(
+            request.user, 'Module_Auth_edit_role'
+        )
+        rows = []
+        for role in page_obj.object_list:
+            actions = []
+            if can_edit:
+                actions.append(format_html(
+                    '<a href="{}?popup=1" data-popup data-popup-title="Edit role">'
+                    'Edit</a>',
+                    reverse('accounts:Module_Auth_edit_role', args=[role.pk]),
+                ))
+            rows.append({
+                'id': role.pk,
+                'name': role.name,
+                'permission_count': role.permission_count,
+                'actions': format_html_join(
+                    ' | ', '{}', ((action,) for action in actions)
+                ),
+            })
+        return JsonResponse({
+            'rows': rows,
+            'page': page_obj.number,
+            'total': paginator.num_pages,
+            'records': paginator.count,
+        })
+
+    return render(request, 'accounts/list_roles.html', {
+        'list_title': 'Roles & permissions',
+        'grid_url': request.path,
+        'filter_layout': 'members',
+        'default_sort_name': 'name',
+        'default_sort_order': 'asc',
+        'initial_page_text': f'Page {page_obj.number} of {paginator.num_pages}',
+        'list_actions': [],
+        'add_url': (
+            reverse('accounts:Module_Auth_create_role')
+            if user_has_route_permission(
+                request.user, 'Module_Auth_create_role'
+            )
+            else ''
+        ),
+        'add_title': 'Create role',
+        'list_filters': [
+            {
+                'name': 'name', 'label': 'Role name',
+                'value': name, 'placeholder': 'Role name',
+            },
+        ],
+        'list_columns': [
+            {'name': 'name', 'label': 'Role name', 'width': 240},
+            {
+                'name': 'permission_count', 'label': 'Permission count',
+                'width': 160,
+            },
+            {'name': 'actions', 'label': 'Actions', 'width': 90},
+        ],
+    })
 
 
 def list_users(request):
@@ -127,14 +201,140 @@ def list_users(request):
         for user in users_visible_to(request).only('id', 'branch_id')
         if user_access_is_manageable(request, user)
     ]
-    users = User.objects.filter(pk__in=manageable_user_ids).values(
-        'id', 'username', 'email', 'first_name', 'last_name'
+    users = User.objects.filter(pk__in=manageable_user_ids).annotate(
+        role_name=Subquery(
+            UserRole.objects.filter(user_id=OuterRef('pk')).values('role__name')[:1]
+        )
     )
-    user_roles = UserRole.objects.select_related('role').filter(user_id__in=users.values('id'))
-    role_map = {record.user_id: record.role.name for record in user_roles if record.role}
-    for user in users:
-        user['role'] = role_map.get(user['id'], 'No Role')
-    return render(request, 'accounts/list_users.html', {'users': users})
+    username = request.GET.get('username', '').strip()
+    name = request.GET.get('name', '').strip()
+    email = request.GET.get('email', '').strip()
+    role = request.GET.get('role', '').strip()
+    status = request.GET.get('status', '').strip()
+    if username:
+        users = users.filter(username__icontains=username)
+    if name:
+        users = users.filter(
+            Q(first_name__icontains=name) | Q(last_name__icontains=name)
+        )
+    if email:
+        users = users.filter(email__icontains=email)
+    if role:
+        users = users.filter(role_name__icontains=role)
+    if status in {'active', 'inactive'}:
+        users = users.filter(is_active=status == 'active')
+
+    order_fields = {
+        'username': 'username',
+        'name': 'first_name',
+        'email': 'email',
+        'role': 'role_name',
+        'status': 'is_active',
+    }
+    order = order_fields.get(request.GET.get('sidx', 'username'), 'username')
+    if request.GET.get('sord', 'asc').lower() == 'desc':
+        order = f'-{order}'
+    try:
+        page_size = min(max(int(request.GET.get('rows', 20)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 20
+    paginator = Paginator(
+        users.order_by(order, 'last_name', 'pk'), page_size
+    )
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+
+    if request.GET.get('ajax') == '1':
+        can_edit = user_has_route_permission(
+            request.user, 'Module_Auth_edit_user'
+        )
+        can_delete = user_has_route_permission(
+            request.user, 'Module_Auth_delete_user'
+        )
+        rows = []
+        for user in page_obj.object_list:
+            actions = []
+            if can_edit:
+                actions.append(format_html(
+                    '<a href="{}?popup=1" data-popup data-popup-title="Edit user" '
+                    'data-popup-width="900" data-popup-height="760">Edit</a>',
+                    reverse('accounts:Module_Auth_edit_user', args=[user.pk]),
+                ))
+            if can_delete:
+                actions.append(format_html(
+                    '<a href="{}" data-confirm data-confirm-title="Delete user" '
+                    'data-confirm-message="Delete user \'{}\'? This action cannot '
+                    'be undone." data-confirm-button="Delete">Delete</a>',
+                    reverse('accounts:Module_Auth_delete_user', args=[user.pk]),
+                    user.username,
+                ))
+            rows.append({
+                'id': user.pk,
+                'username': user.username,
+                'role': user.role_name or 'No Role',
+                'email': user.email,
+                'name': ' '.join(
+                    value for value in (user.first_name, user.last_name) if value
+                ),
+                'status': 'Active' if user.is_active else 'Inactive',
+                'actions': format_html_join(
+                    ' | ', '{}', ((action,) for action in actions)
+                ),
+            })
+        return JsonResponse({
+            'rows': rows,
+            'page': page_obj.number,
+            'total': paginator.num_pages,
+            'records': paginator.count,
+        })
+
+    return render(request, 'accounts/list_users.html', {
+        'list_title': 'Users',
+        'grid_url': request.path,
+        'filter_layout': 'members',
+        'default_sort_name': 'username',
+        'default_sort_order': 'asc',
+        'initial_page_text': f'Page {page_obj.number} of {paginator.num_pages}',
+        'list_actions': [],
+        'add_url': (
+            reverse('accounts:Module_Auth_create_user')
+            if user_has_route_permission(
+                request.user, 'Module_Auth_create_user'
+            )
+            else ''
+        ),
+        'add_title': 'Create user',
+        'list_filters': [
+            {
+                'name': 'username', 'label': 'Username',
+                'value': username, 'placeholder': 'Username',
+            },
+            {
+                'name': 'name', 'label': 'Name',
+                'value': name, 'placeholder': 'Name',
+            },
+            {
+                'name': 'email', 'label': 'Email',
+                'value': email, 'placeholder': 'Email',
+            },
+            {
+                'name': 'role', 'label': 'Role',
+                'value': role, 'placeholder': 'Role',
+            },
+            {
+                'name': 'status', 'label': 'Status', 'type': 'select',
+                'value': status,
+                'options': (('active', 'Active'), ('inactive', 'Inactive')),
+            },
+        ],
+        'list_columns': [
+            {'name': 'username', 'label': 'Username', 'width': 150},
+            {'name': 'name', 'label': 'Name', 'width': 180},
+            {'name': 'role', 'label': 'Role', 'width': 150},
+            {'name': 'email', 'label': 'Email', 'width': 220},
+            {'name': 'status', 'label': 'Status', 'width': 100},
+            {'name': 'actions', 'label': 'Actions', 'width': 130},
+        ],
+    })
 
 
 def edit_user(request, pk):

@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
@@ -5,6 +7,7 @@ from django.db import DatabaseError, connection, transaction
 from django.http import HttpResponse
 from django.test import Client, RequestFactory, TestCase
 from django.urls import URLPattern, URLResolver, get_resolver, reverse
+from django.utils import timezone
 
 from core.accounts.models import Permission, Role, RolePermission, UserRole
 from core.accounts.permission_utils import sync_permissions
@@ -197,11 +200,118 @@ class AuditScreenTests(TestCase):
 
         self.assertEqual(logs_response.status_code, 200)
         self.assertEqual(logs_response.context["page_obj"].paginator.count, 1)
+        self.assertContains(logs_response, "data-list-page")
+        self.assertContains(logs_response, 'data-name="timestamp"')
         self.assertEqual(dashboard_response.status_code, 200)
         self.assertEqual(
             sum(row["count"] for row in dashboard_response.context["logins_per_day"]),
             1,
         )
+
+    def test_system_events_uses_shared_grid_and_filters_event_fields(self):
+        UserBranchAccess.objects.filter(user=self.user).delete()
+        visible = AuditLog.objects.create(
+            user=self.user,
+            user_name=self.user.username,
+            branch=self.branch,
+            action="SystemEvent",
+            entity_name="SystemEvent",
+            entity_id="integration",
+            new_values={
+                "category": "integration",
+                "severity": "error",
+                "status": "failed",
+                "message": "Partner endpoint unavailable",
+            },
+        )
+        AuditLog.objects.create(
+            branch=self.other_branch,
+            action="SystemEvent",
+            entity_name="SystemEvent",
+            entity_id="integration",
+            new_values={
+                "category": "integration",
+                "severity": "error",
+                "status": "failed",
+                "message": "Partner endpoint unavailable",
+            },
+        )
+        self.grant_routes("Module_Audit_events")
+        filters = {
+            "category": "integration",
+            "severity": "error",
+            "status": "failed",
+            "message": "endpoint",
+            "branch": str(self.branch.pk),
+            "start_date": (timezone.localdate() - timedelta(days=1)).isoformat(),
+            "end_date": (timezone.localdate() + timedelta(days=1)).isoformat(),
+        }
+
+        page = self.client.get(reverse("audit:Module_Audit_events"), filters)
+        response = self.client.get(
+            reverse("audit:Module_Audit_events"),
+            {**filters, "ajax": "1"},
+        )
+
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "data-list-page")
+        self.assertContains(page, "erp-filter-panel--members")
+        self.assertContains(page, 'data-name="severity"')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["records"], 1)
+        row = response.json()["rows"][0]
+        self.assertEqual(row["id"], visible.pk)
+        self.assertEqual(row["category"], "integration")
+        self.assertEqual(row["severity"], "error")
+        self.assertEqual(row["status"], "failed")
+        self.assertEqual(row["message"], "Partner endpoint unavailable")
+
+    def test_audit_log_shared_grid_preserves_filters_and_scope(self):
+        UserBranchAccess.objects.filter(user=self.user).delete()
+        visible = AuditLog.objects.create(
+            user=self.user,
+            user_name=self.user.username,
+            branch=self.branch,
+            action="Update",
+            entity_name="Loan",
+            entity_id="grid-1",
+            ip_address="192.0.2.20",
+            remarks="Reviewed entry",
+        )
+        AuditLog.objects.create(
+            branch=self.other_branch,
+            action="Update",
+            entity_name="Loan",
+            entity_id="outside",
+            ip_address="192.0.2.20",
+            remarks="Reviewed entry",
+        )
+        self.grant_routes("Module_Audit_logs", "Module_Audit_trail")
+        filters = {
+            "action": "Update",
+            "entity": "Loan",
+            "user": self.user.username,
+            "ip": "192.0.2.20",
+            "branch": str(self.branch.pk),
+            "start_date": (timezone.localdate() - timedelta(days=1)).isoformat(),
+            "end_date": (timezone.localdate() + timedelta(days=1)).isoformat(),
+        }
+
+        page = self.client.get(reverse("audit:Module_Audit_logs"), filters)
+        response = self.client.get(
+            reverse("audit:Module_Audit_logs"),
+            {**filters, "ajax": "1"},
+        )
+
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "data-list-page")
+        self.assertContains(page, "erp-filter-panel--members")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["records"], 1)
+        row = response.json()["rows"][0]
+        self.assertEqual(row["id"], visible.pk)
+        self.assertEqual(row["record"], "grid-1")
+        self.assertIn("View", row["actions"])
 
     def test_axes_lockout_signal_creates_audited_system_activity(self):
         from axes.signals import user_locked_out

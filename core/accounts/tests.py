@@ -402,6 +402,74 @@ class RoutePermissionTests(TestCase):
         self.assertEqual(allowed_response.status_code, 200)
         self.assertEqual(denied_response.status_code, 403)
 
+    def test_role_list_uses_shared_grid_and_filters_roles(self):
+        matching = Role.objects.create(name='Grid role')
+        Role.objects.create(name='Other role')
+        self.grant_routes(
+            'Module_Auth_list_roles',
+            'Module_Auth_create_role',
+            'Module_Auth_edit_role',
+        )
+
+        page = self.client.get(
+            reverse('accounts:Module_Auth_list_roles'), {'name': 'Grid'}
+        )
+        response = self.client.get(
+            reverse('accounts:Module_Auth_list_roles'),
+            {'name': 'Grid', 'ajax': '1'},
+        )
+
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'data-list-page')
+        self.assertContains(page, 'data-name="permission_count"')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['records'], 1)
+        self.assertEqual(response.json()['rows'][0]['name'], matching.name)
+        self.assertIn('Edit', response.json()['rows'][0]['actions'])
+
+    def test_user_list_uses_shared_grid_filters_and_permission_aware_actions(self):
+        target = get_user_model().objects.create_user(
+            username='grid-user',
+            password='A-strong-test-password-123',  # nosec B106 - isolated test account
+            email='grid-user@example.test',
+            first_name='Grid',
+            last_name='Person',
+            branch=self.branch,
+        )
+        role = Role.objects.create(name='Grid operator')
+        UserRole.objects.create(user=target, role=role)
+        self.grant_routes(
+            'Module_Auth_list_users',
+            'Module_Auth_create_user',
+            'Module_Auth_edit_user',
+            'Module_Auth_delete_user',
+        )
+
+        filters = {
+            'username': 'grid',
+            'name': 'Person',
+            'email': 'example.test',
+            'role': 'operator',
+            'status': 'active',
+        }
+        page = self.client.get(reverse('accounts:Module_Auth_list_users'), filters)
+        response = self.client.get(
+            reverse('accounts:Module_Auth_list_users'),
+            {**filters, 'ajax': '1'},
+        )
+
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'data-list-page')
+        self.assertContains(page, 'erp-filter-panel--members')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['records'], 1)
+        row = response.json()['rows'][0]
+        self.assertEqual(row['username'], target.username)
+        self.assertEqual(row['role'], role.name)
+        self.assertEqual(row['status'], 'Active')
+        self.assertIn('Edit', row['actions'])
+        self.assertIn('Delete', row['actions'])
+
     def test_inactive_route_permission_is_denied(self):
         role = Role.objects.create(name='Inactive route role')
         permission = Permission.objects.get(route_name='Module_Auth_list_users')
