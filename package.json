@@ -6,6 +6,7 @@
     "test:e2e:layout": "DJANGO_SETTINGS_MODULE=ERP.test_settings python manage.py test e2e.playwright_layout --verbosity=2"
   },
   "dependencies": {
+    "@hotwired/turbo": "8.0.23",
     "bootstrap": "5.3.7",
     "bootstrap-icons": "1.13.1",
     "free-jqgrid": "4.15.5",

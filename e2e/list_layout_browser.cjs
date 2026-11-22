@@ -6,6 +6,7 @@ async function main() {
     const cookieName = process.env.ERP_E2E_COOKIE_NAME;
     const sessionCookie = process.env.ERP_E2E_SESSION_COOKIE;
     const paths = process.env.ERP_E2E_PATHS.split(",");
+    const notificationPath = process.env.ERP_E2E_NOTIFICATION_PATH;
     const screenshotDirectory = process.env.ERP_E2E_SCREENSHOT_DIR;
     const screenshotPhase = process.env.ERP_E2E_SCREENSHOT_PHASE === "before"
         ? "before"
@@ -181,6 +182,86 @@ async function main() {
                 }
                 await page.close();
             }
+        }
+
+        if (notificationPath && paths[1]) {
+            const page = await context.newPage();
+            await page.setViewportSize({width: 1600, height: 950});
+            await page.goto(new URL(paths[1], baseUrl).toString(), {
+                waitUntil: "networkidle",
+            });
+            await page.evaluate(() => {
+                window.erpHeaderBeforeNavigation = document.querySelector("#erp-header");
+                window.erpHeaderColorBeforeNavigation = getComputedStyle(
+                    window.erpHeaderBeforeNavigation,
+                ).backgroundColor;
+            });
+            await page.locator(`.erp-menu-list a[href="${notificationPath}"]`).click();
+            await page.waitForURL(new URL(notificationPath, baseUrl).toString());
+            const notificationNavigation = await page.evaluate(() => ({
+                headerPersisted: window.erpHeaderBeforeNavigation
+                    === document.querySelector("#erp-header"),
+                sameHeaderColor: window.erpHeaderColorBeforeNavigation
+                    === getComputedStyle(document.querySelector("#erp-header")).backgroundColor,
+            }));
+            if (!notificationNavigation.headerPersisted || !notificationNavigation.sameHeaderColor) {
+                throw new Error(`Navbar did not persist across notification navigation: ${JSON.stringify(notificationNavigation)}`);
+            }
+
+            const memberUrl = new URL(paths[1], baseUrl);
+            await page.goBack({waitUntil: "networkidle"});
+            await page.waitForFunction((pathname) => location.pathname === pathname, memberUrl.pathname);
+            await page.locator(".ui-jqgrid-bdiv").waitFor();
+            const restoredMember = await page.evaluate(() => ({
+                headerPersisted: window.erpHeaderBeforeNavigation
+                    === document.querySelector("#erp-header"),
+                sameHeaderColor: window.erpHeaderColorBeforeNavigation
+                    === getComputedStyle(document.querySelector("#erp-header")).backgroundColor,
+                bodyClass: document.body.className,
+            }));
+            if (!restoredMember.headerPersisted || !restoredMember.sameHeaderColor
+                || !restoredMember.bodyClass.includes("erp-dense-body")) {
+                throw new Error(`Member page did not restore correctly on browser back: ${JSON.stringify(restoredMember)}`);
+            }
+
+            const notificationUrl = new URL(notificationPath, baseUrl);
+            await page.goForward({waitUntil: "networkidle"});
+            await page.waitForFunction((pathname) => location.pathname === pathname, notificationUrl.pathname);
+            await page.getByRole("heading", {name: "Notifications", exact: true}).waitFor();
+
+            await page.locator(`.erp-menu-list a[href="${paths[1]}"]`).click();
+            await page.waitForURL(new URL(paths[1], baseUrl).toString());
+            await page.locator(".ui-jqgrid-bdiv").waitFor();
+            const memberNavigation = await page.evaluate(() => ({
+                headerPersisted: window.erpHeaderBeforeNavigation
+                    === document.querySelector("#erp-header"),
+                bodyClass: document.body.className,
+            }));
+            if (!memberNavigation.headerPersisted || !memberNavigation.bodyClass.includes("erp-dense-body")) {
+                throw new Error(`Navbar or page layout did not restore after member navigation: ${JSON.stringify(memberNavigation)}`);
+            }
+            await page.close();
+
+            const responsivePage = await context.newPage();
+            await responsivePage.setViewportSize({width: 1440, height: 900});
+            await responsivePage.goto(new URL(paths[1], baseUrl).toString(), {
+                waitUntil: "networkidle",
+            });
+            await responsivePage.locator(".erp-menu-toggle").click();
+            await responsivePage.waitForFunction(() =>
+                document.querySelector("#erpMenu").classList.contains("show"));
+            await responsivePage.locator(`.erp-menu-list a[href="${notificationPath}"]`).click();
+            await responsivePage.waitForURL(new URL(notificationPath, baseUrl).toString());
+            const responsiveNavigation = await responsivePage.evaluate(() => ({
+                menuClosed: !document.querySelector("#erpMenu").classList.contains("show"),
+                toggleExpanded: document.querySelector(".erp-menu-toggle")
+                    .getAttribute("aria-expanded"),
+            }));
+            if (!responsiveNavigation.menuClosed || responsiveNavigation.toggleExpanded !== "false") {
+                throw new Error(`Responsive menu remained open after navigation: ${JSON.stringify(responsiveNavigation)}`);
+            }
+            await responsivePage.close();
+            console.log("Navbar persisted across member/notification navigation and browser history");
         }
     } finally {
         await browser.close();

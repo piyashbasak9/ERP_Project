@@ -66,7 +66,7 @@ $(function () {
         resizeGridBody();
     }
 
-    $(window).on("resize", resizePage);
+    $(window).off("resize.erpBranchGrid").on("resize.erpBranchGrid", resizePage);
     fitPageWrapperHeight();
     resizeGridBody();
     window.setTimeout(fitPageWrapperHeight, 300);

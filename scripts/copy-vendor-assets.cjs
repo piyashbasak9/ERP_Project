@@ -15,6 +15,7 @@ const mappings = [
     ["free-jqgrid/css", "static/vendor/free-jqgrid/css"],
     ["slim-select/dist/slimselect.min.js", "static/vendor/slim-select/slimselect.min.js"],
     ["slim-select/dist/slimselect.css", "static/vendor/slim-select/slimselect.css"],
+    ["@hotwired/turbo/dist/turbo.es2017-umd.js", "static/vendor/turbo/turbo.es2017-umd.js"],
 ];
 const licenses = [
     ["bootstrap", "bootstrap"],
@@ -23,6 +24,7 @@ const licenses = [
     ["jquery", "jquery"],
     ["jquery-ui-dist", "jquery-ui-dist"],
     ["slim-select", "slim-select"],
+    ["@hotwired/turbo", "hotwired-turbo"],
 ];
 
 for (const [source, destination] of mappings) {
@@ -39,7 +41,10 @@ for (const [packageName, licenseName] of licenses) {
     const packagePath = path.join(root, "node_modules", packageName);
     const licensePath = ["LICENSE", "LICENSE.md", "LICENSE.txt"]
         .map((name) => path.join(packagePath, name))
-        .find(fs.existsSync);
+        .find(fs.existsSync)
+        || (packageName === "@hotwired/turbo"
+            ? path.join(root, "licenses", "hotwired-turbo.txt")
+            : null);
     if (!licensePath) {
         throw new Error(`Missing license file for frontend package: ${packageName}`);
     }

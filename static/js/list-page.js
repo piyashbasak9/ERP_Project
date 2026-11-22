@@ -172,7 +172,8 @@ $(function () {
         }
         const target = new URL(filterForm.action, window.location.href);
         target.search = parameters.toString();
-        window.location.assign(target.toString());
+        if (window.Turbo) window.Turbo.visit(target.toString());
+        else window.location.assign(target.toString());
     });
 
     const setFilterCollapsed = (value) => {
@@ -268,7 +269,7 @@ $(function () {
             currentUrl.searchParams.set("rows", String($grid.jqGrid("getGridParam", "rowNum")));
             currentUrl.searchParams.set("sidx", String($grid.jqGrid("getGridParam", "sortname") || ""));
             currentUrl.searchParams.set("sord", String($grid.jqGrid("getGridParam", "sortorder") || "asc"));
-            window.history.replaceState({}, "", currentUrl);
+            window.history.replaceState(window.history.state, "", currentUrl);
             updatePager(Number(data.page) || 1, Number(data.total) || 1);
             const first = data.records ? ((data.page - 1) * Number($grid.jqGrid("getGridParam", "rowNum"))) + 1 : 0;
             const last = data.records ? Math.min(first + Number($grid.jqGrid("getGridParam", "rowNum")) - 1, data.records) : 0;
@@ -330,7 +331,7 @@ $(function () {
         $grid.jqGrid("setGridHeight", height);
     }
 
-    $(window).on("resize", resizeGrid);
+    $(window).off("resize.erpListPage").on("resize.erpListPage", resizeGrid);
     new ResizeObserver(resizeGrid).observe(root.querySelector(".erp-list-grid-wrap"));
     window.setTimeout(resizeGrid, 0);
 });

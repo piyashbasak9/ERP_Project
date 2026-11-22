@@ -1,3 +1,7 @@
+(function () {
+if (window.erpSavingsProductGridBound) return;
+window.erpSavingsProductGridBound = true;
+
 document.addEventListener("click", async (event) => {
     const button = event.target.closest("[data-toggle-product]");
     if (!button) return;
@@ -19,10 +23,12 @@ document.addEventListener("click", async (event) => {
             return;
         }
         window.notify.success(body.message);
-        window.location.reload();
+        if (window.erpReloadPage) window.erpReloadPage();
+        else window.location.reload();
     } catch {
         window.notify.error("Product status could not be changed. Check your connection and try again.");
     } finally {
         button.disabled = false;
     }
 });
+})();

@@ -8,13 +8,16 @@
     let formDirty = false;
 
     function ensurePopupModal() {
-        if (popupElement) {
+        if (popupElement && popupElement.isConnected) {
             return;
         }
+        popupElement = null;
+        popupModal = null;
         popupElement = document.createElement('div');
         popupElement.className = 'modal fade';
         popupElement.tabIndex = -1;
         popupElement.setAttribute('aria-hidden', 'true');
+        popupElement.setAttribute('data-turbo', 'false');
         popupElement.innerHTML = '<div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down modal-lg"><div class="modal-content"><div class="modal-header"><h2 class="modal-title fs-5"></h2><button type="button" class="btn-close" aria-label="Close" data-popup-dismiss></button></div><div class="modal-body"></div></div></div>';
         document.body.appendChild(popupElement);
         popupModal = new bootstrap.Modal(popupElement, {backdrop: 'static', keyboard: false});
@@ -53,7 +56,7 @@
                 $grid.jqGrid('setGridParam', {page: currentPage}).trigger('reloadGrid');
             });
         } else {
-            window.location.reload();
+            window.erpReloadPage ? window.erpReloadPage() : window.location.reload();
         }
     }
 
@@ -110,7 +113,9 @@
             if (response.status === 401) {
                 const result = await response.json();
                 popupModal.hide();
-                window.location.assign('/accounts/login/?next=' + encodeURIComponent(window.location.pathname));
+                const target = '/accounts/login/?next=' + encodeURIComponent(window.location.pathname);
+                if (window.erpVisit) window.erpVisit(target);
+                else window.location.assign(target);
                 throw new Error(result.message || 'Your session has expired. Please sign in again.');
             }
             const contentType = response.headers.get('content-type') || '';
@@ -177,7 +182,9 @@
             const result = await response.json();
             if (response.status === 401) {
                 popupModal.hide();
-                window.location.assign('/accounts/login/?next=' + encodeURIComponent(window.location.pathname));
+                const target = '/accounts/login/?next=' + encodeURIComponent(window.location.pathname);
+                if (window.erpVisit) window.erpVisit(target);
+                else window.location.assign(target);
                 return;
             }
             if (window.handleAuthChallenge(result)) {
@@ -228,7 +235,8 @@
                 if (!response.ok || !result.success) {
                     throw new Error(result.message || 'The item could not be deleted.');
                 }
-                window.location.reload();
+                if (window.erpReloadPage) window.erpReloadPage();
+                else window.location.reload();
             });
         }).catch(function (error) {
             if ($error) {
@@ -247,7 +255,7 @@
             return;
         }
 
-        if (!$confirmDialog) {
+        if (!$confirmDialog || !$confirmDialog.closest('body').length) {
             $confirmDialog = $('<div class="app-confirm-dialog"><div class="app-confirm-content"><span class="app-confirm-icon" aria-hidden="true">!</span><div><p class="app-confirm-message"></p><div class="app-confirm-error alert alert-danger d-none" data-confirm-error role="alert"></div></div></div></div>')
                 .appendTo('body')
                 .dialog({

@@ -1,4 +1,7 @@
 $(function () {
+    const resizeHandlers = [];
+    $(window).off("resize.erpListGrid");
+
     $(".js-jqgrid-source").each(function (tableIndex) {
         const source = this;
         const $source = $(source);
@@ -124,7 +127,13 @@ $(function () {
             $source.jqGrid("setGridHeight", bodyHeight);
         }
 
-        $(window).on("resize", resizeGrid);
+        resizeHandlers.push(resizeGrid);
         resizeGrid();
     });
+
+    if (resizeHandlers.length) {
+        $(window).on("resize.erpListGrid", function () {
+            resizeHandlers.forEach(resizeGrid => resizeGrid());
+        });
+    }
 });

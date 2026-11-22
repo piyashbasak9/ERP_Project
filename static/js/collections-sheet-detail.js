@@ -1,11 +1,13 @@
 (() => {
+    if (window.erpCollectionSheetDetailBound) return;
+    window.erpCollectionSheetDetailBound = true;
+
     const csrf = () => document.querySelector("[name=csrfmiddlewaretoken]")?.value || "";
-    const warning = document.getElementById("unsaved-warning");
     let dirty = false;
     const updateDirty = () => {
         dirty = [...document.querySelectorAll("[data-collection-row] [data-original]")]
             .some(input => input.value !== input.dataset.original);
-        warning?.classList.toggle("d-none", !dirty);
+        document.getElementById("unsaved-warning")?.classList.toggle("d-none", !dirty);
     };
     const updateTotal = () => {
         let total = 0;
@@ -27,6 +29,16 @@
             event.preventDefault();
             event.returnValue = "";
         }
+    });
+    document.addEventListener("turbo:before-visit", event => {
+        if (dirty && !window.confirm("You have unsaved collection changes. Leave this page?")) {
+            event.preventDefault();
+        }
+    });
+    document.addEventListener("turbo:load", () => {
+        if (!document.querySelector("[data-collection-row]")) dirty = false;
+        updateDirty();
+        updateTotal();
     });
     document.addEventListener("submit", async event => {
         const form = event.target;
@@ -54,7 +66,8 @@
             updateDirty();
             form.querySelector("button[type=submit]")?.blur();
         } else {
-            window.location.reload();
+            if (window.erpReloadPage) window.erpReloadPage();
+            else window.location.reload();
         }
         window.notify.success(body.message);
     });

@@ -73,7 +73,10 @@ class ListLayoutPlaywrightTests(StaticLiveServerTestCase):
         ]
         member_grid = client.get(paths[1], {"ajax": "1"}).json()
         self.assertEqual(member_grid["records"], 22)
-        screenshot_directory = Path(settings.BASE_DIR) / "docs" / "ui"
+        screenshot_directory = Path(os.environ.get(
+            "ERP_E2E_SCREENSHOT_DIR",
+            Path(settings.BASE_DIR) / "docs" / "ui",
+        ))
         screenshot_directory.mkdir(parents=True, exist_ok=True)
         environment = os.environ.copy()
         environment.update({
@@ -81,6 +84,7 @@ class ListLayoutPlaywrightTests(StaticLiveServerTestCase):
             "ERP_E2E_COOKIE_NAME": settings.SESSION_COOKIE_NAME,
             "ERP_E2E_SESSION_COOKIE": client.cookies[settings.SESSION_COOKIE_NAME].value,
             "ERP_E2E_PATHS": ",".join(paths),
+            "ERP_E2E_NOTIFICATION_PATH": reverse("notifications:Module_Notifications_list"),
             "ERP_E2E_SCREENSHOT_DIR": str(screenshot_directory),
         })
         result = subprocess.run(

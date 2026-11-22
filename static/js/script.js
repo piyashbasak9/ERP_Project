@@ -3,11 +3,15 @@ window.handleAuthChallenge = function (body) {
     if (!target) {
         return false;
     }
-    window.location.assign(target);
+    if (window.erpVisit) {
+        window.erpVisit(target);
+    } else {
+        window.location.assign(target);
+    }
     return true;
 };
 
-document.addEventListener('DOMContentLoaded', function () {
+function configureAjaxCsrf() {
     const csrfMeta = document.querySelector('meta[name="csrf-token"]');
     const csrfToken = csrfMeta ? csrfMeta.content : '';
     if (window.jQuery && csrfToken) {
@@ -19,10 +23,19 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!window.jQuery) {
         return;
     }
+        if (window.erpAjaxErrorHandlerBound) {
+            return;
+        }
+        window.erpAjaxErrorHandlerBound = true;
     window.jQuery(document).ajaxError(function (_event, xhr) {
         if (xhr.status === 401) {
             const next = encodeURIComponent(window.location.pathname + window.location.search);
-            window.location.href = '/accounts/login/?next=' + next;
+            const target = '/accounts/login/?next=' + next;
+            if (window.erpVisit) {
+                window.erpVisit(target);
+            } else {
+                window.location.href = target;
+            }
         } else if (xhr.status === 403) {
             if (window.handleAuthChallenge(xhr.responseJSON)) {
                 return;
@@ -37,7 +50,10 @@ document.addEventListener('DOMContentLoaded', function () {
             window.notify.error((body.message || 'Something went wrong.') + (body.request_id ? ' Ref: ' + body.request_id : ''));
         }
     });
-});
+}
+
+document.addEventListener('DOMContentLoaded', configureAjaxCsrf);
+document.addEventListener('turbo:load', configureAjaxCsrf);
 
 document.addEventListener('click', function (event) {
     const quickSearchToggle = event.target.closest('[data-quick-search-toggle]');

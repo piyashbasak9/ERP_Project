@@ -1,3 +1,7 @@
+(function () {
+if (window.erpLoanProductGridBound) return;
+window.erpLoanProductGridBound = true;
+
 document.addEventListener("click", async (event) => {
     const button = event.target.closest("[data-toggle-product]");
     if (!button) return;
@@ -29,3 +33,4 @@ document.addEventListener("click", async (event) => {
         button.disabled = false;
     }
 });
+})();

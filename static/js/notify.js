@@ -25,6 +25,7 @@
 
         const toast = document.createElement('div');
         toast.className = 'toast align-items-center text-bg-' + (CLASSES[level] || CLASSES.info) + ' border-0';
+        toast.dataset.erpToastInitialized = 'true';
         toast.setAttribute('role', 'status');
         toast.setAttribute('aria-live', 'polite');
         toast.setAttribute('aria-atomic', 'true');
@@ -55,15 +56,25 @@
         info: function (message) { show('info', message); }
     };
 
-    document.addEventListener('DOMContentLoaded', function () {
+    function initializeToasts() {
         if (!window.bootstrap) {
             return;
         }
         document.querySelectorAll('#toastContainer .toast').forEach(function (toast) {
+            if (toast.dataset.erpToastInitialized) {
+                return;
+            }
+            toast.dataset.erpToastInitialized = 'true';
             toast.addEventListener('hidden.bs.toast', function () {
                 toast.remove();
             }, { once: true });
-            new window.bootstrap.Toast(toast, { delay: DELAY_MS, autohide: true }).show();
+            window.bootstrap.Toast.getOrCreateInstance(
+                toast,
+                { delay: DELAY_MS, autohide: true }
+            ).show();
         });
-    });
+    }
+
+    document.addEventListener('DOMContentLoaded', initializeToasts);
+    document.addEventListener('turbo:load', initializeToasts);
 })();

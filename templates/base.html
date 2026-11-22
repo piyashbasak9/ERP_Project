@@ -6,6 +6,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token }}">
+    <meta name="turbo-cache-control" content="no-cache">
     <title>{% block title %}{{ system_configuration.application_name }}{% endblock %}</title>
     <link rel="icon" type="image/svg+xml" href="{% static 'favicon.svg' %}">
     <link href="{% static 'vendor/bootstrap/css/bootstrap.min.css' %}" rel="stylesheet">
@@ -20,11 +21,8 @@
 {% endif %}
 {% if request.GET.popup != '1' or request.META.HTTP_X_REQUESTED_WITH != 'XMLHttpRequest' %}
     {% if request.GET.popup != '1' %}
-    <header class="navbar-custom erp-header">
+    <header class="navbar-custom erp-header" id="erp-header" data-turbo-permanent>
         <div class="erp-header-brand">
-            <button class="erp-menu-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#erpMenu" aria-controls="erpMenu" aria-expanded="false" aria-label="Toggle menu">
-                <i class="bi bi-list" aria-hidden="true"></i>
-            </button>
             <a class="erp-header-organization" href="{% url 'Module_Home_home' %}">
                 <span class="erp-organization-icon">
                     {% if user.is_authenticated and organization_configuration.logo %}
@@ -35,70 +33,10 @@
                 </span>
                 <span class="navbar-brand">{{ organization_configuration.legal_name }}</span>
             </a>
+            <button class="erp-menu-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#erpMenu" aria-controls="erpMenu" aria-expanded="false" aria-label="Toggle menu">
+                <i class="bi bi-list" aria-hidden="true"></i>
+            </button>
         </div>
-        <div class="erp-header-actions">
-            {% can 'Module_Notifications_list' as can_view_notifications %}
-            {% if can_view_notifications %}
-            <a class="erp-quick-button quick-notifications" href="{% url 'notifications:Module_Notifications_list' %}" aria-label="Notifications{% if unread_notification_count %}, {{ unread_notification_count }} unread{% endif %}" title="Notifications">
-                <i class="bi bi-bell" aria-hidden="true"></i>
-                {% if unread_notification_count %}<span class="erp-unread-count">{{ unread_notification_count }}</span>{% endif %}
-            </a>
-            {% endif %}
-            {% can 'Module_Members_list' as can_search_members %}
-            {% can 'Module_Savings_accounts' as can_search_savings %}
-            {% can 'Module_Loans_applications' as can_search_loans %}
-            {% if can_search_members or can_search_savings or can_search_loans %}
-            <button class="erp-quick-button quick-search" type="button" data-quick-search-toggle aria-label="Global quick search" title="Quick search"><i class="bi bi-search" aria-hidden="true"></i></button>
-            {% endif %}
-            {% can 'Module_Branch_day_end_checklist' as can_day_end %}
-            {% if can_day_end %}
-            <a class="erp-quick-button quick-day-end" href="{% url 'branch:Module_Branch_day_end_checklist' %}" aria-label="Day-end closing" title="Day-end closing"><i class="bi bi-calendar-check" aria-hidden="true"></i></a>
-            {% endif %}
-            {% can 'Module_Reports_index' as can_reports %}
-            {% if can_reports %}
-            <a class="erp-quick-button quick-reports" href="{% url 'reports:Module_Reports_index' %}" aria-label="Reports" title="Reports"><i class="bi bi-bar-chart-line" aria-hidden="true"></i></a>
-            {% endif %}
-            {% if can_search_members or can_search_savings or can_search_loans %}
-            <form class="erp-quick-search-form" method="get" action="{% url 'branch:Module_Branch_quick_search' %}" data-quick-search-form hidden>
-                <label class="visually-hidden" for="erpQuickSearch">Member, loan or savings account</label>
-                <input id="erpQuickSearch" name="q" type="search" minlength="2" maxlength="80" placeholder="Member, loan or account">
-                <button type="submit" aria-label="Search"><i class="bi bi-search" aria-hidden="true"></i></button>
-            </form>
-            {% endif %}
-            {% if accessible_branches %}
-            <form method="post" action="{% url 'branch:Module_Branch_switch' %}" class="erp-branch-form">
-                {% csrf_token %}
-                <label class="visually-hidden" for="active-branch">Active branch</label>
-                <select id="active-branch" name="branch_id" aria-label="Active branch">
-                    <option value="">All accessible branches</option>
-                    {% for branch in accessible_branches %}
-                    <option value="{{ branch.pk }}"{% if request.active_branch_id == branch.pk %} selected{% endif %}>{{ branch.code }} — {{ branch.name }}</option>
-                    {% endfor %}
-                </select>
-                <button type="submit">Switch</button>
-            </form>
-            {% endif %}
-            {% if user.is_authenticated %}
-            <div class="dropdown">
-                <button class="erp-user-pill dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi bi-person-circle" aria-hidden="true"></i><span>{{ user.username }}</span>
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end">
-                    {% can 'Module_Settings_preferences' as can_preferences %}
-                    {% if can_preferences %}<li><a class="dropdown-item" href="{% url 'configuration:Module_Settings_preferences' %}">Preferences</a></li>{% endif %}
-                    <li><a class="dropdown-item" href="{% url 'accounts:Module_Auth_change_password' %}">Change password</a></li>
-                    {% can 'Module_Notifications_preferences' as can_notification_preferences %}
-                    {% if can_notification_preferences %}<li><a class="dropdown-item" href="{% url 'notifications:Module_Notifications_preferences' %}">Notification preferences</a></li>{% endif %}
-                    <li><hr class="dropdown-divider"></li>
-                    <li><form method="post" action="{% url 'accounts:Module_Auth_logout' %}">{% csrf_token %}<button class="dropdown-item text-danger" type="submit">Logout</button></form></li>
-                </ul>
-            </div>
-            {% else %}
-            <a class="btn btn-sm btn-light" href="{% url 'accounts:Module_Auth_login' %}">Login</a>
-            {% endif %}
-        </div>
-    </header>
-
     <nav class="erp-menu-bar" aria-label="Main navigation">
         <div class="collapse navbar-collapse" id="erpMenu">
             <ul class="erp-menu-list">
@@ -232,6 +170,68 @@
             </ul>
         </div>
     </nav>
+        <div class="erp-header-actions">
+            {% can 'Module_Notifications_list' as can_view_notifications %}
+            {% if can_view_notifications %}
+            <a class="erp-quick-button quick-notifications" href="{% url 'notifications:Module_Notifications_list' %}" aria-label="Notifications{% if unread_notification_count %}, {{ unread_notification_count }} unread{% endif %}" title="Notifications">
+                <i class="bi bi-bell" aria-hidden="true"></i>
+                {% if unread_notification_count %}<span class="erp-unread-count">{{ unread_notification_count }}</span>{% endif %}
+            </a>
+            {% endif %}
+            {% can 'Module_Members_list' as can_search_members %}
+            {% can 'Module_Savings_accounts' as can_search_savings %}
+            {% can 'Module_Loans_applications' as can_search_loans %}
+            {% if can_search_members or can_search_savings or can_search_loans %}
+            <button class="erp-quick-button quick-search" type="button" data-quick-search-toggle aria-label="Global quick search" title="Quick search"><i class="bi bi-search" aria-hidden="true"></i></button>
+            {% endif %}
+            {% can 'Module_Branch_day_end_checklist' as can_day_end %}
+            {% if can_day_end %}
+            <a class="erp-quick-button quick-day-end" href="{% url 'branch:Module_Branch_day_end_checklist' %}" aria-label="Day-end closing" title="Day-end closing"><i class="bi bi-calendar-check" aria-hidden="true"></i></a>
+            {% endif %}
+            {% can 'Module_Reports_index' as can_reports %}
+            {% if can_reports %}
+            <a class="erp-quick-button quick-reports" href="{% url 'reports:Module_Reports_index' %}" aria-label="Reports" title="Reports"><i class="bi bi-bar-chart-line" aria-hidden="true"></i></a>
+            {% endif %}
+            {% if can_search_members or can_search_savings or can_search_loans %}
+            <form class="erp-quick-search-form" method="get" action="{% url 'branch:Module_Branch_quick_search' %}" data-quick-search-form hidden>
+                <label class="visually-hidden" for="erpQuickSearch">Member, loan or savings account</label>
+                <input id="erpQuickSearch" name="q" type="search" minlength="2" maxlength="80" placeholder="Member, loan or account">
+                <button type="submit" aria-label="Search"><i class="bi bi-search" aria-hidden="true"></i></button>
+            </form>
+            {% endif %}
+            {% if accessible_branches %}
+            <form method="post" action="{% url 'branch:Module_Branch_switch' %}" class="erp-branch-form">
+                {% csrf_token %}
+                <label class="visually-hidden" for="active-branch">Active branch</label>
+                <select id="active-branch" name="branch_id" aria-label="Active branch">
+                    <option value="">All accessible branches</option>
+                    {% for branch in accessible_branches %}
+                    <option value="{{ branch.pk }}"{% if request.active_branch_id == branch.pk %} selected{% endif %}>{{ branch.code }} — {{ branch.name }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit">Switch</button>
+            </form>
+            {% endif %}
+            {% if user.is_authenticated %}
+            <div class="dropdown">
+                <button class="erp-user-pill dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-person-circle" aria-hidden="true"></i><span>{{ user.username }}</span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    {% can 'Module_Settings_preferences' as can_preferences %}
+                    {% if can_preferences %}<li><a class="dropdown-item" href="{% url 'configuration:Module_Settings_preferences' %}">Preferences</a></li>{% endif %}
+                    <li><a class="dropdown-item" href="{% url 'accounts:Module_Auth_change_password' %}">Change password</a></li>
+                    {% can 'Module_Notifications_preferences' as can_notification_preferences %}
+                    {% if can_notification_preferences %}<li><a class="dropdown-item" href="{% url 'notifications:Module_Notifications_preferences' %}">Notification preferences</a></li>{% endif %}
+                    <li><hr class="dropdown-divider"></li>
+                    <li><form method="post" action="{% url 'accounts:Module_Auth_logout' %}">{% csrf_token %}<button class="dropdown-item text-danger" type="submit">Logout</button></form></li>
+                </ul>
+            </div>
+            {% else %}
+            <a class="btn btn-sm btn-light" href="{% url 'accounts:Module_Auth_login' %}">Login</a>
+            {% endif %}
+        </div>
+    </header>
     {% endif %}
 
     {% include 'partials/toasts.html' %}
@@ -248,17 +248,19 @@
         <small class="erp-status-indicator" aria-label="System status"><span></span></small>
     </footer>
     {% endif %}
-    <script src="{% static 'vendor/jquery/jquery.min.js' %}"></script>
-    <script src="{% static 'vendor/jquery-ui/jquery-ui.min.js' %}"></script>
-    <script src="{% static 'vendor/free-jqgrid/js/i18n/grid.locale-en.js' %}"></script>
-    <script src="{% static 'vendor/free-jqgrid/js/jquery.jqgrid.min.js' %}"></script>
-    <script src="{% static 'vendor/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
-    <script src="{% static 'vendor/slim-select/slimselect.min.js' %}"></script>
-    <script src="{% static 'js/script.js' %}"></script>
-    <script src="{% static 'js/notify.js' %}"></script>
-    <script src="{% static 'js/popup.js' %}"></script>
+    <script src="{% static 'vendor/jquery/jquery.min.js' %}" data-turbo-eval="false"></script>
+    <script src="{% static 'vendor/jquery-ui/jquery-ui.min.js' %}" data-turbo-eval="false"></script>
+    <script src="{% static 'vendor/free-jqgrid/js/i18n/grid.locale-en.js' %}" data-turbo-eval="false"></script>
+    <script src="{% static 'vendor/free-jqgrid/js/jquery.jqgrid.min.js' %}" data-turbo-eval="false"></script>
+    <script src="{% static 'vendor/bootstrap/js/bootstrap.bundle.min.js' %}" data-turbo-eval="false"></script>
+    <script src="{% static 'vendor/slim-select/slimselect.min.js' %}" data-turbo-eval="false"></script>
+    <script src="{% static 'js/script.js' %}" data-turbo-eval="false"></script>
+    <script src="{% static 'js/notify.js' %}" data-turbo-eval="false"></script>
+    <script src="{% static 'js/popup.js' %}" data-turbo-eval="false"></script>
     <script src="{% static 'js/list-grid.js' %}"></script>
+    <script src="{% static 'js/navigation.js' %}" data-turbo-eval="false"></script>
     {% block extra_js %}{% endblock %}
+    <script src="{% static 'vendor/turbo/turbo.es2017-umd.js' %}" data-turbo-eval="false" data-turbo-suppress-warning></script>
 </body>
 </html>
 {% endif %}
