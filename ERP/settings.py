@@ -259,5 +259,3 @@ if not SECRET_KEY:
     raise ImproperlyConfigured(
         "DJANGO_SECRET_KEY must be configured or supplied by local settings."
     )
-if not DEBUG and not REDIS_URL:
-    raise ImproperlyConfigured("REDIS_URL is required when DEBUG is disabled.")
