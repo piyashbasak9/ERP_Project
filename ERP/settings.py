@@ -56,7 +56,10 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@example.inval
 
 ALLOWED_HOSTS = [
     host.strip()
-    for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,[::1]").split(",")
+    for host in os.environ.get(
+        "DJANGO_ALLOWED_HOSTS",
+        "localhost,127.0.0.1,[::1],erp-project-akg0.onrender.com"
+    ).split(",")
     if host.strip()
 ]
 
