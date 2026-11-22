@@ -64,6 +64,18 @@ The MFI modules in the specification are being delivered in roadmap order. See t
 
    Open `http://127.0.0.1:8000/`. The public health endpoint is `/health/`.
 
+## Render static files
+
+The application serves collected static assets through WhiteNoise. On Render,
+set the build command to:
+
+```bash
+pip install -r requirements.txt && python manage.py collectstatic --noinput
+```
+
+Use `gunicorn ERP.wsgi:application` as the start command. After changing static
+assets, deploy a new build so `collectstatic` refreshes the generated files.
+
 ## Security notes
 
 - Never put credentials or production secrets in source code, examples, logs or commits.

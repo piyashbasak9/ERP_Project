@@ -93,6 +93,7 @@ MIDDLEWARE = [
     'core.common.structured_logging.RequestIDMiddleware',
     'core.common.errors.DevelopmentErrorLoggingMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'core.common.middleware.ContentSecurityPolicyMiddleware',
     'core.common.middleware.PagePerformanceMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -175,6 +176,14 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage',
+    },
+}
 
 MEDIA_URL = '/private-media/'
 MEDIA_ROOT = Path(os.environ.get('PRIVATE_MEDIA_ROOT', str(BASE_DIR / 'private_media')))
