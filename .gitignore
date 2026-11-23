@@ -31,6 +31,7 @@ private_media/
 # Static files (if collected)
 staticfiles/
 static_root/
+test-results/
 
 # ==========================================
 # Environment Variables

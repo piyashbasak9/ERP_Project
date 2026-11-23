@@ -1652,7 +1652,8 @@ static/
 
 - The application shell uses a full-width dark-blue 56px header and a separate, slightly darker 34px menu strip. The header shows a 32px organization tile (logo through the authenticated private-media view when permitted, otherwise the self-hosted bank icon), legal organization name, permitted quick actions, branch switcher, and user menu. Login always uses the default icon. Logout is a **button inside a POST form**.
 - The permission-aware bell opens the authenticated user's branch-scoped in-app notifications; each item can be marked read with POST.
-- Menu entries and action shortcuts use the same route permission service as the middleware. Unavailable routes are omitted and empty module groups are hidden. The menu supports keyboard operation and collapses below 992px.
+- Menu entries and action shortcuts use the same route permission service as the middleware. Unavailable routes are omitted and empty module groups are hidden. Below 1024px the menu becomes an off-canvas drawer with accordion groups, Escape-to-close, focus management and touch-sized controls. Mobile quick actions and the branch switcher move into the drawer; desktop retains the dense two-row header.
+- Responsive breakpoints are mobile below 576px, tablet from 576px through 1023px, desktop from 1024px, and wide-screen refinements above 1600px. Layouts use safe-area insets, dynamic viewport heights and reduced-motion preferences without disabling browser zoom.
 - **Content** is white on a very light background. Legacy screens continue to render in the shared shell; the Branch, Members, and Savings accounts pilot lists use the dense full-height layout.
 - Vendor files are **self-hosted** so a strict Content Security Policy can be enforced.
 
@@ -1713,7 +1714,7 @@ All create and edit forms open in a popup so the page behind them keeps its plac
 | On success | Modal closes, a success toast appears, and the grid reloads |
 | On failure | Modal stays open with the data intact and an error toast is shown |
 | Layout | `modal-dialog-scrollable`: long forms scroll inside the body while the title and buttons stay visible |
-| Small screens | `modal-fullscreen-sm-down` |
+| Small screens | `modal-fullscreen-sm-down`; the body scrolls independently and action buttons remain reachable |
 | Security | The fragment endpoint enforces login and the same route permission as a full page; saves send the CSRF header. `X-Frame-Options: DENY` stays enabled |
 
 Mostly read-only screens (member profile, loan statement) are normal pages. Only create and edit use popups.
@@ -1831,11 +1832,11 @@ Text and background pairs must meet WCAG AA contrast.
 ### 16.6 jqGrid lists
 
 - Server-side paging, sorting and filtering; the response format is in [section 14.2](#142-standard-ajax-response).
-- Branches, Members, and Savings accounts are the initial dense-list pilot. Their layout is shared through `templates/partials/list_page.html`; each view supplies its title, permission-checked add route, filter descriptors, grid columns, and server-side JSON URL. `static/js/list-page.js` reads the declared column metadata and supplies paging, sorting, URL-synchronized filters, persistent per-user/per-page filter and column preferences, load timing, and the column chooser. Other list screens retain their current templates until separately converted.
-- On desktop pilot lists, the grid consumes all remaining viewport height and owns vertical scrolling. The title, filters, grid footer, and status footer remain outside the scroll area. At tablet widths the default column set is reduced; below 768px filters stack and the grid may scroll horizontally without widening the page.
+- Branches, Members, and Savings accounts are the initial dense-list pilot. Their layout is shared through `templates/partials/list_page.html`; each view supplies its title, permission-checked add route, filter descriptors, grid columns, and server-side JSON URL. `static/js/list-page.js` reads the declared column metadata and supplies paging, sorting, URL-synchronized filters, persistent per-user/per-page filter and column preferences, load timing, and the column chooser. Other list screens retain their server-rendered data templates and permissions; the shared legacy-grid adapter supplies responsive phone cards and tablet scrolling without changing their data behavior.
+- On desktop pilot lists, the grid consumes all remaining viewport height and owns vertical scrolling. The title, filters, grid footer, and status footer remain outside the scroll area. Tablet grids scroll horizontally inside their own container with the first data column sticky; mobile replaces the grid with stacked cards.
 - Dense tokens are a 13px system font, 1.35 line height, 28px controls, 32px rows, and 4px spacing. Shared filter and popup-control border, radius, and focus tokens use the existing white/dark-blue palette in [section 16.5](#165-theme-white-and-dark-blue).
 - List filter controls submit through GET and preserve their values in the URL. The collapsed state and column visibility are stored in browser local storage using the authenticated user and page as the key.
-- Shared report grids use the report registry's columns and applicable filters, return totals in `userdata`, and enforce a report-specific grid permission.
+- Shared report grids use the report registry's columns and applicable filters, return totals in `userdata`, and enforce a report-specific grid permission. Report filters collapse on phones with removable active-filter chips; results use the same compact pager and priority-based card layout as ListPage.
 - Report Excel and PDF downloads use the same registered columns, queryset and totals as the grid; they include organization/filter labels, are audited, and reject exports above 5,000 rows with a clear filter-narrowing message.
 - `autoencode: true` so cell values are HTML-escaped.
 - Action buttons (Add, Edit, Delete) are drawn only when the user has that route permission.
@@ -1863,9 +1864,9 @@ $("#branchGrid").jqGrid({
 
 ### 16.7 Reusable ListPage component
 
-Pilot templates extend `base.html` and include `partials/list_page.html`. The view provides `list_title`, `grid_url`, `list_filters`, `list_columns`, `initial_page_text`, and an optional `add_url`/`add_title`. A filter descriptor has `name`, `label`, `value`, and optionally `type`, `placeholder`, and `options`; `date-range` descriptors also provide `from_name`, `to_name`, `from_value`, and `to_value`. A column descriptor has `name`, `label`, and optionally `width`, `align`, and `hidden`.
+Pilot templates extend `base.html` and include `partials/list_page.html`. The view provides `list_title`, `grid_url`, `list_filters`, `list_columns`, `initial_page_text`, and an optional `add_url`/`add_title`. A filter descriptor has `name`, `label`, `value`, and optionally `type`, `placeholder`, and `options`; `date-range` descriptors also provide `from_name`, `to_name`, `from_value`, and `to_value`. A column descriptor has `name`, `label`, and optionally `width`, `align`, `hidden`, and `priority`. Priority 1 is always shown in the grid and supplies a mobile card's key fields; priority 2 is shown from tablet up and appears under the card's “More” disclosure; priority 3 is shown on desktop and appears under “More” on mobile. Actions remain in a separate card disclosure. User-hidden fields remain hidden in cards.
 
-The shared filter grid uses bounded widths, inline clear buttons, keyboard-searchable selects (self-hosted pinned MIT Slim Select), and removable chips while collapsed. Filter values remain URL-backed; empty values are omitted on submit. Popup inputs share the filter border, radius, and focus tokens without changing their layout.
+The shared filter grid uses bounded widths, inline clear buttons, keyboard-searchable selects (self-hosted pinned MIT Slim Select), and removable chips while collapsed. Filter values remain URL-backed; empty values are omitted on submit. On phones (under 576px) filters start collapsed into a full-width stacked panel with a sticky Search action; the default page size is 20. Tablet grids (576–1023px) scroll horizontally with a sticky first column. Desktop grids retain the compact layout. Column visibility, order and filter state are stored in browser local storage using the authenticated user and page as the key. Popup inputs share the filter border, radius, and focus tokens without changing their layout.
 
 The shared JavaScript module initializes Free jqGrid in JSON mode with `autoencode: true`. Each endpoint keeps the queryset's existing branch scope and allowlists sortable fields before applying server-side ordering and pagination. Actions are server-rendered only when their action route permission is granted; state changes remain POST-only and audited. Do not put inline scripts or user data into action HTML.
 
@@ -1878,6 +1879,13 @@ npm run test:e2e:layout
 ```
 
 The check creates isolated test fixtures, verifies all three pilot lists at 1366×768 and 1920×1080, and saves before/after viewport screenshots under `docs/ui/`.
+
+The route-registry responsive audit runs Chromium, Firefox and WebKit across the 10 target viewport sizes, plus CSS-viewport approximations for 125% and 150% zoom on a 1366×768 laptop. Screenshots are saved under ignored `test-results/`; the failure table is written to [`docs/ui/responsive-report.md`](./docs/ui/responsive-report.md). The Chromium CI smoke job uses phone, tablet and desktop sizes on pull requests; the full matrix runs weekly and on manual workflow dispatch.
+
+```sh
+npx playwright install --with-deps
+npm run test:e2e:responsive
+```
 
 ### 16.8 Permission-aware UI
 
@@ -1913,9 +1921,9 @@ The details users notice every day. These apply to every screen.
 | Formats | Money with configured currency symbol and western/Indian grouping in printable financial statements; dates use the user's configured format |
 | Time | Stored in UTC, shown in the organization time zone |
 | Keyboard | Tab order is logical; `Enter` submits a form; `Esc` closes a popup; visible focus ring |
-| Responsive | Dense lists are optimized for desktop at 1280px and wider, reduce default columns below that, and stack filters/allow grid-only horizontal scrolling below 768px. Collection entry screens remain optimized for small screens |
+| Responsive | Mobile is below 576px, tablet is 576–1023px, desktop starts at 1024px, and wide-screen refinements start above 1600px. Mobile lists use cards with priority-1 fields plus “More” and actions disclosures; the filter panel starts collapsed and the pager is compact with a 20-row default. Tablet grids scroll horizontally with a sticky first column; desktop keeps the dense layout. Forms, details, reports, dashboard cards and collection entry adapt without changing print layouts |
 | Print | Print-friendly layout for collection sheets, receipts, loan statements and vouchers, with organization name and logo |
-| Navigation | Breadcrumbs; active menu highlight; menu collapses on small screens; branch switcher in the header |
+| Navigation | Breadcrumbs; active menu highlight; menu becomes a drawer below 1024px; branch switcher stays in the desktop header and moves into the mobile drawer |
 | Session | Idle warning before auto logout; returning to the original page after login |
 | Accessibility | Labels on all inputs, ARIA roles on custom components, WCAG 2.1 AA contrast |
 | Safety | No double submits; unsaved-changes warning; optimistic locking message when two users edit the same record |
@@ -2038,7 +2046,31 @@ python manage.py runserver
 
 Open `http://127.0.0.1:8000/`. Without logging in you are redirected to `/accounts/login/`.
 
-### 18.3 Default access URLs
+### 18.3 Phone testing on a trusted local network
+
+This development-only option lets a phone on the same trusted home or office
+network open Django on your PC. Do not use it on public or untrusted Wi-Fi, and
+never expose Django's development server to the public internet.
+
+1. Find the PC's LAN IPv4 address (for example `192.168.1.50`).
+2. In your ignored `ERP/local_settings.py`, uncomment the LAN example and
+   replace the sample address in both `ALLOWED_HOSTS` and
+   `CSRF_TRUSTED_ORIGINS`.
+3. Keep the phone and PC on the same trusted network, then run:
+
+   ```bash
+   python manage.py runserver 0.0.0.0:8000
+   ```
+
+4. On the phone, open `http://<PC-LAN-IP>:8000/`.
+5. Comment out the LAN entries and return to `python manage.py runserver` when
+   phone testing is finished.
+
+The example uses plain HTTP only for local development. Production refuses an
+`ERP/local_settings.py` file, and its deployment checks reject HTTP CSRF trusted
+origins; never copy the LAN settings into production.
+
+### 18.4 Default access URLs
 
 | Group | URL | Purpose |
 |---|---|---|
@@ -2051,7 +2083,7 @@ Open `http://127.0.0.1:8000/`. Without logging in you are redirected to `/accoun
 
 The full route list, including planned modules, is in [section 14.5](#145-route-catalog).
 
-### 18.4 Useful commands
+### 18.5 Useful commands
 
 | Task | Command |
 |---|---|

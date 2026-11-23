@@ -18,15 +18,19 @@
             {% endif %}
         </div>
     </div>
-    <div class="card card-body mb-3">
+    <div class="card card-body mb-3 collection-summary">
         <div class="row g-3">
             <div class="col-sm-6 col-lg-2"><span class="text-muted">Date</span><div>{{ sheet.collection_date }}</div></div>
             <div class="col-sm-6 col-lg-2"><span class="text-muted">Center</span><div>{{ sheet.center.name }}</div></div>
             <div class="col-sm-6 col-lg-2"><span class="text-muted">Group</span><div>{{ sheet.group.name|default:"All center members" }}</div></div>
             <div class="col-sm-6 col-lg-2"><span class="text-muted">Field officer</span><div>{{ sheet.field_officer.full_name }}</div></div>
             <div class="col-sm-6 col-lg-2"><span class="text-muted">Status</span><div>{{ sheet.get_status_display }}</div></div>
-            <div class="col-sm-6 col-lg-2"><span class="text-muted">Collected total</span><div id="live-total">{{ total_collected|floatformat:2 }}</div></div>
+            <div class="col-sm-6 col-lg-2 collection-total-print"><span class="text-muted">Collected total</span><div>{{ total_collected|floatformat:2 }}</div></div>
         </div>
+    </div>
+    <div class="collection-total-bar" role="status" aria-live="polite">
+        <span>Collected total</span>
+        <strong id="live-total">{{ total_collected|floatformat:2 }}</strong>
     </div>
     <p class="alert alert-warning d-none" id="unsaved-warning" role="status">You have unsaved collection changes.</p>
     <div class="table-responsive">
@@ -35,19 +39,20 @@
             <tbody>
             {% for item in items %}
                 <tr data-collection-row>
-                    <td>{{ item.member.member_code }} — {{ item.member.first_name }} {{ item.member.last_name }}<div class="small text-muted">{{ item.member.get_status_display }}</div></td>
-                    <td>{{ item.expected_installment|floatformat:2 }}</td>
-                    <td>{{ item.expected_overdue|floatformat:2 }}</td>
-                    <td>{{ item.expected_penalty|floatformat:2 }}</td>
-                    <td>{{ item.expected_savings|floatformat:2 }}</td>
-                    <td>
+                    <td data-label="Member">{{ item.member.member_code }} — {{ item.member.first_name }} {{ item.member.last_name }}<div class="small text-muted">{{ item.member.get_status_display }}</div></td>
+                    <td data-label="Due">{{ item.expected_installment|floatformat:2 }}</td>
+                    <td data-label="Overdue">{{ item.expected_overdue|floatformat:2 }}</td>
+                    <td data-label="Penalty">{{ item.expected_penalty|floatformat:2 }}</td>
+                    <td data-label="Expected savings">{{ item.expected_savings|floatformat:2 }}</td>
+                    <td data-label="Loan collected">
+                        <span class="visually-hidden">Loan collected</span>
                         {% if sheet.status == 'in_progress' and can_enter %}
                         <input form="entry-{{ item.pk }}" class="form-control form-control-sm" name="collected_amount" type="number" min="0" step="0.01" value="{{ item.collected_amount }}" data-original="{{ item.collected_amount }}" aria-label="Loan amount for {{ item.member.member_code }}">
                         {% else %}{{ item.collected_amount|floatformat:2 }}{% endif %}
                     </td>
-                    <td>{% if sheet.status == 'in_progress' and can_enter %}<input form="entry-{{ item.pk }}" class="form-control form-control-sm" name="savings_amount" type="number" min="0" step="0.01" value="{{ item.savings_amount }}" data-original="{{ item.savings_amount }}" aria-label="Savings amount for {{ item.member.member_code }}">{% else %}{{ item.savings_amount|floatformat:2 }}{% endif %}</td>
-                    <td>{% if sheet.status == 'in_progress' and can_enter %}<input form="entry-{{ item.pk }}" class="form-control form-control-sm" name="reason" maxlength="255" value="{{ item.reason }}" data-original="{{ item.reason }}" aria-label="Reason for {{ item.member.member_code }}">{% else %}{{ item.reason|default:"—" }}{% endif %}</td>
-                    {% if sheet.status == 'in_progress' and can_enter %}<td><form id="entry-{{ item.pk }}" method="post" action="{% url 'collections:Module_Collections_sheet_entry' sheet.pk item.pk %}" data-entry-form>{% csrf_token %}<button class="btn btn-sm btn-outline-primary" type="submit">Save</button></form></td>{% endif %}
+                    <td data-label="Savings deposit">{% if sheet.status == 'in_progress' and can_enter %}<input form="entry-{{ item.pk }}" class="form-control form-control-sm" name="savings_amount" type="number" min="0" step="0.01" value="{{ item.savings_amount }}" data-original="{{ item.savings_amount }}" aria-label="Savings amount for {{ item.member.member_code }}">{% else %}{{ item.savings_amount|floatformat:2 }}{% endif %}</td>
+                    <td data-label="Reason">{% if sheet.status == 'in_progress' and can_enter %}<input form="entry-{{ item.pk }}" class="form-control form-control-sm" name="reason" maxlength="255" value="{{ item.reason }}" data-original="{{ item.reason }}" aria-label="Reason for {{ item.member.member_code }}">{% else %}{{ item.reason|default:"—" }}{% endif %}</td>
+                    {% if sheet.status == 'in_progress' and can_enter %}<td data-label="Save"><form id="entry-{{ item.pk }}" method="post" action="{% url 'collections:Module_Collections_sheet_entry' sheet.pk item.pk %}" data-entry-form>{% csrf_token %}<button class="btn btn-sm btn-outline-primary" type="submit">Save</button></form></td>{% endif %}
                 </tr>
             {% empty %}<tr><td colspan="9" class="text-center text-muted py-4">No members are assigned to this center or group.</td></tr>{% endfor %}
             </tbody>

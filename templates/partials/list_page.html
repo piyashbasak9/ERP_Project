@@ -65,9 +65,10 @@
 
     <div class="erp-list-grid-wrap">
         <table class="erp-list-grid" data-list-grid aria-label="{{ list_title }}">
-            <thead><tr>{% for column in list_columns %}<th data-name="{{ column.name }}" data-width="{{ column.width|default:140 }}" data-hidden="{{ column.hidden|yesno:'true,false' }}" data-sortable="{{ column.sortable|default_if_none:'true'|yesno:'true,false' }}" {% if column.align %}data-align="{{ column.align }}"{% endif %}>{{ column.label }}</th>{% endfor %}</tr></thead>
+            <thead><tr>{% for column in list_columns %}<th data-name="{{ column.name }}" data-priority="{{ column.priority|default:forloop.counter }}" data-width="{{ column.width|default:140 }}" data-hidden="{{ column.hidden|yesno:'true,false' }}" data-sortable="{{ column.sortable|default_if_none:'true'|yesno:'true,false' }}" {% if column.align %}data-align="{{ column.align }}"{% endif %}>{{ column.label }}</th>{% endfor %}</tr></thead>
             <tbody></tbody>
         </table>
+        <div class="erp-list-cards" data-list-cards aria-label="{{ list_title }} records"></div>
         <div id="jqgrid-pager-{{ request.user.pk }}" data-jqgrid-pager hidden aria-hidden="true"></div>
         <div class="erp-grid-status" aria-live="polite">
             <span data-load-time>DLT: —</span>
@@ -78,6 +79,7 @@
                 <label for="grid-page-{{ request.user.pk }}">Page</label>
                 <input id="grid-page-{{ request.user.pk }}" type="number" min="1" value="1" data-page-input aria-label="Current page">
                 <span>of <span data-page-count>1</span></span>
+                <span class="erp-grid-page-summary" data-page-summary aria-live="polite">Page 1 of 1</span>
                 <button class="erp-grid-page-button" type="button" data-page-next aria-label="Next page" title="Next page">&gt;</button>
                 <button class="erp-grid-page-button" type="button" data-page-last aria-label="Last page" title="Last page">&gt;|</button>
                 <label class="visually-hidden" for="grid-page-size-{{ request.user.pk }}">Rows per page</label>

@@ -19,6 +19,13 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8000",
 ]
 
+# PHONE TESTING: trusted home/office LAN only. Replace 192.168.1.50 with this
+# PC's LAN IP, then run `python manage.py runserver 0.0.0.0:8000`. Keep plain
+# HTTP limited to that trusted network; never expose this development server to
+# the public internet. Production rejects local_settings.py and HTTP CSRF origins.
+# ALLOWED_HOSTS += ["192.168.1.50"]
+# CSRF_TRUSTED_ORIGINS += ["http://192.168.1.50:8000"]
+
 # Local HTTP is permitted only for this development configuration.
 SECURE_SSL_REDIRECT = False
 SESSION_COOKIE_SECURE = False

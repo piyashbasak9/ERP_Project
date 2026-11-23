@@ -2,8 +2,8 @@
 {% load static %}
 {% block title %}{{ report.title }}{% endblock %}
 {% block content %}
-<div class="container-fluid py-3">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+<div class="container-fluid py-3 report-page">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 report-header">
         <div>
             <div class="d-flex align-items-center gap-2">
                 {% if organization_configuration.logo and can_view_organization_logo %}<img src="{% url 'configuration:Module_Settings_organization_logo' %}" alt="" style="max-height:2.5rem;max-width:2.5rem">{% endif %}
@@ -12,12 +12,16 @@
             <span class="eyebrow">{{ report.group|upper }} REPORT</span>
             <h1 class="h3 mb-0">{{ report.title }}</h1>
         </div>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 report-export-actions">
             <button class="btn btn-outline-primary" type="submit" form="reportFilters" formaction="{{ excel_url }}">Excel</button>
             <button class="btn btn-outline-primary" type="submit" form="reportFilters" formaction="{{ pdf_url }}">PDF</button>
         </div>
     </div>
-    <form method="get" id="reportFilters" class="card card-body mb-3">
+    <button class="btn btn-outline-primary report-filter-toggle" type="button" data-report-filter-toggle aria-expanded="false" aria-controls="reportFilters">
+        <i class="bi bi-funnel" aria-hidden="true"></i> Filters
+    </button>
+    <div class="erp-filter-chips" data-report-filter-chips aria-label="Active report filters" hidden></div>
+    <form method="get" id="reportFilters" class="card card-body mb-3 report-filter-panel" data-report-filters data-user-key="{{ request.user.pk }}" hidden>
         <div class="row g-2">
             <div class="col-md-3">
                 <label class="form-label" for="filter-branch">Branch</label>
@@ -59,7 +63,7 @@
                 <input class="form-control" id="filter-status" name="status" value="{{ filters.status }}">
             </div>
         </div>
-        <div class="mt-3">
+        <div class="mt-3 report-filter-actions">
             <button class="btn btn-primary" type="submit">Run report</button>
         </div>
     </form>
@@ -75,12 +79,26 @@
         {% endfor %}
     </div>
     {% endif %}
-    <div class="table-responsive card">
+    <div class="table-responsive card report-grid-scroll">
         <table id="reportGrid"></table>
-        <div id="reportPager"></div>
     </div>
+    <div id="reportPager" class="report-jqgrid-pager"></div>
+    <div class="erp-list-cards report-grid-cards" data-report-cards aria-label="Report results"></div>
+    <nav class="erp-grid-pager report-mobile-pager" data-report-mobile-pager aria-label="Report pagination">
+        <button class="erp-grid-page-button" type="button" data-report-previous aria-label="Previous page">&lt;</button>
+        <span class="erp-grid-page-summary" data-report-page-summary aria-live="polite">Page 1 of 1</span>
+        <button class="erp-grid-page-button" type="button" data-report-next aria-label="Next page">&gt;</button>
+        <label class="visually-hidden" for="report-page-size">Rows per page</label>
+        <select id="report-page-size" data-report-page-size aria-label="Rows per page">
+            <option value="20">20</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+        </select>
+    </nav>
     <p class="small text-muted mt-2 mb-0">{{ records }} matching record{{ records|pluralize }}</p>
 </div>
 <div id="reportGridConfig" data-grid-url="{{ grid_url }}" data-default-page-size="{{ default_page_size }}" data-columns="{{ columns_json }}"></div>
+{% endblock %}
+{% block extra_js %}
 <script src="{% static 'js/report-grid.js' %}"></script>
 {% endblock %}

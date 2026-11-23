@@ -12,18 +12,22 @@ $(function () {
     const storageKey = `erp-list:${userKey}:${pageKey}`;
     const filterStorageKey = `${storageKey}:filters`;
     const timersEnabled = root.dataset.performanceTimers === "true";
-    const columns = Array.from(table.querySelectorAll("thead th")).map((cell) => {
+    const columns = Array.from(table.querySelectorAll("thead th")).map((cell, index) => {
         const name = cell.dataset.name;
+        const priority = Math.min(3, Number(cell.dataset.priority) || index + 1);
         const column = {
             name,
             label: cell.textContent.trim(),
+            priority,
+            defaultHidden: cell.dataset.hidden === "true",
+            userHidden: cell.dataset.hidden === "true",
             width: Number(cell.dataset.width) || 140,
             sortable: name !== "actions" && cell.dataset.sortable !== "false",
             align: cell.dataset.align || "left",
             resizable: true,
             title: true,
             hidden: cell.dataset.hidden === "true"
-                || (window.innerWidth < 1280 && cell.dataset.hidden === "true"),
+                || (window.innerWidth < 1024 && priority > 2),
         };
         if (name === "status" || name === "is_active") {
             column.formatter = (value) => {
@@ -69,7 +73,9 @@ $(function () {
     query.set("ajax", "1");
     gridUrl.search = query.toString();
 
-    let collapsed = localStorage.getItem(filterStorageKey) === "collapsed";
+    const savedFilterPreference = localStorage.getItem(filterStorageKey);
+    let collapsed = savedFilterPreference === "collapsed"
+        || (!savedFilterPreference && window.innerWidth < 576);
     const filterToggle = root.querySelector("[data-filter-toggle]");
     const filterCount = root.querySelector("[data-filter-count]");
     const filterChips = root.querySelector("[data-active-filter-chips]");
@@ -142,6 +148,8 @@ $(function () {
                     ariaLabel: select.getAttribute("aria-label") || "Filter options",
                     allowDeselect: false,
                     closeOnSelect: true,
+                    contentLocation: document.body,
+                    contentPosition: "fixed",
                 },
                 events: {afterChange: updateFilterUi},
             }));
@@ -190,8 +198,10 @@ $(function () {
     const savedHiddenColumns = savedColumns.hidden || savedColumns;
     columns.forEach((column) => {
         if (Object.hasOwn(savedHiddenColumns, column.name)) {
-            column.hidden = savedHiddenColumns[column.name];
+            column.userHidden = Boolean(savedHiddenColumns[column.name]);
         }
+        column.hidden = column.userHidden
+            || (window.innerWidth < 1024 && column.priority > (window.innerWidth < 576 ? 1 : 2));
     });
     if (Array.isArray(savedColumns.order)) {
         const order = new Map(savedColumns.order.map((name, index) => [name, index]));
@@ -206,6 +216,7 @@ $(function () {
     jqGridPager.id = `jqgrid-pager-${userKey}`;
     const pageInput = gridPager.querySelector("[data-page-input]");
     const pageCount = gridPager.querySelector("[data-page-count]");
+    const pageSummary = gridPager.querySelector("[data-page-summary]");
     const pageSizeSelect = gridPager.querySelector("[data-page-size]");
     pageSizeSelect.value = String([20, 50, 100, 200].includes(pageSize) ? pageSize : 20);
     const pageButtons = [
@@ -218,12 +229,123 @@ $(function () {
         pageInput.value = String(page);
         pageInput.max = String(Math.max(total, 1));
         pageCount.textContent = String(Math.max(total, 1));
+        pageSummary.textContent = `Page ${page} of ${Math.max(total, 1)}`;
         pageButtons[0].disabled = page <= 1;
         pageButtons[1].disabled = page <= 1;
         pageButtons[2].disabled = page >= total;
         pageButtons[3].disabled = page >= total;
     };
     let started = performance.now();
+    const cardList = root.querySelector("[data-list-cards]");
+
+    function renderMobileCards() {
+        if (!cardList) return;
+        const rows = Array.from(root.querySelectorAll(".ui-jqgrid-btable tr.jqgrow"));
+        cardList.replaceChildren();
+        if (!rows.length) {
+            const empty = document.createElement("p");
+            empty.className = "erp-list-card-empty";
+            empty.textContent = "No matching records found.";
+            cardList.append(empty);
+            return;
+        }
+
+        const keyColumn = columns.find(column =>
+            column.priority === 1 && column.name !== "actions"
+                && !column.defaultHidden && !column.userHidden
+        );
+        rows.forEach(row => {
+            const cellFor = (column) => Array.from(row.cells).find(cell =>
+                (cell.getAttribute("aria-describedby") || "").endsWith(`_${column.name}`)
+            );
+            const card = document.createElement("article");
+            card.className = "erp-list-card";
+            const heading = document.createElement("h2");
+            heading.className = "erp-list-card-title";
+            heading.textContent = (keyColumn && cellFor(keyColumn)?.textContent.trim()) || "Record";
+            card.append(heading);
+
+            const keyFields = columns.filter(column =>
+                column.priority === 1 && column.name !== "actions"
+                    && !column.defaultHidden && !column.userHidden && column !== keyColumn
+            );
+            const summary = document.createElement("dl");
+            summary.className = "erp-list-card-summary";
+            keyFields.forEach(column => appendCardField(summary, column, cellFor(column)));
+            card.append(summary);
+
+            const detailFields = columns.filter(column =>
+                column.priority > 1 && column.name !== "actions"
+                    && !column.defaultHidden && !column.userHidden
+            );
+            if (detailFields.length) {
+                const details = document.createElement("details");
+                details.className = "erp-list-card-more";
+                const toggle = document.createElement("summary");
+                toggle.textContent = "More";
+                details.append(toggle);
+                const fields = document.createElement("dl");
+                fields.className = "erp-list-card-details";
+                detailFields.forEach(column => appendCardField(fields, column, cellFor(column)));
+                details.append(fields);
+                card.append(details);
+            }
+
+            const actionColumn = columns.find(column => column.name === "actions");
+            const actionCell = actionColumn && cellFor(actionColumn);
+            if (actionCell?.textContent.trim()) {
+                const actions = document.createElement("details");
+                actions.className = "erp-list-card-actions";
+                const toggle = document.createElement("summary");
+                toggle.textContent = "Actions";
+                const links = document.createElement("div");
+                links.className = "erp-list-card-action-items";
+                Array.from(actionCell.children).forEach(item => {
+                    const clone = item.cloneNode(true);
+                    clone.removeAttribute("id");
+                    clone.querySelectorAll("[id]").forEach(element => element.removeAttribute("id"));
+                    links.append(clone);
+                });
+                actions.append(toggle, links);
+                card.append(actions);
+            }
+            cardList.append(card);
+        });
+    }
+
+    function appendCardField(list, column, cell) {
+        const term = document.createElement("dt");
+        term.textContent = column.label;
+        const description = document.createElement("dd");
+        description.textContent = cell?.textContent.trim() || "—";
+        list.append(term, description);
+    }
+
+    function applyColumnPriorities() {
+        const priorityLimit = window.innerWidth < 576
+            ? 1
+            : window.innerWidth < 1024 ? 2 : 3;
+        columns.forEach(column => {
+            const hidden = column.defaultHidden || column.userHidden
+                || column.priority > priorityLimit;
+            if (column.hidden === hidden) return;
+            if (hidden) $grid.jqGrid("hideCol", column.name);
+            else $grid.jqGrid("showCol", column.name);
+            column.hidden = hidden;
+        });
+    }
+
+    function persistColumnPreferences() {
+        const hidden = {};
+        const order = [];
+        $grid.jqGrid("getGridParam", "colModel").forEach((column) => {
+            if (column.name !== "rn" && column.name !== "cb") {
+                hidden[column.name] = Boolean(column.userHidden);
+                order.push(column.name);
+            }
+        });
+        localStorage.setItem(storageKey, JSON.stringify({hidden, order}));
+    }
 
     $grid.jqGrid({
         url: gridUrl.toString(),
@@ -274,15 +396,8 @@ $(function () {
             const first = data.records ? ((data.page - 1) * Number($grid.jqGrid("getGridParam", "rowNum"))) + 1 : 0;
             const last = data.records ? Math.min(first + Number($grid.jqGrid("getGridParam", "rowNum")) - 1, data.records) : 0;
             root.querySelector("[data-view-range]").textContent = `View ${first} - ${last} of ${data.records}`;
-            const hidden = {};
-            const order = [];
-            $grid.jqGrid("getGridParam", "colModel").forEach((column) => {
-                if (column.name !== "rn" && column.name !== "cb") {
-                    hidden[column.name] = Boolean(column.hidden);
-                    order.push(column.name);
-                }
-            });
-            localStorage.setItem(storageKey, JSON.stringify({hidden, order}));
+            persistColumnPreferences();
+            renderMobileCards();
         },
     });
 
@@ -317,21 +432,41 @@ $(function () {
         $grid.jqGrid("columnChooser", {
             done(perm) {
                 if (perm) this.jqGrid("remapColumns", perm, true);
+                const priorityLimit = window.innerWidth < 1024 ? 2 : 3;
+                const gridColumns = this.jqGrid("getGridParam", "colModel");
+                gridColumns.forEach((gridColumn) => {
+                    const column = columns.find(item => item.name === gridColumn.name);
+                    if (column && column.priority <= priorityLimit) {
+                        column.userHidden = Boolean(gridColumn.hidden);
+                    }
+                });
+                persistColumnPreferences();
+                scheduleGridResize();
             },
         });
     });
 
     function resizeGrid() {
+        if (window.innerWidth < 576) return;
+        const gridWrap = root.querySelector(".erp-list-grid-wrap");
         const wrapper = root.querySelector(".ui-jqgrid");
         const header = root.querySelector(".ui-jqgrid-hdiv");
-        const area = root.querySelector(".erp-list-grid-wrap").getBoundingClientRect();
-        if (!wrapper || !header || area.width < 1) return;
-        $grid.jqGrid("setGridWidth", area.width, true);
+        const style = getComputedStyle(gridWrap);
+        const width = gridWrap.clientWidth
+            - Number.parseFloat(style.paddingLeft)
+            - Number.parseFloat(style.paddingRight);
+        if (!wrapper || !header || width < 1) return;
+        applyColumnPriorities();
+        $grid.jqGrid("setGridWidth", width, true);
         const height = Math.max(100, wrapper.getBoundingClientRect().height - header.getBoundingClientRect().height - 1);
         $grid.jqGrid("setGridHeight", height);
     }
 
-    $(window).off("resize.erpListPage").on("resize.erpListPage", resizeGrid);
-    new ResizeObserver(resizeGrid).observe(root.querySelector(".erp-list-grid-wrap"));
+    let resizeTimer;
+    const scheduleGridResize = () => {
+        window.clearTimeout(resizeTimer);
+        resizeTimer = window.setTimeout(resizeGrid, 100);
+    };
+    $(window).off("resize.erpListPage").on("resize.erpListPage", scheduleGridResize);
     window.setTimeout(resizeGrid, 0);
 });

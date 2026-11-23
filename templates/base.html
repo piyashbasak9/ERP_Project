@@ -4,7 +4,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token }}">
     <meta name="turbo-cache-control" content="no-cache">
     <title>{% block title %}{{ system_configuration.application_name }}{% endblock %}</title>
@@ -37,7 +37,7 @@
                 <i class="bi bi-list" aria-hidden="true"></i>
             </button>
         </div>
-    <nav class="erp-menu-bar" aria-label="Main navigation">
+    <nav class="erp-menu-bar" id="erp-menu-bar" aria-label="Main navigation" data-turbo-permanent>
         <div class="collapse navbar-collapse" id="erpMenu">
             <ul class="erp-menu-list">
                 <li><a class="erp-menu-link{% if request.path == '/' %} active{% endif %}" href="{% url 'Module_Home_home' %}">Dashboard</a></li>
@@ -168,9 +168,14 @@
                 {% can 'Module_Notifications_list' as can_notifications %}
                 {% if can_notifications %}<li><a class="erp-menu-link{% if '/notifications/' in request.path %} active{% endif %}" href="{% url 'notifications:Module_Notifications_list' %}">Notifications</a></li>{% endif %}
             </ul>
+            <div class="erp-menu-mobile-tools" id="erpMenuMobileTools"></div>
         </div>
     </nav>
         <div class="erp-header-actions">
+            <button class="erp-actions-toggle" type="button" aria-expanded="false" aria-controls="erpQuickActions" aria-label="Quick actions">
+                <i class="bi bi-three-dots" aria-hidden="true"></i>
+            </button>
+            <div class="erp-header-quick-actions" id="erpQuickActions">
             {% can 'Module_Notifications_list' as can_view_notifications %}
             {% if can_view_notifications %}
             <a class="erp-quick-button quick-notifications" href="{% url 'notifications:Module_Notifications_list' %}" aria-label="Notifications{% if unread_notification_count %}, {{ unread_notification_count }} unread{% endif %}" title="Notifications">
@@ -199,6 +204,8 @@
                 <button type="submit" aria-label="Search"><i class="bi bi-search" aria-hidden="true"></i></button>
             </form>
             {% endif %}
+            </div>
+            <span data-branch-switcher-slot></span>
             {% if accessible_branches %}
             <form method="post" action="{% url 'branch:Module_Branch_switch' %}" class="erp-branch-form">
                 {% csrf_token %}

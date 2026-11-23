@@ -18,7 +18,7 @@
         popupElement.tabIndex = -1;
         popupElement.setAttribute('aria-hidden', 'true');
         popupElement.setAttribute('data-turbo', 'false');
-        popupElement.innerHTML = '<div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down modal-lg"><div class="modal-content"><div class="modal-header"><h2 class="modal-title fs-5"></h2><button type="button" class="btn-close" aria-label="Close" data-popup-dismiss></button></div><div class="modal-body"></div></div></div>';
+        popupElement.innerHTML = '<div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down modal-lg"><div class="modal-content"><div class="modal-header"><h2 class="modal-title fs-5"></h2><button type="button" class="btn-close" aria-label="Close" data-popup-dismiss></button></div><div class="modal-body"></div><div class="modal-footer erp-popup-footer" data-popup-footer hidden></div></div></div>';
         document.body.appendChild(popupElement);
         popupModal = new bootstrap.Modal(popupElement, {backdrop: 'static', keyboard: false});
         popupElement.addEventListener('hide.bs.modal', function (event) {
@@ -28,6 +28,8 @@
         });
         popupElement.addEventListener('hidden.bs.modal', function () {
             popupElement.querySelector('.modal-body').replaceChildren();
+            popupElement.querySelector('[data-popup-footer]').replaceChildren();
+            popupElement.querySelector('[data-popup-footer]').hidden = true;
             formDirty = false;
         });
     }
@@ -94,6 +96,32 @@
         });
     }
 
+    function preparePopupActions(form) {
+        const existing = form.querySelector('.erp-popup-actions, .form-actions');
+        if (existing) return existing;
+        const trailingActions = [];
+        for (let index = form.children.length - 1; index >= 0; index -= 1) {
+            const child = form.children[index];
+            if (!child.matches(
+                'button:not([type]), button[type="submit"], input[type="submit"], '
+                + 'a[data-popup-close], button[data-popup-close]'
+            )) {
+                break;
+            }
+            trailingActions.unshift(child);
+        }
+        if (!trailingActions.length) {
+            return null;
+        }
+        const actions = document.createElement('div');
+        actions.className = 'erp-popup-actions d-flex justify-content-end gap-2';
+        form.insertBefore(actions, trailingActions[0]);
+        trailingActions.forEach(function (action) {
+            actions.appendChild(action);
+        });
+        return actions;
+    }
+
     async function openPopup(link) {
         ensurePopupModal();
         const title = link.getAttribute('data-popup-title') || link.textContent.trim() || 'Details';
@@ -132,6 +160,18 @@
             popupElement.querySelector('.modal-body').innerHTML = await response.text();
             const form = popupElement.querySelector('form');
             if (form) {
+                const actions = preparePopupActions(form);
+                if (actions) {
+                    if (!form.id) form.id = 'erp-popup-form';
+                    actions.querySelectorAll(
+                        'button[type="submit"], input[type="submit"], button:not([type])'
+                    ).forEach(function (button) {
+                        button.setAttribute('form', form.id);
+                    });
+                    const footer = popupElement.querySelector('[data-popup-footer]');
+                    footer.replaceChildren(actions);
+                    footer.hidden = false;
+                }
                 if (!form.getAttribute('action')) {
                     form.setAttribute('action', popupUrl.href);
                 } else {
@@ -159,7 +199,10 @@
 
     async function submitPopupForm(form) {
         clearFieldErrors(form);
-        const submit = form.querySelector('[type=submit]');
+        const submit = form.querySelector('[type=submit]')
+            || (form.id && popupElement.querySelector(
+                `[form="${CSS.escape(form.id)}"][type="submit"]`
+            ));
         const originalSubmitNodes = submit ? Array.from(submit.childNodes) : [];
         if (submit) {
             submit.disabled = true;
