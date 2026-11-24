@@ -103,7 +103,12 @@ async function inspectPage(page, browserName, viewport, route, routeIndex) {
             }
             if (touch && element.matches("a,button,input,select,textarea,[role=button],[tabindex]:not([tabindex='-1'])")) {
                 if (rect.width < 44 || rect.height < 44) {
-                    findings.push(`small touch target ${Math.round(rect.width)}x${Math.round(rect.height)}: ${element.tagName.toLowerCase()} ${text.slice(0, 30)}`);
+                    const identifier = element.id
+                        ? `#${element.id}`
+                        : element.getAttribute("name")
+                            ? `[name="${element.getAttribute("name")}"]`
+                            : `.${String(element.className).split(" ").filter(Boolean).join(".")}`;
+                    findings.push(`small touch target ${Math.round(rect.width)}x${Math.round(rect.height)}: ${element.tagName.toLowerCase()}${identifier}[type="${element.getAttribute("type") || ""}"] in .${String(element.parentElement?.className).split(" ").filter(Boolean).join(".")} ${text.slice(0, 30)}`);
                 }
             }
         }
@@ -139,7 +144,13 @@ async function inspectPage(page, browserName, viewport, route, routeIndex) {
                 const a = major[left].rect;
                 const b = major[right].rect;
                 if (a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top) {
-                    findings.push(`overlap: ${major[left].name} and ${major[right].name}`);
+                    const bounds = (rect) => [rect.left, rect.top, rect.right, rect.bottom]
+                        .map(value => Number(value.toFixed(1)))
+                        .join(",");
+                    findings.push(
+                        `overlap: ${major[left].name} and ${major[right].name} `
+                        + `(${bounds(a)}; ${bounds(b)})`,
+                    );
                 }
             }
         }
@@ -200,8 +211,19 @@ async function inspectPage(page, browserName, viewport, route, routeIndex) {
             }
         }
         const listCards = document.querySelector("[data-list-cards]");
-        if (mobile && listCards && getComputedStyle(listCards).display === "none") {
-            findings.push("list results are not using mobile cards");
+        if (mobile && listCards) {
+            const rows = document.querySelectorAll(".ui-jqgrid-btable tr.jqgrow").length;
+            const state = document.querySelector("[data-list-state]");
+            if (rows > 0 && (
+                getComputedStyle(listCards).display === "none"
+                || listCards.children.length !== rows
+            )) {
+                findings.push("list results are not using mobile cards");
+            } else if (rows === 0 && (
+                !state || state.hidden || state.dataset.state !== "empty"
+            )) {
+                findings.push("list empty state is not visible");
+            }
         }
         return findings;
     }, {
@@ -354,14 +376,32 @@ async function inspectInteractions(page, browserName, viewport, route, routeInde
 
     const popupLink = page.locator("a[data-popup]").first();
     if (await popupLink.isVisible().catch(() => false)) {
+        const popupHref = await popupLink.getAttribute("href").catch(() => "");
+        const popupPath = popupHref ? new URL(popupHref, page.url()).pathname : "";
+        let popupStatus = null;
+        const capturePopupResponse = (response) => {
+            if (new URL(response.url()).pathname === popupPath) {
+                popupStatus = response.status();
+            }
+        };
+        page.on("response", capturePopupResponse);
         await popupLink.click({timeout: 1500}).catch(() => {});
         await page.waitForSelector(".modal.show", {timeout: 3000}).catch(() => {});
+        page.off("response", capturePopupResponse);
         if (await page.locator(".modal.show").count()) {
             await inspectPage(page, browserName, viewport, route, routeIndex);
             await page.locator(".modal.show [data-popup-dismiss]").click().catch(() => {});
             await page.waitForTimeout(80);
         } else {
-            addFailure(browserName, viewport, route, "popup link did not open a modal");
+            const errorToast = await page.locator("#toastContainer .toast.show")
+                .innerText()
+                .catch(() => "");
+            addFailure(
+                browserName,
+                viewport,
+                route,
+                `popup link did not open a modal (href=${popupHref || "missing"}, HTTP=${popupStatus || "none"}${errorToast ? `, error=${errorToast}` : ""})`,
+            );
         }
     }
 
@@ -452,11 +492,21 @@ async function main() {
                             waitUntil: "domcontentloaded",
                             timeout: 15000,
                         });
-                        await page.waitForTimeout(100);
                     } catch (error) {
                         addFailure(browserName, viewport, route, `navigation failed: ${error.message}`);
                         continue;
                     }
+                    await page.waitForFunction(() => {
+                        const root = document.querySelector("[data-list-page]");
+                        if (!root) return true;
+                        const state = root.querySelector("[data-list-state]");
+                        const hasRows = root.querySelector(".ui-jqgrid-btable tr.jqgrow");
+                        return Boolean(hasRows || (
+                            state && !state.hidden && state.dataset.state !== "loading"
+                        ));
+                    }, null, {timeout: 5000}).catch((error) => {
+                        addFailure(browserName, viewport, route, `grid load did not settle: ${error.message}`);
+                    });
                     if (!response || !response.ok()) {
                         addFailure(browserName, viewport, route, `HTTP ${response ? response.status() : "no response"}`);
                     }

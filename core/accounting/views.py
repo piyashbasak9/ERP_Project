@@ -3,10 +3,11 @@ from decimal import Decimal
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
-from django.db import transaction
+from django.db import models, transaction
 from django.db.models import Sum
 from django.forms import formset_factory
 from django.http import Http404, HttpResponseBadRequest, JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -17,7 +18,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from core.accounts.permission_utils import user_has_route_permission
 from core.audit.services import log_action
 from core.common.popup import popup_json_response, render_popup_form
-from core.common.templatetags.user_formatting import config_money
+from core.common.templatetags.user_formatting import config_money, user_date
 from core.configuration.services import get_system_configuration
 
 from .forms import (
@@ -303,8 +304,98 @@ def period_form(request):
 
 @require_GET
 def system_account_list(request):
-    mappings = SystemAccountMapping.objects.select_related('account').order_by('key')
-    return render(request, 'accounting/system_account_list.html', {'mappings': mappings})
+    mappings = SystemAccountMapping.objects.select_related('account')
+    key = request.GET.get('key', '').strip()
+    account = request.GET.get('account', '').strip()
+    if key:
+        mappings = mappings.filter(key__icontains=key)
+    if account:
+        mappings = mappings.filter(
+            models.Q(account__code__icontains=account)
+            | models.Q(account__name__icontains=account)
+        )
+    sort_fields = {
+        'key': 'key',
+        'account': 'account__code',
+        'type': 'account__account_type',
+    }
+    sort_field = sort_fields.get(request.GET.get('sidx'), 'key')
+    if request.GET.get('sord') == 'desc':
+        sort_field = f'-{sort_field}'
+    try:
+        page_size = min(max(int(request.GET.get('rows', 20)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 20
+    paginator = Paginator(mappings.order_by(sort_field, 'pk'), page_size)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+
+    if request.GET.get('ajax') == '1':
+        can_edit = user_has_route_permission(
+            request.user, 'Module_Accounting_system_account_edit'
+        )
+        rows = []
+        for mapping in page_obj.object_list:
+            action = (
+                format_html(
+                    '<a href="{}?popup=1" data-popup data-popup-title="Edit system mapping">'
+                    'Edit</a>',
+                    reverse(
+                        'accounting:Module_Accounting_system_account_edit',
+                        args=[mapping.pk],
+                    ),
+                )
+                if can_edit
+                else ''
+            )
+            rows.append({
+                'id': mapping.pk,
+                'key': mapping.get_key_display(),
+                'account': f'{mapping.account.code} — {mapping.account.name}',
+                'type': mapping.account.get_account_type_display(),
+                'actions': action,
+            })
+        return JsonResponse({
+            'rows': rows,
+            'page': page_obj.number,
+            'total': paginator.num_pages,
+            'records': paginator.count,
+        })
+
+    return render(request, 'accounting/system_account_list.html', {
+        'list_title': 'System account mappings',
+        'grid_url': request.path,
+        'initial_page_text': f'Page {page_obj.number} of {paginator.num_pages}',
+        'default_sort_name': 'key',
+        'default_sort_order': 'asc',
+        'add_url': (
+            reverse('accounting:Module_Accounting_system_account_add')
+            if user_has_route_permission(
+                request.user, 'Module_Accounting_system_account_add'
+            )
+            else ''
+        ),
+        'add_title': 'Map system account',
+        'list_columns': [
+            {'name': 'key', 'label': 'System function', 'width': 220, 'priority': 1},
+            {'name': 'account', 'label': 'Account', 'width': 280, 'priority': 2},
+            {'name': 'type', 'label': 'Type', 'width': 130, 'priority': 2},
+            {'name': 'actions', 'label': 'Actions', 'width': 90, 'priority': 1, 'sortable': False},
+        ],
+        'list_filters': [
+            {
+                'name': 'key',
+                'label': 'System function',
+                'value': key,
+                'placeholder': 'System function',
+            },
+            {
+                'name': 'account',
+                'label': 'Account',
+                'value': account,
+                'placeholder': 'Account code or name',
+            },
+        ],
+    })
 
 
 @require_http_methods(['GET', 'POST'])
@@ -642,8 +733,136 @@ def reconciliation_list(request):
     reconciliations = AccountReconciliation.objects.select_related(
         'branch', 'account', 'prepared_by', 'reconciled_by'
     ).filter(branch_id__in=branch_ids)
+    branch = request.GET.get('branch', '').strip()
+    account = request.GET.get('account', '').strip()
+    status = request.GET.get('status', '').strip()
+    date_value = request.GET.get('date', '').strip()
+    if branch:
+        reconciliations = reconciliations.filter(branch__code__icontains=branch)
+    if account:
+        reconciliations = reconciliations.filter(
+            models.Q(account__code__icontains=account)
+            | models.Q(account__name__icontains=account)
+        )
+    if status in dict(AccountReconciliation.STATUS_CHOICES):
+        reconciliations = reconciliations.filter(status=status)
+    if date_value:
+        parsed_date = parse_date(date_value)
+        if parsed_date is None:
+            reconciliations = reconciliations.none()
+        else:
+            reconciliations = reconciliations.filter(as_of_date=parsed_date)
+    sort_fields = {
+        'date': 'as_of_date',
+        'branch': 'branch__code',
+        'account': 'account__code',
+        'statement': 'statement_balance',
+        'book': 'book_balance',
+        'variance': 'variance',
+        'status': 'status',
+        'prepared_by': 'prepared_by__username',
+    }
+    sort_field = sort_fields.get(request.GET.get('sidx'), 'as_of_date')
+    if request.GET.get('sord') == 'desc':
+        sort_field = f'-{sort_field}'
+    try:
+        page_size = min(max(int(request.GET.get('rows', 20)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 20
+    paginator = Paginator(reconciliations.order_by(sort_field, 'pk'), page_size)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+    if request.GET.get('ajax') == '1':
+        can_confirm = user_has_route_permission(
+            request.user, 'Module_Accounting_reconciliation_confirm'
+        )
+        csrf_token = get_token(request)
+        rows = []
+        for item in page_obj.object_list:
+            confirm_action = (
+                format_html(
+                    '<form method="post" action="{}" data-confirm '
+                    'data-confirm-message="Confirm this reconciliation? Variance: {}">'
+                    '<input type="hidden" name="csrfmiddlewaretoken" value="{}">'
+                    '<button class="btn btn-sm btn-success" type="submit">Confirm</button>'
+                    '</form>',
+                    reverse(
+                        'accounting:Module_Accounting_reconciliation_confirm',
+                        args=[item.pk],
+                    ),
+                    item.variance,
+                    csrf_token,
+                )
+                if item.status == AccountReconciliation.STATUS_OPEN and can_confirm
+                else ''
+            )
+            rows.append({
+                'id': item.pk,
+                'date': user_date(item.as_of_date, request.user_preference),
+                'branch': item.branch.code,
+                'account': f'{item.account.code} — {item.account.name}',
+                'statement': f'{item.statement_balance:,.2f}',
+                'book': f'{item.book_balance:,.2f}',
+                'variance': f'{item.variance:,.2f}',
+                'status': item.get_status_display(),
+                'prepared_by': item.prepared_by.username,
+                'notes': item.notes or '—',
+                'actions': confirm_action,
+            })
+        return JsonResponse({
+            'rows': rows,
+            'page': page_obj.number,
+            'total': paginator.num_pages,
+            'records': paginator.count,
+        })
+
     return render(request, 'accounting/reconciliation_list.html', {
-        'reconciliations': reconciliations,
+        'list_title': 'Cash and bank reconciliation',
+        'grid_url': request.path,
+        'initial_page_text': f'Page {page_obj.number} of {paginator.num_pages}',
+        'default_sort_name': 'date',
+        'default_sort_order': 'desc',
+        'add_url': (
+            reverse('accounting:Module_Accounting_reconciliation_add')
+            if user_has_route_permission(
+                request.user, 'Module_Accounting_reconciliation_add'
+            )
+            else ''
+        ),
+        'add_title': 'Prepare reconciliation',
+        'list_columns': [
+            {'name': 'account', 'label': 'Account', 'width': 240, 'priority': 1},
+            {'name': 'variance', 'label': 'Variance', 'width': 130, 'align': 'right', 'priority': 1},
+            {'name': 'date', 'label': 'Date', 'width': 130, 'priority': 2},
+            {'name': 'branch', 'label': 'Branch', 'width': 110, 'priority': 2},
+            {'name': 'statement', 'label': 'Statement', 'width': 140, 'align': 'right', 'priority': 2},
+            {'name': 'book', 'label': 'Book', 'width': 140, 'align': 'right', 'priority': 2},
+            {'name': 'status', 'label': 'Status', 'width': 110, 'priority': 2},
+            {'name': 'prepared_by', 'label': 'Prepared by', 'width': 160, 'priority': 3},
+            {'name': 'notes', 'label': 'Notes', 'width': 240, 'priority': 3},
+            {'name': 'actions', 'label': 'Actions', 'width': 110, 'priority': 1, 'sortable': False},
+        ],
+        'list_filters': [
+            {'name': 'date', 'label': 'Date', 'type': 'date', 'value': date_value},
+            {
+                'name': 'branch',
+                'label': 'Branch code',
+                'value': branch,
+                'placeholder': 'Branch code',
+            },
+            {
+                'name': 'account',
+                'label': 'Account',
+                'value': account,
+                'placeholder': 'Account code or name',
+            },
+            {
+                'name': 'status',
+                'label': 'Status',
+                'type': 'select',
+                'value': status,
+                'options': AccountReconciliation.STATUS_CHOICES,
+            },
+        ],
     })
 
 

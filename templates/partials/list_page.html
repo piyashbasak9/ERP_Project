@@ -1,7 +1,10 @@
 {% load rbac %}
 <section class="erp-list-page" data-list-page data-grid-url="{{ grid_url }}" data-page-key="{{ request.path }}" data-user-key="{{ request.user.pk }}" data-performance-timers="{{ show_performance_timers|yesno:'true,false' }}" data-default-sort-name="{{ default_sort_name }}" data-default-sort-order="{{ default_sort_order }}">
     <header class="erp-page-title">
-        <h1>{{ list_title }}</h1>
+        <div class="erp-page-heading-copy">
+            <h1>{{ list_title }}</h1>
+            {% if list_description %}<p>{{ list_description }}</p>{% endif %}
+        </div>
         <div class="erp-page-tools">
             {% if add_url %}
             <a class="erp-icon-button" href="{{ add_url }}?popup=1" data-popup data-popup-title="{{ add_title }}" aria-label="{{ add_title }}" title="{{ add_title }}">
@@ -64,6 +67,7 @@
     </form>
 
     <div class="erp-list-grid-wrap">
+        <div class="erp-list-state" data-list-state hidden role="status" aria-live="polite"></div>
         <table class="erp-list-grid" data-list-grid aria-label="{{ list_title }}">
             <thead><tr>{% for column in list_columns %}<th data-name="{{ column.name }}" data-priority="{{ column.priority|default:forloop.counter }}" data-width="{{ column.width|default:140 }}" data-hidden="{{ column.hidden|yesno:'true,false' }}" data-sortable="{{ column.sortable|default_if_none:'true'|yesno:'true,false' }}" {% if column.align %}data-align="{{ column.align }}"{% endif %}>{{ column.label }}</th>{% endfor %}</tr></thead>
             <tbody></tbody>

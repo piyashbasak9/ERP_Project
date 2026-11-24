@@ -80,6 +80,29 @@ def _grant_report(user, report):
 
 
 @pytest.mark.django_db
+def test_collection_report_uses_shared_title_and_only_shows_permitted_exports(client):
+    branch = Branch.objects.create(name="Collection report branch", code="RPT-UI")
+    user = _create_user(branch)
+    report = REPORTS_BY_SLUG["collection-summary"]
+    _grant_routes(
+        user,
+        ["Module_Collections_report_daily", report.excel_route_name],
+    )
+    client.force_login(user)
+
+    response = client.get(reverse("collections:Module_Collections_report_daily"))
+
+    assert response.status_code == 200
+    html = response.content.decode(response.charset or "utf-8")
+    assert '<header class="erp-page-title report-header">' in html
+    assert 'data-report-filter-toggle' in html
+    assert 'href="/collections/reports/daily/">Reset</a>' in html
+    assert 'data-report-export="excel"' in html
+    assert 'data-report-export="pdf"' not in html
+    assert 'data-report-empty-state' in html
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("report", REPORTS, ids=lambda report: report.slug)
 def test_every_registered_report_requires_its_own_route_permissions(client, report):
     branch = Branch.objects.create(name="Report permission branch", code="RPT-PERM")

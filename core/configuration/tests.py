@@ -421,6 +421,7 @@ class HeaderBrandingTests(TestCase):
         )
         self.assertNotContains(response, 'class="erp-organization-icon"><img')
 
+    @override_settings(DEBUG=True)
     def test_header_uses_private_logo_with_escaped_organization_alt_text(self):
         payload = '<script>alert("brand")</script> & Co'
         self.organization.legal_name = payload
@@ -466,6 +467,7 @@ class HeaderBrandingTests(TestCase):
         )
         self.assertNotEqual(private_logo.status_code, 200)
 
+    @override_settings(DEBUG=True)
     def test_logo_is_available_to_authenticated_users_without_being_public(self):
         sync_permissions()
         user = get_user_model().objects.create_user(

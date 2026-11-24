@@ -1,18 +1,21 @@
 {% extends 'base.html' %}
 {% block title %}Savings reconciliation{% endblock %}
 {% block content %}
-<div class="container py-3">
+<div class="container-fluid py-3 report-page">
     <span class="eyebrow">ACCOUNTING CONTROL</span>
     <h1 class="h3">Savings subledger reconciliation</h1>
-    <form method="get" class="card card-body mb-3">
+    <form method="get" class="card card-body mb-3 report-filter-panel" data-report-filters>
         <label class="form-label" for="as-of-date">As of date</label>
         <input id="as-of-date" class="form-control mb-3" type="date" name="as_of_date" value="{{ as_of_date|date:'Y-m-d' }}" required>
-        <button class="btn btn-primary align-self-start" type="submit">Reconcile</button>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <button class="btn btn-primary" type="submit">Reconcile</button>
+            <a class="erp-reset-link" href="{% url 'savings:Module_Savings_reconciliation' %}">Reset</a>
+        </div>
     </form>
     <div class="alert {% if is_reconciled %}alert-success{% else %}alert-danger{% endif %}">
         {% if is_reconciled %}Savings subledger agrees with the Member Savings ledger.{% else %}Savings subledger does not agree with the Member Savings ledger.{% endif %}
     </div>
-    <dl class="row card card-body">
+    <dl class="row card card-body" data-report-results>
         <dt class="col-sm-4">Member Savings ledger account</dt><dd class="col-sm-8">{{ ledger_account.code }} — {{ ledger_account.name }}</dd>
         <dt class="col-sm-4">As of date</dt><dd class="col-sm-8">{{ as_of_date }}</dd>
         <dt class="col-sm-4">Savings account balances</dt><dd class="col-sm-8">{{ subledger_balance|floatformat:2 }}</dd>

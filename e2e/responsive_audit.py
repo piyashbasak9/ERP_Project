@@ -12,8 +12,10 @@ from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.urls import Resolver404, resolve
 from django.utils import timezone
 
+from core.accounting.models import Account, SystemAccountMapping
 from core.accounts.permission_utils import get_all_urls
 from core.branch.models import Branch
+from core.common.ui_registry import get_ui_route_registry
 
 
 def example_path(route):
@@ -39,6 +41,20 @@ class ResponsiveAuditTests(StaticLiveServerTestCase):
             code="RESP",
             business_date=timezone.localdate(),
         )
+        cash = Account.objects.create(
+            code="RESP-CASH",
+            name="Responsive audit cash",
+            account_type=Account.ASSET,
+            normal_balance=Account.DEBIT,
+        )
+        SystemAccountMapping.objects.create(key="cash_in_hand", account=cash)
+        savings = Account.objects.create(
+            code="RESP-SAVINGS",
+            name="Responsive audit savings",
+            account_type=Account.LIABILITY,
+            normal_balance=Account.CREDIT,
+        )
+        SystemAccountMapping.objects.create(key="member_savings", account=savings)
         self.user = get_user_model().objects.create_superuser(
             username="responsive-audit-admin",
             email="responsive-audit@example.invalid",
@@ -52,9 +68,18 @@ class ResponsiveAuditTests(StaticLiveServerTestCase):
         client.raise_request_exception = False
         paths = []
         unavailable_routes = []
+        server_errors = []
+        ui_routes = get_ui_route_registry()
         for route in get_all_urls():
             path = "/" + example_path(route["url"]).lstrip("/")
             route_name = route["route_name"]
+            ui_route = ui_routes.get(route_name)
+            if ui_route and ui_route["type"] == "popup_form_fragment":
+                unavailable_routes.append({
+                    "route": path,
+                    "reason": "Popup form fragment; rendered in its shared modal host",
+                })
+                continue
             if route_name.startswith("API"):
                 unavailable_routes.append({
                     "route": path,
@@ -84,6 +109,8 @@ class ResponsiveAuditTests(StaticLiveServerTestCase):
                     "route": path,
                     "reason": f"HTTP {response.status_code} ({content_type or 'no content type'})",
                 })
+                if response.status_code >= 500:
+                    server_errors.append(f"{path}: HTTP {response.status_code}")
         dashboard_response = client.get("/", follow=True)
         if (
             dashboard_response.status_code == 200
@@ -99,6 +126,7 @@ class ResponsiveAuditTests(StaticLiveServerTestCase):
                 ),
             })
         paths = sorted(set(paths))
+        self.assertEqual(server_errors, [], f"UI routes returned server errors: {server_errors}")
         selected_paths = os.environ.get("ERP_RESPONSIVE_PATHS")
         if selected_paths:
             requested_paths = set(json.loads(selected_paths))
@@ -190,11 +218,6 @@ def write_responsive_report(path, results):
         grouped_failures.setdefault(key, Counter())[finding_category(
             failure["finding"]
         )] += 1
-    baseline_path = Path.cwd() / "test-results" / "responsive-audit-before.json"
-    baseline_findings = None
-    if baseline_path.is_file():
-        baseline_results = json.loads(baseline_path.read_text(encoding="utf-8"))
-        baseline_findings = len(baseline_results.get("failures", []))
     lines = [
         "# Responsive UI Audit",
         "",
@@ -213,16 +236,15 @@ def write_responsive_report(path, results):
     ]
     for category, count in sorted(category_counts.items()):
         lines.append(f"| {category} | {count} |")
-    if baseline_findings is not None:
-        lines.extend([
-            "",
-            (
-                f"Before/after raw findings: **{baseline_findings}** before and "
-                f"**{len(results['failures'])}** after. The baseline uses an earlier "
-                "detector and its count is not strictly comparable; the details "
-                "below are from the current detector."
-            ),
-        ])
+    lines.extend([
+        "",
+        (
+            "No directly comparable before-run was retained: the earlier audit "
+            "used a different detector and treated popup fragments as standalone "
+            "pages. Current results use the same detector across the listed pages, "
+            "browsers and viewports."
+        ),
+    ])
     lines.extend([
         "",
         "| Page | Viewport | Browser | Finding |",

@@ -1,4 +1,5 @@
 {% load static rbac %}
+{% ui_page_type as current_ui_page_type %}
 {% if request.GET.popup != '1' or request.META.HTTP_X_REQUESTED_WITH != 'XMLHttpRequest' %}
 <!DOCTYPE html>
 <html lang="en">
@@ -17,7 +18,7 @@
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
     {% block extra_css %}{% endblock %}
 </head>
-<body{% if request.resolver_match.url_name == 'Module_Branch_index_branch' or request.resolver_match.url_name == 'Module_Members_list' or request.resolver_match.url_name == 'Module_Savings_accounts' or request.resolver_match.url_name == 'Module_Savings_products' or request.resolver_match.url_name == 'Module_Savings_transactions' or request.resolver_match.url_name == 'Module_Loans_products' or request.resolver_match.url_name == 'Module_Loans_applications' or request.resolver_match.url_name == 'Module_Loans_disbursements' or request.resolver_match.url_name == 'Module_Loans_portfolio' or request.resolver_match.url_name == 'Module_Loans_repayments' or request.resolver_match.url_name == 'Module_Loans_approval_tiers' or request.resolver_match.url_name == 'Module_Loans_par_buckets' or request.resolver_match.url_name == 'Module_Collections_sheet_list' or request.resolver_match.url_name == 'Module_Collections_reconciliation_list' or request.resolver_match.url_name == 'Module_Accounting_account_list' or request.resolver_match.url_name == 'Module_Accounting_journal_list' or request.resolver_match.url_name == 'Module_Auth_list_roles' or request.resolver_match.url_name == 'Module_Auth_list_users' or request.resolver_match.url_name == 'Module_Audit_logs' or request.resolver_match.url_name == 'Module_Audit_events' %} class="erp-dense-body{% if show_performance_timers %} show-performance-timers{% endif %}"{% endif %}>
+<body{% if current_ui_page_type == 'list_page' %} class="erp-dense-body{% if request.resolver_match.url_name == 'Module_Loans_portfolio' %} erp-dense-body--extended{% endif %}{% if show_performance_timers %} show-performance-timers{% endif %}"{% endif %} data-ui-page-type="{{ current_ui_page_type }}">
 {% endif %}
 {% if request.GET.popup != '1' or request.META.HTTP_X_REQUESTED_WITH != 'XMLHttpRequest' %}
     {% if request.GET.popup != '1' %}

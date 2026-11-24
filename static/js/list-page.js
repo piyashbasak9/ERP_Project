@@ -237,18 +237,48 @@ $(function () {
     };
     let started = performance.now();
     const cardList = root.querySelector("[data-list-cards]");
+    const listState = root.querySelector("[data-list-state]");
+    const addLink = root.querySelector(".erp-page-tools a.erp-icon-button[data-popup]");
+    let hasLoaded = false;
+
+    function showListState(state, message) {
+        listState.replaceChildren();
+        listState.hidden = false;
+        listState.dataset.state = state;
+        listState.setAttribute("role", state === "error" ? "alert" : "status");
+        const text = document.createElement("p");
+        text.textContent = message;
+        listState.append(text);
+        if (state === "empty" && addLink) {
+            const addButton = document.createElement("a");
+            addButton.className = "btn btn-sm btn-primary";
+            addButton.href = addLink.href;
+            addButton.dataset.popup = "";
+            addButton.dataset.popupTitle = addLink.dataset.popupTitle || "";
+            addButton.textContent = addLink.dataset.popupTitle || "Add record";
+            listState.append(addButton);
+        }
+        const gridWrapper = root.querySelector(".ui-jqgrid");
+        const hideGrid = state === "empty" || state === "error"
+            || (state === "loading" && !hasLoaded);
+        if (gridWrapper) gridWrapper.hidden = hideGrid;
+        cardList.hidden = hideGrid;
+    }
+
+    function clearListState() {
+        listState.hidden = true;
+        listState.removeAttribute("data-state");
+        listState.setAttribute("role", "status");
+        const gridWrapper = root.querySelector(".ui-jqgrid");
+        if (gridWrapper) gridWrapper.hidden = false;
+        cardList.hidden = false;
+    }
 
     function renderMobileCards() {
         if (!cardList) return;
         const rows = Array.from(root.querySelectorAll(".ui-jqgrid-btable tr.jqgrow"));
         cardList.replaceChildren();
-        if (!rows.length) {
-            const empty = document.createElement("p");
-            empty.className = "erp-list-card-empty";
-            empty.textContent = "No matching records found.";
-            cardList.append(empty);
-            return;
-        }
+        if (!rows.length) return;
 
         const keyColumn = columns.find(column =>
             column.priority === 1 && column.name !== "actions"
@@ -366,7 +396,7 @@ $(function () {
         autoencode: true,
         height: 100,
         loadonce: false,
-        emptyrecords: "No matching records found.",
+        emptyrecords: "No records found.",
         sortname: sortName,
         sortorder: sortOrder,
         jsonReader: {
@@ -378,8 +408,10 @@ $(function () {
         },
         loadBeforeSend() {
             started = performance.now();
+            if (!hasLoaded) showListState("loading", "Loading records…");
         },
         loadComplete(data) {
+            hasLoaded = true;
             if (timersEnabled) {
                 const elapsed = (performance.now() - started) / 1000;
                 root.querySelector("[data-load-time]").textContent = `DLT: ${elapsed.toFixed(2)}s`;
@@ -398,6 +430,21 @@ $(function () {
             root.querySelector("[data-view-range]").textContent = `View ${first} - ${last} of ${data.records}`;
             persistColumnPreferences();
             renderMobileCards();
+            if (Number(data.records) > 0) {
+                clearListState();
+            } else {
+                showListState("empty", "No records found");
+            }
+        },
+        loadError() {
+            hasLoaded = true;
+            showListState("error", "Could not load records. Retry.");
+            const retry = document.createElement("button");
+            retry.className = "btn btn-sm btn-outline-primary";
+            retry.type = "button";
+            retry.textContent = "Retry";
+            retry.addEventListener("click", () => $grid.trigger("reloadGrid"));
+            listState.append(retry);
         },
     });
 

@@ -3,6 +3,7 @@ $(function () {
     const filterForm = document.getElementById("reportFilters");
     const filterToggle = document.querySelector("[data-report-filter-toggle]");
     const filterChips = document.querySelector("[data-report-filter-chips]");
+    const reportEmptyState = document.querySelector("[data-report-empty-state]");
     const filterPreferenceKey = `erp-report-filters:${filterForm.dataset.userKey}:${window.location.pathname}`;
     let savedFilterPreference = localStorage.getItem(filterPreferenceKey);
     const mobileFilters = window.matchMedia("(max-width: 575.98px)");
@@ -76,10 +77,6 @@ $(function () {
         reportCards.replaceChildren();
         const rows = Array.from(document.querySelectorAll("#reportGrid tr.jqgrow"));
         if (!rows.length) {
-            const empty = document.createElement("p");
-            empty.className = "erp-list-card-empty";
-            empty.textContent = "No matching records found.";
-            reportCards.append(empty);
             return;
         }
 
@@ -161,6 +158,7 @@ $(function () {
         jsonReader: {repeatitems: false},
         loadComplete: function (data) {
             if (data.userdata) $grid.jqGrid("footerData", "set", data.userdata);
+            reportEmptyState.hidden = Number(data.records) > 0;
             renderReportCards();
             updateMobilePager(data);
         }

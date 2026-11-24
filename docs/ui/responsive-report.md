@@ -1,21 +1,16 @@
 # Responsive UI Audit
 
-HTML pages audited: **2** across **3** browser(s) and **12** viewport(s).
-Finding count: **10**. Registry routes not audited as HTML pages: **196**.
+HTML pages audited: **6** across **3** browser(s) and **12** viewport(s).
+Finding count: **0**. Registry routes not audited as HTML pages: **223**.
 
 | Check category | Failures after |
 |---|---:|
-| layout overlap | 9 |
-| touch target below 44px | 1 |
 
-Before/after raw findings: **124783** before and **10** after. The baseline uses an earlier detector and its count is not strictly comparable; the details below are from the current detector.
+No directly comparable before-run was retained: the earlier audit used a different detector and treated popup fragments as standalone pages. Current results use the same detector across the listed pages, browsers and viewports.
 
 | Page | Viewport | Browser | Finding |
 |---|---:|---|---|
-| `/branch/` | 360x640 | firefox | layout overlap: 3 |
-| `/branch/` | 390x844 | firefox | layout overlap: 3 |
-| `/branch/` | 412x915 | firefox | layout overlap: 3 |
-| `/branch/` | zoom150-1366x768 | chromium | touch target below 44px: 1 |
+| — | — | — | No failures detected. |
 
 ## Registry routes excluded from visual checks
 
@@ -23,67 +18,94 @@ These routes are API endpoints, reject GET, do not resolve with the sample URL, 
 
 | Route | Reason |
 |---|---|
+| `/accounts/create-role/` | Popup form fragment; rendered in its shared modal host |
+| `/accounts/edit-role/1/` | Popup form fragment; rendered in its shared modal host |
+| `/accounts/create-user/` | Popup form fragment; rendered in its shared modal host |
+| `/accounts/users/edit/1/` | Popup form fragment; rendered in its shared modal host |
 | `/accounts/users/delete/1/` | HTTP 405 (text/html; charset=utf-8) |
+| `/branch/add/` | Popup form fragment; rendered in its shared modal host |
+| `/branch/edit/1/` | Popup form fragment; rendered in its shared modal host |
 | `/branch/delete/1/` | HTTP 405 (text/html; charset=utf-8) |
-| `/branch/centers/edit/1/` | HTTP 404 (text/html; charset=utf-8) |
-| `/branch/groups/edit/1/` | HTTP 404 (text/html; charset=utf-8) |
-| `/branch/staff/edit/1/` | HTTP 404 (text/html; charset=utf-8) |
-| `/branch/members/edit/1/` | HTTP 404 (text/html; charset=utf-8) |
+| `/branch/centers/add/` | Popup form fragment; rendered in its shared modal host |
+| `/branch/centers/edit/1/` | Popup form fragment; rendered in its shared modal host |
+| `/branch/groups/add/` | Popup form fragment; rendered in its shared modal host |
+| `/branch/groups/edit/1/` | Popup form fragment; rendered in its shared modal host |
+| `/branch/staff/add/` | Popup form fragment; rendered in its shared modal host |
+| `/branch/staff/edit/1/` | Popup form fragment; rendered in its shared modal host |
+| `/branch/members/add/` | Popup form fragment; rendered in its shared modal host |
+| `/branch/members/edit/1/` | Popup form fragment; rendered in its shared modal host |
 | `/branch/members/1/` | HTTP 404 (text/html; charset=utf-8) |
 | `/branch/members/status/1/` | HTTP 405 (text/html; charset=utf-8) |
 | `/branch/members/kyc/1/` | HTTP 404 (text/html; charset=utf-8) |
 | `/branch/members/kyc/verify/1/` | HTTP 405 (text/html; charset=utf-8) |
 | `/branch/members/photo/1/` | HTTP 404 (text/html; charset=utf-8) |
 | `/branch/members/kyc/file/1/` | HTTP 404 (text/html; charset=utf-8) |
-| `/branch/day-end/` | HTTP 500 (text/html; charset=utf-8) |
 | `/branch/day-end/close/` | HTTP 405 (text/html; charset=utf-8) |
 | `/branch/day-end/reopen/` | HTTP 405 (text/html; charset=utf-8) |
-| `/branch/holidays/edit/1/` | HTTP 404 (text/html; charset=utf-8) |
+| `/branch/holidays/add/` | Popup form fragment; rendered in its shared modal host |
+| `/branch/holidays/edit/1/` | Popup form fragment; rendered in its shared modal host |
 | `/audit/trail/sample/sample/` | HTTP 404 (text/html; charset=utf-8) |
-| `/accounting/accounts/edit/1/` | HTTP 404 (text/html; charset=utf-8) |
+| `/accounting/accounts/add/` | Popup form fragment; rendered in its shared modal host |
+| `/accounting/accounts/edit/1/` | Popup form fragment; rendered in its shared modal host |
+| `/accounting/fiscal-years/add/` | Popup form fragment; rendered in its shared modal host |
+| `/accounting/periods/add/` | Popup form fragment; rendered in its shared modal host |
 | `/accounting/periods/1/close/` | HTTP 405 (text/html; charset=utf-8) |
-| `/accounting/system-accounts/1/` | HTTP 404 (text/html; charset=utf-8) |
+| `/accounting/system-accounts/add/` | Popup form fragment; rendered in its shared modal host |
+| `/accounting/system-accounts/1/` | Popup form fragment; rendered in its shared modal host |
+| `/accounting/journal-entries/add/` | Popup form fragment; rendered in its shared modal host |
 | `/accounting/journal-entries/1/` | HTTP 404 (text/html; charset=utf-8) |
 | `/accounting/journal-entries/1/post/` | HTTP 405 (text/html; charset=utf-8) |
 | `/accounting/journal-entries/1/reverse/` | HTTP 404 (text/html; charset=utf-8) |
+| `/accounting/reconciliation/add/` | Popup form fragment; rendered in its shared modal host |
 | `/accounting/reconciliation/1/confirm/` | HTTP 405 (text/html; charset=utf-8) |
-| `/savings/products/edit/1/` | HTTP 404 (text/html; charset=utf-8) |
+| `/savings/products/add/` | Popup form fragment; rendered in its shared modal host |
+| `/savings/products/edit/1/` | Popup form fragment; rendered in its shared modal host |
 | `/savings/products/1/activate/` | HTTP 405 (text/html; charset=utf-8) |
 | `/savings/products/1/deactivate/` | HTTP 405 (text/html; charset=utf-8) |
+| `/savings/accounts/add/` | Popup form fragment; rendered in its shared modal host |
 | `/savings/accounts/1/close/` | HTTP 405 (text/html; charset=utf-8) |
 | `/savings/accounts/1/statement/` | HTTP 404 (text/html; charset=utf-8) |
 | `/savings/accounts/1/statement.csv` | HTTP 404 (text/html; charset=utf-8) |
-| `/savings/accounts/1/reactivate/` | HTTP 404 (text/html; charset=utf-8) |
+| `/savings/accounts/1/reactivate/` | Popup form fragment; rendered in its shared modal host |
 | `/savings/accounts/1/reactivate/submit/` | HTTP 405 (text/html; charset=utf-8) |
-| `/savings/reports/reconciliation/` | HTTP 500 (text/html; charset=utf-8) |
+| `/savings/transactions/deposit/` | Popup form fragment; rendered in its shared modal host |
 | `/savings/transactions/deposit/post/` | HTTP 405 (text/html; charset=utf-8) |
+| `/savings/transactions/withdraw/` | Popup form fragment; rendered in its shared modal host |
 | `/savings/transactions/withdraw/post/` | HTTP 405 (text/html; charset=utf-8) |
+| `/savings/transactions/fee/` | Popup form fragment; rendered in its shared modal host |
 | `/savings/transactions/fee/post/` | HTTP 405 (text/html; charset=utf-8) |
+| `/savings/transactions/interest/` | Popup form fragment; rendered in its shared modal host |
 | `/savings/transactions/interest/post/` | HTTP 405 (text/html; charset=utf-8) |
 | `/savings/transactions/1/approve/` | HTTP 405 (text/html; charset=utf-8) |
-| `/savings/transactions/1/reject/` | HTTP 404 (text/html; charset=utf-8) |
+| `/savings/transactions/1/reject/` | Popup form fragment; rendered in its shared modal host |
 | `/savings/transactions/1/reject/post/` | HTTP 405 (text/html; charset=utf-8) |
-| `/savings/transactions/1/reverse/` | HTTP 404 (text/html; charset=utf-8) |
+| `/savings/transactions/1/reverse/` | Popup form fragment; rendered in its shared modal host |
 | `/savings/transactions/1/reverse/post/` | HTTP 405 (text/html; charset=utf-8) |
-| `/loans/products/edit/1/` | HTTP 404 (text/html; charset=utf-8) |
+| `/loans/products/add/` | Popup form fragment; rendered in its shared modal host |
+| `/loans/products/edit/1/` | Popup form fragment; rendered in its shared modal host |
 | `/loans/products/1/activate/` | HTTP 405 (text/html; charset=utf-8) |
 | `/loans/products/1/deactivate/` | HTTP 405 (text/html; charset=utf-8) |
-| `/loans/business-rules/approval-tiers/edit/1/` | HTTP 404 (text/html; charset=utf-8) |
+| `/loans/business-rules/approval-tiers/add/` | Popup form fragment; rendered in its shared modal host |
+| `/loans/business-rules/approval-tiers/edit/1/` | Popup form fragment; rendered in its shared modal host |
+| `/loans/business-rules/par-buckets/add/` | Popup form fragment; rendered in its shared modal host |
+| `/loans/business-rules/par-buckets/edit/1/` | Popup form fragment; rendered in its shared modal host |
 | `/loans/classification/export/excel/` | HTTP 200 (application/vnd.openxmlformats-officedocument.spreadsheetml.sheet) |
 | `/loans/classification/export/pdf/` | HTTP 200 (application/pdf) |
+| `/loans/applications/add/` | Popup form fragment; rendered in its shared modal host |
 | `/loans/applications/1/submit/` | HTTP 405 (text/html; charset=utf-8) |
-| `/loans/applications/1/review/` | HTTP 404 (text/html; charset=utf-8) |
+| `/loans/applications/1/review/` | Popup form fragment; rendered in its shared modal host |
 | `/loans/applications/1/cancel/` | HTTP 405 (text/html; charset=utf-8) |
-| `/loans/applications/1/disburse/` | HTTP 404 (text/html; charset=utf-8) |
-| `/loans/1/repay/` | HTTP 404 (text/html; charset=utf-8) |
+| `/loans/applications/1/disburse/` | Popup form fragment; rendered in its shared modal host |
+| `/loans/1/repay/` | Popup form fragment; rendered in its shared modal host |
 | `/loans/1/schedule/` | HTTP 404 (text/html; charset=utf-8) |
 | `/loans/1/statement/` | HTTP 404 (text/html; charset=utf-8) |
 | `/loans/1/history/` | HTTP 404 (text/html; charset=utf-8) |
-| `/loans/1/reschedule/` | HTTP 404 (text/html; charset=utf-8) |
-| `/loans/1/settle/` | HTTP 404 (text/html; charset=utf-8) |
-| `/loans/1/waive-interest/` | HTTP 404 (text/html; charset=utf-8) |
-| `/loans/1/write-off/` | HTTP 404 (text/html; charset=utf-8) |
-| `/loans/1/recovery/` | HTTP 404 (text/html; charset=utf-8) |
+| `/loans/1/reschedule/` | Popup form fragment; rendered in its shared modal host |
+| `/loans/1/settle/` | Popup form fragment; rendered in its shared modal host |
+| `/loans/1/waive-interest/` | Popup form fragment; rendered in its shared modal host |
+| `/loans/1/write-off/` | Popup form fragment; rendered in its shared modal host |
+| `/loans/1/recovery/` | Popup form fragment; rendered in its shared modal host |
+| `/collections/sheets/generate/` | Popup form fragment; rendered in its shared modal host |
 | `/collections/sheets/1/` | HTTP 404 (text/html; charset=utf-8) |
 | `/collections/sheets/1/start/` | HTTP 405 (text/html; charset=utf-8) |
 | `/collections/sheets/1/items/1/` | HTTP 405 (text/html; charset=utf-8) |

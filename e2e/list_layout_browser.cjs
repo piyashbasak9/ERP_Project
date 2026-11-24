@@ -101,16 +101,18 @@ async function main() {
                 if (metrics.documentWidth > metrics.viewportWidth) {
                     throw new Error(`${route} has horizontal page scrolling at ${viewport.width}px: ${JSON.stringify(metrics)}`);
                 }
-                if (metrics.headerHeight !== 56
+                const expectedHeaderHeight = viewport.width < 1024 ? 56 : 90;
+                const maximumFilterWidth = viewport.width > 1600 ? 1280 : 1100;
+                if (metrics.headerHeight !== expectedHeaderHeight
                     || metrics.brandIconWidth !== 32
                     || metrics.brandIconHeight !== 32
-                    || metrics.filterPanelWidth > 1100
+                    || metrics.filterPanelWidth > maximumFilterWidth
                     || !metrics.filterGeometry.every((field) =>
                         field.labelWidth === 90 && field.controlHeight === 28)) {
                     throw new Error(`${route} shared header or filter dimensions are incorrect: ${JSON.stringify(metrics)}`);
                 }
-                if (Math.abs(metrics.mainWidth - metrics.viewportWidth) > 2) {
-                    throw new Error(`${route} main content does not fill the viewport: ${JSON.stringify(metrics)}`);
+                if (Math.abs(metrics.mainWidth - metrics.documentWidth) > 2) {
+                    throw new Error(`${route} main content does not fill the document: ${JSON.stringify(metrics)}`);
                 }
                 if (metrics.gridHeight < 250 || metrics.gridBottomGap > 2) {
                     throw new Error(`${route} grid does not fill the remaining height: ${JSON.stringify(metrics)}`);
@@ -145,20 +147,20 @@ async function main() {
                     await page.setViewportSize(viewport);
 
                     const query = '<script>alert("filter")</script>';
-                    const search = page.locator("#filter-q");
+                    const search = page.locator("#filter-name");
                     await search.fill(query);
                     await search.press("Enter");
                     await page.waitForFunction((value) =>
-                        new URL(location.href).searchParams.get("q") === value, query);
+                        new URL(location.href).searchParams.get("name") === value, query);
                     await page.locator("[data-filter-toggle]").click();
-                    const chip = page.locator('[data-filter-chip="q"]');
+                    const chip = page.locator('[data-filter-chip="name"]');
                     await chip.waitFor({state: "visible"});
                     if (!(await chip.innerText()).includes(query)) {
                         throw new Error("Active filter chip did not preserve the filter text.");
                     }
                     await chip.click();
                     await page.waitForFunction(() =>
-                        !new URL(location.href).searchParams.has("q"));
+                        !new URL(location.href).searchParams.has("name"));
                     await page.locator("[data-filter-toggle]").click();
 
                     await page.locator(".ss-main").click();
@@ -243,7 +245,7 @@ async function main() {
             await page.close();
 
             const responsivePage = await context.newPage();
-            await responsivePage.setViewportSize({width: 1440, height: 900});
+            await responsivePage.setViewportSize({width: 768, height: 900});
             await responsivePage.goto(new URL(paths[1], baseUrl).toString(), {
                 waitUntil: "networkidle",
             });

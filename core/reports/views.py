@@ -4,7 +4,7 @@ from datetime import date
 from decimal import Decimal
 from tempfile import SpooledTemporaryFile
 
-from django.core.exceptions import FieldError, PermissionDenied
+from django.core.exceptions import FieldDoesNotExist, FieldError, PermissionDenied
 from django.db.models import QuerySet, Sum
 from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import render
@@ -183,9 +183,7 @@ def _sorted_rows(rows, report, sort_key, direction):
     if column is None:
         return rows
     field_name = column.accessor or column.key
-    if isinstance(rows, QuerySet) and all(
-        character.isalnum() or character in "_-" for character in field_name
-    ):
+    if isinstance(rows, QuerySet) and _queryset_field_exists(rows, field_name):
         prefix = "-" if direction == "desc" else ""
         try:
             return rows.order_by(f"{prefix}{field_name}")
@@ -198,6 +196,34 @@ def _sorted_rows(rows, report, sort_key, direction):
             reverse=direction == "desc",
         )
     return rows
+
+
+def _queryset_field_exists(rows, field_name):
+    query = rows.query
+    if field_name in query.annotations or field_name in query.values_select:
+        return True
+
+    model = rows.model
+    parts = field_name.split("__")
+    for index, part in enumerate(parts):
+        try:
+            field = model._meta.get_field(part)
+        except FieldDoesNotExist:
+            field = next(
+                (
+                    candidate
+                    for candidate in model._meta.get_fields()
+                    if getattr(candidate, "attname", None) == part
+                ),
+                None,
+            )
+        if field is None:
+            return False
+        if index < len(parts) - 1:
+            if not field.is_relation or field.related_model is None:
+                return False
+            model = field.related_model
+    return True
 
 
 def _page_values(request, report, rows):

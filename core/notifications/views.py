@@ -1,10 +1,16 @@
 from django.contrib import messages
 from django.core.paginator import Paginator
+from django.db.models import Q
 from django.http import JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import redirect, render
+from django.urls import reverse
+from django.utils.html import format_html
 from django.views.decorators.http import require_GET, require_POST
 
+from core.accounts.permission_utils import user_has_route_permission
 from core.audit.services import log_action
+from core.common.templatetags.user_formatting import user_date
 
 from .forms import (
     NotificationConfigurationForm,
@@ -25,15 +31,103 @@ def notification_list(request):
     branch_ids = request.user.accessible_branch_ids(
         getattr(request, "active_branch_id", None)
     )
-    page_obj = Paginator(
-        Notification.objects.filter(
-            recipient=request.user,
-            branch_id__in=branch_ids,
-            channel=Notification.CHANNEL_IN_APP,
-        ).order_by("-created_at", "-pk"),
-        25,
-    ).get_page(request.GET.get("page", 1))
-    return render(request, "notifications/list.html", {"page_obj": page_obj})
+    notifications = Notification.objects.filter(
+        recipient=request.user,
+        branch_id__in=branch_ids,
+        channel=Notification.CHANNEL_IN_APP,
+    )
+    query = request.GET.get("q", "").strip()
+    status = request.GET.get("status", "").strip()
+    if query:
+        notifications = notifications.filter(
+            Q(subject__icontains=query) | Q(body__icontains=query)
+        )
+    if status == "read":
+        notifications = notifications.filter(is_read=True)
+    elif status == "unread":
+        notifications = notifications.filter(is_read=False)
+    sort_fields = {
+        "subject": "subject",
+        "created_at": "created_at",
+        "status": "is_read",
+    }
+    sort_field = sort_fields.get(request.GET.get("sidx"), "created_at")
+    if request.GET.get("sord", "desc") != "asc":
+        sort_field = f"-{sort_field}"
+    try:
+        page_size = min(max(int(request.GET.get("rows", 20)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 20
+    paginator = Paginator(notifications.order_by(sort_field, "-pk"), page_size)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+    if request.GET.get("ajax") == "1":
+        can_mark_read = user_has_route_permission(
+            request.user, "Module_Notifications_mark_read"
+        )
+        csrf_token = get_token(request)
+        rows = []
+        for notification in page_obj.object_list:
+            action = (
+                format_html(
+                    '<form method="post" action="{}">'
+                    '<input type="hidden" name="csrfmiddlewaretoken" value="{}">'
+                    '<button class="btn btn-sm btn-outline-primary" type="submit">'
+                    'Mark as read</button></form>',
+                    reverse(
+                        "notifications:Module_Notifications_mark_read",
+                        args=[notification.pk],
+                    ),
+                    csrf_token,
+                )
+                if not notification.is_read and can_mark_read
+                else ""
+            )
+            rows.append({
+                "id": notification.pk,
+                "subject": notification.subject,
+                "body": notification.body,
+                "created_at": user_date(
+                    notification.created_at, request.user_preference
+                ),
+                "status": "Read" if notification.is_read else "Unread",
+                "actions": action,
+            })
+        return JsonResponse({
+            "rows": rows,
+            "page": page_obj.number,
+            "total": paginator.num_pages,
+            "records": paginator.count,
+        })
+
+    return render(request, "notifications/list.html", {
+        "list_title": "Notifications",
+        "grid_url": request.path,
+        "initial_page_text": f"Page {page_obj.number} of {paginator.num_pages}",
+        "default_sort_name": "created_at",
+        "default_sort_order": "desc",
+        "list_columns": [
+            {"name": "subject", "label": "Notification", "width": 220, "priority": 1},
+            {"name": "status", "label": "Status", "width": 100, "priority": 2},
+            {"name": "created_at", "label": "Received", "width": 170, "priority": 2},
+            {"name": "body", "label": "Message", "width": 360, "priority": 3},
+            {"name": "actions", "label": "Actions", "width": 130, "priority": 1, "sortable": False},
+        ],
+        "list_filters": [
+            {
+                "name": "q",
+                "label": "Search",
+                "value": query,
+                "placeholder": "Subject or message",
+            },
+            {
+                "name": "status",
+                "label": "Status",
+                "type": "select",
+                "value": status,
+                "options": [("unread", "Unread"), ("read", "Read")],
+            },
+        ],
+    })
 
 
 @require_POST

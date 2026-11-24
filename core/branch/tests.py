@@ -37,6 +37,7 @@ from .models import (
     BranchClosedDay,
     BranchHoliday,
     Center,
+    Group,
     Member,
     MemberKYC,
     MemberStatusHistory,
@@ -320,6 +321,92 @@ class BranchIsolationRemainderTests(BranchIsolationTests):
         script_path = find("js/list-page.js")
         self.assertIsNotNone(script_path)
         self.assertIn("autoencode: true", Path(script_path).read_text(encoding="utf-8"))
+
+    def test_organization_and_holiday_lists_use_scoped_list_page_grids(self):
+        center = Center.unscoped.create(
+            branch=self.branch_one,
+            name="Visible Center",
+            code="VISIBLE-CENTER",
+            meeting_day="Monday",
+            meeting_time="09:30",
+        )
+        Center.unscoped.create(
+            branch=self.branch_two,
+            name="Hidden Center",
+            code="HIDDEN-CENTER",
+        )
+        Group.unscoped.create(
+            branch=self.branch_one,
+            center=center,
+            name="Visible Group",
+            code="VISIBLE-GROUP",
+        )
+        Staff.unscoped.create(
+            branch=self.branch_one,
+            full_name="Visible Staff",
+            designation="Officer",
+        )
+        BranchHoliday.unscoped.create(
+            branch=self.branch_one,
+            date=date(2026, 12, 25),
+            name="Visible Holiday",
+        )
+        BranchHoliday.unscoped.create(
+            branch=self.branch_two,
+            date=date(2026, 12, 25),
+            name="Hidden Holiday",
+        )
+
+        route_names = {
+            "centers": ("Module_Center_list", "Module_Center_add", "Module_Center_edit"),
+            "groups": ("Module_Group_list", "Module_Group_add", "Module_Group_edit"),
+            "staff": ("Module_Staff_list", "Module_Staff_add", "Module_Staff_edit"),
+        }
+        for routes in route_names.values():
+            for route_name in routes:
+                self.grant_route(route_name)
+        for route_name in (
+            "Module_BranchHoliday_list",
+            "Module_BranchHoliday_create",
+            "Module_BranchHoliday_edit",
+        ):
+            self.grant_route(route_name)
+        self.client.force_login(self.user)
+
+        for resource, (list_route, _, _) in route_names.items():
+            page = self.client.get(reverse(f"branch:{list_route}"))
+            self.assertEqual(page.status_code, 200, resource)
+            self.assertContains(page, 'data-list-page')
+            self.assertNotContains(page, 'js-jqgrid-source')
+
+            data = self.client.get(
+                reverse(f"branch:{list_route}"),
+                {"ajax": "1", "rows": 20, "name": "Visible"},
+            )
+            self.assertEqual(data.status_code, 200, resource)
+            self.assertEqual(data.json()["records"], 1, resource)
+
+        center_data = self.client.get(
+            reverse("branch:Module_Center_list"),
+            {"ajax": "1", "name": "Visible"},
+        ).json()
+        self.assertEqual(center_data["rows"][0]["meeting_time"], "09:30")
+        self.assertEqual(center_data["rows"][0]["branch"], self.branch_one.name)
+
+        holidays = self.client.get(
+            reverse("branch:Module_BranchHoliday_list"),
+            {"ajax": "1", "name": "Visible"},
+        )
+        self.assertEqual(holidays.status_code, 200)
+        self.assertEqual(holidays.json()["records"], 1)
+        self.assertEqual(holidays.json()["rows"][0]["name"], "Visible Holiday")
+
+        invalid_date = self.client.get(
+            reverse("branch:Module_BranchHoliday_list"),
+            {"ajax": "1", "date": "not-a-date"},
+        )
+        self.assertEqual(invalid_date.status_code, 200)
+        self.assertEqual(invalid_date.json()["records"], 0)
 
     def test_quick_search_requires_list_permission_and_stays_branch_scoped(self):
         own_member = Member.unscoped.create(

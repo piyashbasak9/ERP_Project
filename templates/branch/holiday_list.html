@@ -1,24 +1,9 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}Branch holidays{% endblock %}
 {% block content %}
-<div class="container-fluid py-3">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h1 class="h3 mb-0">Branch holidays</h1>
-        <a class="btn btn-primary" href="{% url 'branch:Module_BranchHoliday_create' %}?popup=1" data-popup data-popup-title="Add holiday">Add holiday</a>
-    </div>
-    <div class="table-responsive">
-        <table class="table table-striped js-jqgrid-source">
-            <thead><tr><th>Branch</th><th>Date</th><th>Name</th><th>Status</th><th></th></tr></thead>
-            <tbody>
-            {% for holiday in holidays %}
-                <tr>
-                    <td>{{ holiday.branch.name }}</td><td>{{ holiday.date }}</td><td>{{ holiday.name }}</td>
-                    <td>{% if holiday.is_active %}Active{% else %}Inactive{% endif %}</td>
-                    <td><a href="{% url 'branch:Module_BranchHoliday_edit' holiday.pk %}?popup=1" data-popup data-popup-title="Edit holiday">Edit</a></td>
-                </tr>
-            {% empty %}<tr><td colspan="5" class="text-center text-muted">No holidays configured.</td></tr>{% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
+{% include 'partials/list_page.html' %}
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/list-page.js' %}"></script>
 {% endblock %}

@@ -335,6 +335,56 @@ class NotificationRouteTests(TestCase):
             RolePermission.objects.create(role=role, permission=permission)
         UserRole.objects.update_or_create(user=self.user, defaults={"role": role})
 
+    def test_notification_inbox_uses_shared_scoped_list_grid(self):
+        notification = Notification.objects.create(
+            recipient=self.user,
+            branch=self.branch,
+            event_key="installment_due",
+            event_reference="loan:1",
+            event_date=timezone.localdate(),
+            channel=Notification.CHANNEL_IN_APP,
+            subject="Cash collection reminder",
+            body="Collection is due today.",
+        )
+        other_branch = Branch.objects.create(
+            name="Unrelated Notification Branch",
+            code="UNRELATED",
+        )
+        Notification.objects.create(
+            recipient=self.user,
+            branch=other_branch,
+            event_key="installment_due",
+            event_reference="loan:2",
+            event_date=timezone.localdate(),
+            channel=Notification.CHANNEL_IN_APP,
+            subject="Unrelated reminder",
+            body="This branch is outside the user's scope.",
+        )
+        self.grant_routes(
+            "Module_Notifications_list",
+            "Module_Notifications_mark_read",
+        )
+
+        page = self.client.get(
+            reverse("notifications:Module_Notifications_list"),
+            {"q": "Cash", "status": "unread"},
+        )
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'data-list-page')
+        self.assertContains(page, 'data-filter-field="q"')
+        self.assertNotContains(page, 'class="list-group"')
+
+        data = self.client.get(
+            reverse("notifications:Module_Notifications_list"),
+            {"ajax": "1", "q": "Cash", "status": "unread"},
+        )
+        self.assertEqual(data.status_code, 200)
+        self.assertEqual(data.json()["records"], 1)
+        row = data.json()["rows"][0]
+        self.assertEqual(row["id"], notification.pk)
+        self.assertEqual(row["status"], "Unread")
+        self.assertIn("csrfmiddlewaretoken", row["actions"])
+
     def test_every_notification_route_requires_its_permission(self):
         routes = (
             ("GET", "notifications:Module_Notifications_list", {}),

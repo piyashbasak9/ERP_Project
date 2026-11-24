@@ -6,6 +6,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.utils.html import format_html, format_html_join
 from django.utils.http import url_has_allowed_host_and_scheme, urlencode
 from django.views.decorators.http import require_GET, require_POST
@@ -760,19 +761,170 @@ ORGANIZATION_RESOURCES = {
 }
 
 
+def _grid_page_size(request):
+    try:
+        return min(max(int(request.GET.get('rows', 20)), 1), 200)
+    except (TypeError, ValueError):
+        return 20
+
+
 @require_GET
 def organization_list(request, resource):
     model, _, order_field, singular, _, add_route, edit_route = ORGANIZATION_RESOURCES[resource]
-    queryset = model.objects.filter(is_active=True).order_by(order_field)
-    page_obj = Paginator(queryset, 100).get_page(request.GET.get('page', 1))
-    for record in page_obj.object_list:
-        record.edit_url = reverse(f'branch:{edit_route}', args=[record.pk])
+    allowed_branch_ids = request.user.accessible_branch_ids(request.active_branch_id)
+    branch_options = list(
+        Branch.objects.filter(pk__in=allowed_branch_ids)
+        .order_by('name')
+        .values_list('pk', 'name')
+    )
+    queryset = model.objects.filter(is_active=True).select_related('branch')
+    if resource == 'groups':
+        queryset = queryset.select_related('center')
+
+    name = request.GET.get('name', '').strip()
+    code = request.GET.get('code', '').strip()
+    phone = request.GET.get('phone', '').strip()
+    branch = request.GET.get('branch', '').strip()
+    if name:
+        queryset = queryset.filter(**{f'{order_field}__icontains': name})
+    if resource != 'staff' and code:
+        queryset = queryset.filter(code__icontains=code)
+    if resource == 'staff' and phone:
+        queryset = queryset.filter(phone__icontains=phone)
+    if branch:
+        try:
+            branch_id = int(branch)
+        except ValueError:
+            queryset = queryset.none()
+        else:
+            if branch_id in allowed_branch_ids:
+                queryset = queryset.filter(branch_id=branch_id)
+            else:
+                queryset = queryset.none()
+
+    sort_fields = {
+        order_field: order_field,
+        'branch': 'branch__name',
+    }
+    if resource == 'centers':
+        sort_fields.update({
+            'code': 'code',
+            'meeting_day': 'meeting_day',
+            'meeting_time': 'meeting_time',
+        })
+    elif resource == 'groups':
+        sort_fields.update({'code': 'code', 'center': 'center__name'})
+    else:
+        sort_fields.update({'phone': 'phone', 'designation': 'designation'})
+    sort_name = request.GET.get('sidx', '')
+    sort_field = sort_fields.get(sort_name, order_field)
+    if request.GET.get('sord') == 'desc':
+        sort_field = f'-{sort_field}'
+    queryset = queryset.order_by(sort_field, 'pk')
+    paginator = Paginator(queryset, _grid_page_size(request))
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+
+    if request.GET.get('ajax'):
+        rows = []
+        for record in page_obj.object_list:
+            row = {
+                'id': record.pk,
+                order_field: getattr(record, order_field),
+                'branch': record.branch.name,
+            }
+            if resource == 'centers':
+                row.update({
+                    'code': record.code or '',
+                    'meeting_day': record.meeting_day or '',
+                    'meeting_time': record.meeting_time or '',
+                })
+            elif resource == 'groups':
+                row['code'] = record.code or ''
+                row['center'] = record.center.name if record.center_id else ''
+            else:
+                row['phone'] = record.phone or ''
+                row['designation'] = record.designation or ''
+            row['actions'] = (
+                format_html(
+                    '<a href="{}?popup=1" data-popup data-popup-title="Edit {}">Edit</a>',
+                    reverse(f'branch:{edit_route}', args=[record.pk]),
+                    singular.lower(),
+                )
+                if user_has_route_permission(request.user, edit_route)
+                else ''
+            )
+            rows.append(row)
+        return JsonResponse({
+            'rows': rows,
+            'page': page_obj.number,
+            'total': paginator.num_pages,
+            'records': paginator.count,
+        })
+
+    columns = [{'name': order_field, 'label': 'Name', 'width': 220, 'priority': 1}]
+    if resource == 'staff':
+        columns.append({'name': 'phone', 'label': 'Phone', 'width': 130, 'priority': 2})
+    else:
+        columns.append({'name': 'code', 'label': 'Code', 'width': 110, 'priority': 2})
+    columns.append({'name': 'branch', 'label': 'Branch', 'width': 160, 'priority': 2})
+    if resource == 'centers':
+        columns.extend([
+            {'name': 'meeting_day', 'label': 'Meeting day', 'width': 120, 'priority': 3},
+            {'name': 'meeting_time', 'label': 'Meeting time', 'width': 120, 'priority': 3},
+        ])
+    elif resource == 'groups':
+        columns.append({'name': 'center', 'label': 'Center', 'width': 180, 'priority': 3})
+    else:
+        columns.append({'name': 'designation', 'label': 'Designation', 'width': 160, 'priority': 3})
+    columns.append({'name': 'actions', 'label': 'Actions', 'width': 90, 'priority': 1, 'sortable': False})
+    identity_filter = (
+        {
+            'name': 'phone',
+            'label': 'Phone',
+            'value': phone,
+            'placeholder': 'Phone',
+        }
+        if resource == 'staff'
+        else {
+            'name': 'code',
+            'label': 'Code',
+            'value': code,
+            'placeholder': f'{singular} code',
+        }
+    )
+
     return render(request, 'branch/organization_list.html', {
         'resource': resource,
         'title': singular if resource == 'staff' else f'{singular}s',
         'singular': singular,
-        'add_url': reverse(f'branch:{add_route}'),
-        'page_obj': page_obj,
+        'list_title': singular if resource == 'staff' else f'{singular}s',
+        'grid_url': request.path,
+        'initial_page_text': f'Page {page_obj.number} of {paginator.num_pages}',
+        'default_sort_name': order_field,
+        'default_sort_order': 'asc',
+        'add_url': (
+            reverse(f'branch:{add_route}')
+            if user_has_route_permission(request.user, add_route)
+            else ''
+        ),
+        'add_title': f'Create {singular.lower()}',
+        'list_columns': columns,
+        'list_filters': [
+            {
+                'name': 'name',
+                'label': 'Name',
+                'value': name,
+                'placeholder': f'{singular} name',
+            },
+            identity_filter,
+            {
+                'name': 'branch',
+                'label': 'Branch',
+                'type': 'select',
+                'value': branch,
+                'options': [(str(pk), branch_name) for pk, branch_name in branch_options],
+            },
+        ],
     })
 
 
@@ -896,10 +1048,110 @@ def day_end_reopen(request):
 @require_GET
 def holiday_list(request):
     allowed = request.user.accessible_branch_ids(request.active_branch_id)
-    holidays = BranchHoliday.objects.filter(branch_id__in=allowed).select_related(
-        "branch"
+    branch_options = list(
+        Branch.objects.filter(pk__in=allowed)
+        .order_by('name')
+        .values_list('pk', 'name')
     )
-    return render(request, "branch/holiday_list.html", {"holidays": holidays})
+    holidays = BranchHoliday.objects.filter(branch_id__in=allowed).select_related('branch')
+    name = request.GET.get('name', '').strip()
+    date = request.GET.get('date', '').strip()
+    branch = request.GET.get('branch', '').strip()
+    status = request.GET.get('status', '').strip()
+    if name:
+        holidays = holidays.filter(name__icontains=name)
+    if date:
+        parsed_date = parse_date(date)
+        holidays = holidays.filter(date=parsed_date) if parsed_date else holidays.none()
+    if status in {'active', 'inactive'}:
+        holidays = holidays.filter(is_active=(status == 'active'))
+    if branch:
+        try:
+            branch_id = int(branch)
+        except ValueError:
+            holidays = holidays.none()
+        else:
+            if branch_id in allowed:
+                holidays = holidays.filter(branch_id=branch_id)
+            else:
+                holidays = holidays.none()
+
+    sort_fields = {
+        'branch': 'branch__name',
+        'date': 'date',
+        'name': 'name',
+        'status': 'is_active',
+    }
+    sort_field = sort_fields.get(request.GET.get('sidx'), 'date')
+    if request.GET.get('sord') == 'desc':
+        sort_field = f'-{sort_field}'
+    holidays = holidays.order_by(sort_field, 'pk')
+    paginator = Paginator(holidays, _grid_page_size(request))
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+    if request.GET.get('ajax'):
+        rows = []
+        for holiday in page_obj.object_list:
+            row = {
+                'id': holiday.pk,
+                'branch': holiday.branch.name,
+                'date': holiday.date.isoformat(),
+                'name': holiday.name,
+                'status': 'Active' if holiday.is_active else 'Inactive',
+                'actions': (
+                    format_html(
+                        '<a href="{}?popup=1" data-popup data-popup-title="Edit holiday">Edit</a>',
+                        reverse('branch:Module_BranchHoliday_edit', args=[holiday.pk]),
+                    )
+                    if user_has_route_permission(request.user, 'Module_BranchHoliday_edit')
+                    else ''
+                ),
+            }
+            rows.append(row)
+        return JsonResponse({
+            'rows': rows,
+            'page': page_obj.number,
+            'total': paginator.num_pages,
+            'records': paginator.count,
+        })
+
+    return render(request, 'branch/holiday_list.html', {
+        'list_title': 'Branch holidays',
+        'grid_url': request.path,
+        'initial_page_text': f'Page {page_obj.number} of {paginator.num_pages}',
+        'default_sort_name': 'date',
+        'default_sort_order': 'asc',
+        'add_url': (
+            reverse('branch:Module_BranchHoliday_create')
+            if user_has_route_permission(request.user, 'Module_BranchHoliday_create')
+            else ''
+        ),
+        'add_title': 'Add holiday',
+        'list_columns': [
+            {'name': 'name', 'label': 'Name', 'width': 220, 'priority': 1},
+            {'name': 'date', 'label': 'Date', 'width': 130, 'priority': 2},
+            {'name': 'branch', 'label': 'Branch', 'width': 180, 'priority': 2},
+            {'name': 'status', 'label': 'Status', 'width': 100, 'priority': 2},
+            {'name': 'actions', 'label': 'Actions', 'width': 90, 'priority': 1, 'sortable': False},
+        ],
+        'list_filters': [
+            {'name': 'name', 'label': 'Holiday name', 'value': name, 'placeholder': 'Holiday name'},
+            {'name': 'date', 'label': 'Date', 'type': 'date', 'value': date},
+            {
+                'name': 'branch',
+                'label': 'Branch',
+                'type': 'select',
+                'value': branch,
+                'options': [(str(pk), branch_name) for pk, branch_name in branch_options],
+            },
+            {
+                'name': 'status',
+                'label': 'Status',
+                'type': 'select',
+                'value': status,
+                'options': [('active', 'Active'), ('inactive', 'Inactive')],
+            },
+        ],
+    })
 
 
 def holiday_form(request, pk=None):

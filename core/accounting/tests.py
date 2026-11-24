@@ -271,7 +271,11 @@ class AccountingViewTests(TestCase):
             'Module_Accounting_journal_post',
             'Module_Accounting_trial_balance',
             'Module_Accounting_system_accounts',
+            'Module_Accounting_system_account_add',
+            'Module_Accounting_system_account_edit',
             'Module_Accounting_reconciliation_list',
+            'Module_Accounting_reconciliation_add',
+            'Module_Accounting_reconciliation_confirm',
             'Module_Accounting_period_close',
         ]
         for route_name in route_names:
@@ -296,8 +300,88 @@ class AccountingViewTests(TestCase):
         self.assertContains(account_response, '<body class="erp-dense-body')
         self.assertEqual(fiscal_response.status_code, 200)
         self.assertContains(fiscal_response, 'Annual period')
+        self.assertContains(
+            fiscal_response,
+            '<header class="erp-page-title fiscal-year-page-title">',
+            html=False,
+        )
+        self.assertNotContains(fiscal_response, 'data-popup-title="Create period"')
+        self.assertNotContains(
+            fiscal_response,
+            'data-popup-title="Create fiscal year"',
+        )
+        self.assertContains(fiscal_response, 'Close period')
         self.assertEqual(mapping_response.status_code, 200)
         self.assertEqual(reconciliation_response.status_code, 200)
+
+    def test_system_account_and_reconciliation_lists_use_shared_grid(self):
+        mapping = SystemAccountMapping.objects.create(
+            key='cash_in_hand',
+            account=self.cash,
+        )
+        reconciliation = AccountReconciliation.objects.create(
+            branch=self.branch,
+            account=self.cash,
+            as_of_date=date(2025, 2, 1),
+            statement_balance=Decimal('125.00'),
+            book_balance=Decimal('100.00'),
+            variance=Decimal('25.00'),
+            status=AccountReconciliation.STATUS_OPEN,
+            prepared_by=self.user,
+        )
+        other_branch = Branch.objects.create(name='Other Branch', code='OTHER')
+        AccountReconciliation.objects.create(
+            branch=other_branch,
+            account=self.cash,
+            as_of_date=date(2025, 2, 1),
+            statement_balance=Decimal('50.00'),
+            book_balance=Decimal('50.00'),
+            variance=Decimal('0.00'),
+            status=AccountReconciliation.STATUS_OPEN,
+            prepared_by=self.user,
+        )
+
+        mapping_page = self.client.get(
+            reverse('accounting:Module_Accounting_system_accounts')
+        )
+        reconciliation_page = self.client.get(
+            reverse('accounting:Module_Accounting_reconciliation_list')
+        )
+        for page in (mapping_page, reconciliation_page):
+            self.assertEqual(page.status_code, 200)
+            self.assertContains(page, 'data-list-page')
+            self.assertNotContains(page, 'js-jqgrid-source')
+
+        mapping_data = self.client.get(
+            reverse('accounting:Module_Accounting_system_accounts'),
+            {'ajax': '1', 'key': 'cash', 'account': self.cash.code},
+        )
+        self.assertEqual(mapping_data.status_code, 200)
+        self.assertEqual(mapping_data.json()['records'], 1)
+        self.assertEqual(mapping_data.json()['rows'][0]['id'], mapping.pk)
+
+        reconciliation_data = self.client.get(
+            reverse('accounting:Module_Accounting_reconciliation_list'),
+            {
+                'ajax': '1',
+                'date': '2025-02-01',
+                'account': self.cash.code,
+                'status': AccountReconciliation.STATUS_OPEN,
+            },
+        )
+        self.assertEqual(reconciliation_data.status_code, 200)
+        self.assertEqual(reconciliation_data.json()['records'], 1)
+        row = reconciliation_data.json()['rows'][0]
+        self.assertEqual(row['id'], reconciliation.pk)
+        self.assertIn('Confirm', row['actions'])
+        self.assertIn('csrfmiddlewaretoken', row['actions'])
+
+        invalid_date = self.client.get(
+            reverse('accounting:Module_Accounting_reconciliation_list'),
+            {'ajax': '1', 'date': 'not-a-date'},
+        )
+        self.assertEqual(invalid_date.status_code, 200)
+        self.assertEqual(invalid_date.json()['records'], 0)
 
     def test_account_list_shows_posted_balances_by_normal_balance(self):
         request = RequestFactory().post('/accounting/journal-entries/')

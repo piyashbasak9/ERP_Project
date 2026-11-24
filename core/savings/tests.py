@@ -919,7 +919,10 @@ class SavingsViewTests(TestCase):
         self.assertContains(list_page, 'data-name="code"')
         self.assertContains(list_page, 'data-name="name"')
         self.assertContains(list_page, 'data-name="status"')
-        self.assertContains(list_page, 'data-name="method" data-width="160" data-hidden="true"')
+        self.assertContains(
+            list_page,
+            'data-name="method" data-priority="5" data-width="160" data-hidden="true"',
+        )
         self.assertContains(list_page, "js/list-page.js")
         self.assertContains(list_page, '<body class="erp-dense-body')
         paged_list_page = self.client.get(
@@ -1002,7 +1005,7 @@ class SavingsViewTests(TestCase):
                 "page": 1,
                 "rows": 20,
                 "code": "UI-SPEC",
-                "name": "Popup-managed",
+                "name": xss_payload,
                 "status": "active",
             },
         )

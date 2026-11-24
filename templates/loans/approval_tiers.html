@@ -2,10 +2,9 @@
 {% load static %}
 {% block title %}Loan approval tiers{% endblock %}
 {% block content %}
-<div class="container-fluid py-3">
-    <p class="text-muted">{{ description }}</p>
+{% with list_description=description %}
     {% include 'partials/list_page.html' %}
-</div>
+{% endwith %}
 {% endblock %}
 {% block extra_js %}
 <script src="{% static 'js/list-page.js' %}"></script>
