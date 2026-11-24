@@ -1023,6 +1023,26 @@ footer.footer-custom strong {
     overflow: hidden;
 }
 
+.erp-dashboard-body {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: visible;
+}
+
+.erp-dashboard-body main.main-content {
+    flex: 1 0 auto;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    overflow: visible;
+}
+
+.erp-dashboard-body > .erp-header {
+    position: sticky;
+    top: 0;
+}
+
 .erp-dense-body .erp-list-page {
     display: flex;
     flex: 1 1 auto;
@@ -1542,6 +1562,10 @@ footer.footer-custom strong {
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto !important;
+}
+
+.erp-list-grid-wrap .ui-jqgrid-bdiv.erp-grid-no-vertical-overflow {
+    overflow-y: hidden !important;
 }
 
 .erp-grid-status {
@@ -2260,6 +2284,16 @@ footer.footer-custom small {
     line-height: 1.4;
 }
 
+footer.footer-custom.erp-status-bar {
+    min-height: 24px;
+}
+
+footer.footer-custom.erp-status-bar small {
+    color: #38475b;
+    font-size: 12px;
+    line-height: 18px;
+}
+
 .container {
     max-width: 1320px;
 }
@@ -2828,13 +2862,14 @@ textarea:focus-visible {
     color: #d4b780;
 }
 
-.dashboard-hero h1 {
+main.main-content .dashboard-hero h1 {
     margin: 0 0 0.8rem;
-    color: #f0ede5;
-    font-size: clamp(2rem, 4.2vw, 3.25rem);
+    color: #fff;
+    font-size: clamp(2.25rem, 5vw, 3.75rem);
     font-weight: 800;
     letter-spacing: -0.035em;
-    text-shadow: 0 0 18px rgba(14, 10, 0, 0.3);
+    line-height: 1.15;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
 }
 
 .dashboard-hero p {
@@ -3379,8 +3414,8 @@ textarea:focus-visible {
         border-radius: 16px;
     }
 
-    .dashboard-hero h1 {
-        font-size: 2rem;
+    main.main-content .dashboard-hero h1 {
+        font-size: 2.25rem;
     }
 
     .dashboard-hero-actions {
@@ -3501,7 +3536,6 @@ textarea:focus-visible {
 @media screen {
     html {
         min-height: 100%;
-        scrollbar-gutter: stable;
     }
 
     body {
@@ -3675,7 +3709,7 @@ body > #erp-header.erp-header {
 }
 
 @media screen and (min-width: 1024px) {
-    body :not(.bi):not(.fa):not(.fas):not(.far):not(.fab):not(svg):not(path):not(input):not(select):not(textarea):not(#erp-header):not(#erp-header *) {
+    body :not(.bi):not(.fa):not(.fas):not(.far):not(.fab):not(svg):not(path):not(input):not(select):not(textarea):not(h1):not(h2):not(h3):not(h4):not(h5):not(h6):not(.erp-status-bar):not(.erp-status-bar *):not(#erp-header):not(#erp-header *) {
         font-size: max(12px, 1em) !important;
     }
 
@@ -3711,8 +3745,12 @@ body > #erp-header.erp-header {
 }
 
 @media screen and (max-width: 1023.98px) {
-    body :not(.bi):not(.fa):not(.fas):not(.far):not(.fab):not(svg):not(path):not(input):not(select):not(textarea):not(#erp-header):not(#erp-header *) {
+    body :not(.bi):not(.fa):not(.fas):not(.far):not(.fab):not(svg):not(path):not(input):not(select):not(textarea):not(h1):not(h2):not(h3):not(h4):not(h5):not(h6):not(.erp-status-bar):not(.erp-status-bar *):not(#erp-header):not(#erp-header *) {
         font-size: max(14px, 1em) !important;
+    }
+
+    footer.footer-custom.erp-status-bar small {
+        font-size: 14px;
     }
 
     body :is(a, button, [role="button"], [tabindex]:not([tabindex="-1"])) {
@@ -3823,6 +3861,11 @@ body > #erp-header.erp-header {
         font-size: 16px;
     }
 
+    .erp-grid-pager [data-page-input] {
+        width: 44px;
+        min-width: 44px;
+    }
+
     .erp-list-grid-wrap .ui-jqgrid .ui-jqgrid-htable th,
     .erp-list-grid-wrap .ui-jqgrid .ui-jqgrid-htable th div,
     .erp-list-grid-wrap .ui-jqgrid tr.jqgrow td {
@@ -3864,6 +3907,10 @@ body > #erp-header.erp-header {
 }
 
 @media screen and (min-width: 576px) and (max-width: 1023.98px) {
+    .erp-list-grid-wrap {
+        padding-right: 0;
+    }
+
     .report-jqgrid-pager .ui-pg-input {
         box-sizing: border-box;
         width: 48px !important;

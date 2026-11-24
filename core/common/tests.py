@@ -150,6 +150,15 @@ class UIConventionRenderTests(TestCase):
         )
         self.client.force_login(user)
 
+    def test_dashboard_uses_shared_status_bar_shell(self):
+        response = self.client.get('/')
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode(response.charset or 'utf-8')
+        self.assertIn('class="erp-dashboard-body', html)
+        self.assertIn('data-ui-page-type="dashboard"', html)
+        self.assertIn('class="footer-custom erp-status-bar"', html)
+
     def test_registered_html_pages_render_type_markers(self):
         routes = get_ui_route_registry()
         violations = []

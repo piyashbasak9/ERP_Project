@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
     {% block extra_css %}{% endblock %}
 </head>
-<body{% if current_ui_page_type == 'list_page' %} class="erp-dense-body{% if request.resolver_match.url_name == 'Module_Loans_portfolio' %} erp-dense-body--extended{% endif %}{% if show_performance_timers %} show-performance-timers{% endif %}"{% endif %} data-ui-page-type="{{ current_ui_page_type }}">
+<body{% if current_ui_page_type == 'list_page' %} class="erp-dense-body{% if request.resolver_match.url_name == 'Module_Loans_portfolio' %} erp-dense-body--extended{% endif %}{% if show_performance_timers %} show-performance-timers{% endif %}"{% elif current_ui_page_type == 'dashboard' %} class="erp-dashboard-body{% if show_performance_timers %} show-performance-timers{% endif %}"{% endif %} data-ui-page-type="{{ current_ui_page_type }}">
 {% endif %}
 {% if request.GET.popup != '1' or request.META.HTTP_X_REQUESTED_WITH != 'XMLHttpRequest' %}
     {% if request.GET.popup != '1' %}

@@ -388,11 +388,13 @@ $(function () {
         page: requestedPage,
         rownumbers: true,
         viewrecords: true,
+        scrollOffset: 0,
         autowidth: true,
         shrinkToFit: true,
         forceFit: true,
         gridview: true,
         sortable: true,
+        scrollOffset: 0,
         autoencode: true,
         height: 100,
         loadonce: false,
@@ -435,6 +437,7 @@ $(function () {
             } else {
                 showListState("empty", "No records found");
             }
+            window.setTimeout(resizeGrid, 0);
         },
         loadError() {
             hasLoaded = true;
@@ -507,6 +510,12 @@ $(function () {
         $grid.jqGrid("setGridWidth", width, true);
         const height = Math.max(100, wrapper.getBoundingClientRect().height - header.getBoundingClientRect().height - 1);
         $grid.jqGrid("setGridHeight", height);
+        const body = wrapper.querySelector(".ui-jqgrid-bdiv");
+        if (!body) return;
+        body.classList.add("erp-grid-no-vertical-overflow");
+        const needsVerticalScroll = body.scrollHeight > body.clientHeight;
+        body.classList.toggle("erp-grid-no-vertical-overflow", !needsVerticalScroll);
+        $grid.jqGrid("setGridWidth", width, true);
     }
 
     let resizeTimer;
